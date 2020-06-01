@@ -1,0 +1,40 @@
+[package]
+name = "paxakos"
+version = "0.1.0"
+edition = "2018"
+license = "GPL-3.0-only"
+authors = [ "benshu <benshu@benshu.de>" ]
+readme = "README.md"
+documentation = "https://docs.rs/paxakos/"
+repository = "https://github.com/benschulz/paxakos"
+description = "Rust implementation of Paxos consensus algorithm"
+keywords = [ "paxos", "consensus", "distributed" ]
+categories = [ "network-programming" ]
+
+[features]
+default = []
+prototyping = [ "rand", "rand_distr", "tracer" ]
+tracer = []
+
+[dependencies]
+async-trait = "0.1"
+bincode = "1"
+blake3 = "0.3.1"
+futures = { version = "0.3", features = [ "thread-pool" ] }
+futures-timer = "3"
+num-traits = "0.2"
+pin-project = "0.4"
+rand = { version = "0.7", optional = true }
+rand_distr = { version = "0.2", optional = true }
+serde = { version = "1", features = [ "derive", "rc" ] }
+thiserror = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+streamunordered = "0.5"
+tokio = { version = "0.2", features = [ "blocking", "macros", "rt-threaded" ] }
+tracing-subscriber = "0.2"
+uuid = { version = "0.8", features = [ "serde", "v4" ] }
+
+[package.metadata.docs.rs]
+all-features = true

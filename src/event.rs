@@ -1,0 +1,65 @@
+use std::sync::Arc;
+
+use crate::state::{EventOf, LogEntryOf};
+use crate::{NodeStatus, RoundNum, State};
+
+#[non_exhaustive]
+#[derive(Clone, Debug)]
+pub enum Event<S: State, R: RoundNum> {
+    Init {
+        status: NodeStatus,
+        state: Option<Arc<S>>,
+    },
+
+    StatusChange {
+        old_status: NodeStatus,
+        new_status: NodeStatus,
+    },
+
+    /// A snapshot was installed.
+    Install { round: R, state: Arc<S> },
+
+    /// An entry has been committed to the log.
+    ///
+    /// The event does not imply that the entry was applied to the shared state.
+    Commit {
+        /// The round for which `log_entry` was committed.
+        round: R,
+
+        /// The log entry which was committed.
+        log_entry: Arc<LogEntryOf<S>>,
+    },
+
+    /// The next log entry was applied to the state.
+    Apply {
+        round: R,
+        log_entry: Arc<LogEntryOf<S>>,
+        result: EventOf<S>,
+    },
+
+    /// A log entry was queued, preceeding entries are still missing.
+    ///
+    /// Note: This event is emitted even when the queued entry is within the
+    /// concurrency bound or if this node created the gap itself. The second
+    /// case can arise when the leader tries to concurrently append multiple
+    /// entries and abandons some of the earlier appends.
+    Gaps(Vec<Gap<R>>),
+}
+
+#[derive(Clone, Debug)]
+pub struct Gap<R: RoundNum> {
+    /// The point in time when the gap appeared.
+    pub since: std::time::Instant,
+
+    /// The locations of the gap within the log.
+    pub rounds: std::ops::Range<R>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ShutdownEvent<S: State, R: RoundNum> {
+    Regular(Event<S, R>),
+    #[non_exhaustive]
+    Last {
+        state: Option<Arc<S>>,
+    },
+}
