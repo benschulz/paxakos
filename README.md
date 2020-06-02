@@ -18,7 +18,7 @@ and examples.
 
 [crates.io-badge]: https://img.shields.io/crates/v/paxakos.svg
 [crates.io-url]: https://crates.io/crates/paxakos
-[docs.rs-badge]: https://img.shields.io/crates/v/paxakos.svg
+[docs.rs-badge]: https://docs.rs/paxakos/badge.svg
 [docs.rs-url]: https://docs.rs/paxakos
 [gpl-badge]: https://img.shields.io/badge/license-GPLv3-blue.svg
 [gpl-url]: LICENSE
