@@ -106,7 +106,6 @@ fn always_retry<R: RoundNum>() -> AppendArgs<R> {
 }
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct ChatMessage {
     id: Uuid,
     sender: String,
