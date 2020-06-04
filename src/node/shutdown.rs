@@ -8,6 +8,7 @@ use crate::state::State;
 use super::commits::Commits;
 use super::state_keeper::EventStream;
 
+/// A `Node` that is being [`shut_down`][crate::Node::shut_down].
 pub trait Shutdown {
     type State: State;
     type Communicator: Communicator;

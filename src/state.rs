@@ -5,12 +5,27 @@ use futures::io::AsyncRead;
 
 use crate::{LogEntry, NodeInfo};
 
+/// Type alias to extract a state's [`Context`][State::Context] type.
 pub type ContextOf<S> = <S as State>::Context;
+
+/// Type alias to extract a state's [`LogEntry`][State::LogEntry] type.
 pub type LogEntryOf<S> = <S as State>::LogEntry;
+
+/// Type alias to extract [`Id`][LogEntry::Id] type of a state's
+/// [`LogEntry`][State::LogEntry] type.
 pub type LogEntryIdOf<S> = <LogEntryOf<S> as LogEntry>::Id;
+
+/// Type alias to extract a state's [`Node`][State::Node] type.
 pub type NodeOf<S> = <S as State>::Node;
+
+/// Type alias to extract [`Id`][NodeInfo::Id] type of a state's
+/// [`Node`][State::Node] type.
 pub type NodeIdOf<S> = <NodeOf<S> as NodeInfo>::Id;
+
+/// Type alias to extract a state's [`Outcome`][State::Outcome] type.
 pub type OutcomeOf<S> = <S as State>::Outcome;
+
+/// Type alias to extract a state's [`Event`][State::Event] type.
 pub type EventOf<S> = <S as State>::Event;
 
 /// Distributed state to which log entries are applied.

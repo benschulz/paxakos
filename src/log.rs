@@ -3,6 +3,7 @@ use futures::io::AsyncRead;
 
 use crate::Identifier;
 
+/// Appended to the shared log and applied to the shared `State`.
 #[async_trait(?Send)]
 pub trait LogEntry: 'static + Clone + std::fmt::Debug + Send + Sync + Unpin {
     type Id: Identifier;

@@ -88,6 +88,7 @@ pub enum ReadStaleError {
     ShutDown,
 }
 
+/// Preparing a round for proposals failed.
 #[derive(Debug, Error)]
 pub enum PrepareError<S: State, C: CoordNum> {
     #[error("conflicting promise")]
@@ -122,6 +123,7 @@ impl<S: State, C: CoordNum> From<PrepareError<S, C>> for AppendError {
     }
 }
 
+/// A proposal could not be accepted.
 #[derive(Debug, Error)]
 pub enum AcceptError<S: State, C: CoordNum> {
     #[error("conflicting promise")]
@@ -156,6 +158,7 @@ impl<S: State, C: CoordNum> From<AcceptError<S, C>> for AppendError {
     }
 }
 
+/// Committing a log entry failed.
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum CommitError<S: State> {

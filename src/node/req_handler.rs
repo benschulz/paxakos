@@ -7,6 +7,8 @@ use crate::{CoordNum, Promise, RoundNum, State};
 
 use super::state_keeper::StateKeeperHandle;
 
+/// Used by [`Communicator`][crate::communicator::Communicator]s to prepare
+/// replies.
 #[derive(Debug)]
 pub struct RequestHandler<S: State, R: RoundNum, C: CoordNum>(StateKeeperHandle<S, R, C>);
 

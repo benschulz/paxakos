@@ -17,6 +17,10 @@ use crate::{Identifier, Node, State};
 use super::snapshot::Snapshot;
 use super::{CommunicatorOf, NodeKernel, RequestHandler, StateOf};
 
+/// Builder to spawn a `Node`.
+///
+/// This API is badly desgined. Please have a look at and follow the
+/// documentation of [`node_builder()`](crate::node_builder()).
 // TODO This trait seems pointless, rename -WithAll to NodeBuilder?
 //      Overall this seems a bit messy with all the structs. Is there a
 //      better approach?

@@ -1,3 +1,4 @@
+/// A node's status, usually `Leading` or `Following`.
 // TODO most states should expose a "since: Instant"
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NodeStatus {

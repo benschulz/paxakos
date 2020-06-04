@@ -17,6 +17,7 @@ use super::{Admin, NodeStatus};
 // macros
 use crate::dispatch_node_handle_req;
 
+/// A remote handle for a paxakos [`Node`][crate::Node].
 #[derive(Clone)]
 pub struct NodeHandle<S, R, C>
 where

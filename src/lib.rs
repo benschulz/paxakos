@@ -585,6 +585,7 @@ pub use node::{Commit, Node, NodeBuilder, NodeHandle, NodeInfo, NodeKernel, Shut
 pub use node::{NodeStatus, RequestHandler};
 pub use state::State;
 
+/// Trait bound of both [`CoordNum`] as well as [`RoundNum`].
 pub trait Number:
     'static
     + num_traits::Bounded
@@ -629,18 +630,29 @@ impl<T> Number for T where
 {
 }
 
+/// A round number.
+///
+/// Please refer to the [description of the protocol](crate#protocol).
 pub trait RoundNum: Number {}
 
 impl<T: Number> RoundNum for T {}
 
+/// A coordination number.
+///
+/// Please refer to the [description of the protocol](crate#protocol).
 pub trait CoordNum: Number {}
 
 impl<T: Number> CoordNum for T {}
 
+/// Trait bound of [log entry ids][crate::LogEntry::Id] and [node
+/// ids][crate::NodeInfo::Id].
 pub trait Identifier: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin {}
 
 impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifier for T {}
 
+/// A promise not to accept certain proposals anymore.
+///
+/// Please refer to the [description of the protocol](crate#protocol).
 #[derive(Clone, Debug)]
 pub struct Promise<R, C, E>(Vec<(R, C, Arc<E>)>)
 where
@@ -722,6 +734,9 @@ where
     }
 }
 
+/// Rejection of a prepare request or a proposal.
+///
+/// Please refer to the [description of the protocol](crate#protocol).
 #[derive(Clone, Debug)]
 pub enum Rejection<C, E>
 where

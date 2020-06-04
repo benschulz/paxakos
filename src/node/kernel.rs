@@ -23,6 +23,8 @@ use super::snapshot::Snapshot;
 use super::state_keeper::{EventStream, ProofOfLife, StateKeeper, StateKeeperHandle};
 use super::{Node, NodeHandle, NodeStatus, Participaction, RequestHandler};
 
+/// The default [`Node`][crate::Node] implementation.
+// TODO a better name may be needed…
 pub struct NodeKernel<S, C>
 where
     S: State,
