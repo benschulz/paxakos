@@ -576,13 +576,20 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
-// TODO reconsider all these re-exports
+// TODO move these three into the communicator module
+#[doc(inline)]
 pub use error::{AcceptError, CommitError, PrepareError};
+#[doc(inline)]
 pub use event::{Event, ShutdownEvent};
+#[doc(inline)]
 pub use log::LogEntry;
+#[doc(inline)]
 pub use node::builder as node_builder;
+#[doc(inline)]
 pub use node::{Commit, Node, NodeBuilder, NodeHandle, NodeInfo, NodeKernel, Shutdown};
+#[doc(inline)]
 pub use node::{NodeStatus, RequestHandler};
+#[doc(inline)]
 pub use state::State;
 
 /// Trait bound of both [`CoordNum`] as well as [`RoundNum`].
