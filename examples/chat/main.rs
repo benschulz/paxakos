@@ -32,20 +32,24 @@ fn main() {
     // Because Bob and Charlie reply without synchronization, either may reply
     // first. However, all participants will observe the same person replying
     // first.
-    std::thread::spawn(|| {
+    let b = std::thread::spawn(|| {
         futures::executor::block_on(async move {
             let _ = node_b
                 .append(msg("Bob", "Hi Alice, long time no see!"), always_retry())
                 .await;
         });
     });
-    std::thread::spawn(|| {
+    let c = std::thread::spawn(|| {
         futures::executor::block_on(async move {
             let _ = node_c
                 .append(msg("Charlie", "Hi Alice, how are you?"), always_retry())
                 .await;
         });
     });
+
+    // Let's wait for the appends to go through.
+    b.join().unwrap();
+    c.join().unwrap();
 
     // It is guaranteed that all messages above have been appended to the shared log
     // at this point. However, one node may not know about it yet and the others may
