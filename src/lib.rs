@@ -576,6 +576,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 // TODO move these three into the communicator module
 #[doc(inline)]
 pub use error::{AcceptError, CommitError, PrepareError};
@@ -660,12 +662,8 @@ impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifi
 /// A promise not to accept certain proposals anymore.
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
-#[derive(Clone, Debug)]
-pub struct Promise<R, C, E>(Vec<(R, C, Arc<E>)>)
-where
-    R: RoundNum,
-    C: CoordNum,
-    E: LogEntry;
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Promise<R, C, E>(Vec<(R, C, Arc<E>)>);
 
 impl<R, C, E> Promise<R, C, E>
 where
@@ -744,12 +742,8 @@ where
 /// Rejection of a prepare request or a proposal.
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
-#[derive(Clone, Debug)]
-pub enum Rejection<C, E>
-where
-    C: CoordNum,
-    E: LogEntry,
-{
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Rejection<C, E> {
     Conflict {
         coord_num: C,
     },
