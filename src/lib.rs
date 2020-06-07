@@ -186,7 +186,7 @@
 //!     // Let's wait for the appends to go through.
 //!     b.join().unwrap();
 //!     c.join().unwrap();
-//! 
+//!
 //!     // It is guaranteed that all messages above have been appended to the shared log
 //!     // at this point. However, one node may not know about it yet and the others may
 //!     // not have gotten a chance to apply it to their state. Let's give them a chance
@@ -501,9 +501,9 @@
 //! ## Status
 //!
 //! The core algorithm of Paxakos is reasonably well-tested. However,
-//! "ancillary" features such as snapshots, logging of obligations and passive
-//! mode are not well tested and presumably contain bugs. Also, APIs and
-//! serialized representations will likely change.
+//! "ancillary" features such as snapshots and passive mode are not well tested
+//! and presumably contain bugs. Also, APIs and serialized representations will
+//! likely change.
 //!
 //! **Use at your own risk.**
 //!
@@ -522,15 +522,6 @@
 //!
 //!   Any suggestions as to how comile times may be reduced are welcome. Compile
 //!   times of _dependent_ projects are the primary concern.
-//!
-//! - Removal of the Obligation Log
-//!
-//!   Before promising or accepting entries, nodes write to an obligation log.
-//!   When restarting after a crash, this log is read to make sure that any
-//!   obligations from the previous run are kept. However, it appears that the
-//!   underlying techniques are simply to flaky. The only way to confidently use
-//!   such a mechanism is to have an intimate understanding of ones hardware and
-//!   even then…
 //!
 //! - Adding comments and documentation
 //!

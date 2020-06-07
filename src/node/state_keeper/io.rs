@@ -5,7 +5,7 @@ use std::path;
 
 use crate::error::{BoxError, IoError};
 use crate::log::LogEntry;
-use crate::{CoordNum, RoundNum};
+use crate::RoundNum;
 
 pub fn read_dir(dir: impl AsRef<path::Path>) -> Result<fs::ReadDir, IoError> {
     let dir = dir.as_ref();
@@ -140,15 +140,6 @@ pub fn recover_round_num<R: RoundNum>(round_num: u128) -> Result<R, IoError> {
         IoError::invalid_data(
             "Log file has become incompatible.",
             format!("`{}` is no longer a valid round number.", round_num),
-        )
-    })
-}
-
-pub fn recover_coord_num<C: CoordNum>(coord_num: u128) -> Result<C, IoError> {
-    C::try_from(coord_num).map_err(|_| {
-        IoError::invalid_data(
-            "Log file has become incompatible.",
-            format!("`{}` is no longer a valid coordination number.", coord_num),
         )
     })
 }

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, SeekFrom};
 use std::path;
 use std::sync::Arc;
 
@@ -11,25 +11,18 @@ use crate::log::{LogEntry, LogKeeping};
 use crate::RoundNum;
 
 use super::io;
-use super::{APPLY, MAGIC_BYTES};
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum WorkingDirState {
-    Defined,
-    Undefined,
-}
+const MAGIC_BYTES: u32 = 0x70617861;
+const APPLY: u32 = 0x41504C59;
 
-// TODO hide all the fields
 #[derive(Debug)]
 pub struct WorkingDir<R: RoundNum> {
-    pub path: path::PathBuf,
-    pub file: fs::File,
-    pub log_keeping: LogKeeping,
-    pub obligations_path: path::PathBuf,
-    pub obligations_file: fs::File,
-    pub current_applied_entry_log: Option<R>,
-    pub applied_entry_logs: BTreeMap<R, (path::PathBuf, fs::File)>,
-    pub applied_entry_index: HashMap<R, (R, u64)>,
+    path: path::PathBuf,
+    file: fs::File,
+    log_keeping: LogKeeping,
+    current_applied_entry_log: Option<R>,
+    applied_entry_logs: BTreeMap<R, (path::PathBuf, fs::File)>,
+    applied_entry_index: HashMap<R, (R, u64)>,
 }
 
 impl<R: RoundNum> WorkingDir<R> {
@@ -60,35 +53,6 @@ impl<R: RoundNum> WorkingDir<R> {
             })?;
         }
 
-        let mut obligations_path = working_dir_path.clone();
-        obligations_path.push("obligation.log");
-        let mut obligations_file = fs::File::with_options()
-            .create(true)
-            .read(true)
-            .write(true)
-            .open(&obligations_path)
-            .map_err(io::to_failed_to_open(&obligations_path))?;
-
-        match io::try_read_u32_from(&obligations_path, &mut obligations_file)? {
-            Some(bytes) if bytes == MAGIC_BYTES => {
-                // expected case, keep going
-            }
-            None => {
-                // empty or truncated or…
-                io::seek_in(&obligations_path, &mut obligations_file, SeekFrom::Start(0))?;
-
-                io::write_u32_to(&obligations_path, &mut obligations_file, MAGIC_BYTES)?;
-
-                io::sync(&obligations_path, &mut obligations_file)?;
-            }
-            Some(bytes) => {
-                return Err(SpawnError::InvalidObligationsFile(
-                    obligations_path,
-                    format!("expected `0x{:08x?}`, got `0x{:08x?}`.", MAGIC_BYTES, bytes).into(),
-                ));
-            }
-        }
-
         let mut working_dir_file =
             fs::File::open(&working_dir_path).map_err(io::to_failed_to_open(&working_dir_path))?;
         io::sync(&working_dir_path, &mut working_dir_file)?;
@@ -97,8 +61,6 @@ impl<R: RoundNum> WorkingDir<R> {
             path: working_dir_path,
             file: working_dir_file,
             log_keeping,
-            obligations_path,
-            obligations_file,
             current_applied_entry_log: None,
             applied_entry_logs: BTreeMap::new(),
             applied_entry_index: HashMap::new(),
@@ -107,66 +69,6 @@ impl<R: RoundNum> WorkingDir<R> {
         working_dir.load_and_index_applied_entries();
 
         Ok(working_dir)
-    }
-
-    pub fn prepare_and_switch_to_new_obligation_log(
-        &mut self,
-    ) -> Result<(), (IoError, WorkingDirState)> {
-        self.prepare_new_obligation_log()
-            .map_err(|e| (e, WorkingDirState::Defined))
-            .and_then(|(new_path, new_file)| self.switch_to_new_obligation_log(new_path, new_file))
-    }
-
-    pub fn prepare_new_obligation_log(&self) -> Result<(path::PathBuf, fs::File), IoError> {
-        let mut new_obligations_path = self.path.clone();
-        new_obligations_path.push("obligations.log.new");
-
-        let mut new_obligations_file = fs::File::with_options()
-            .create(true)
-            .read(true)
-            .write(true)
-            .open(&new_obligations_path)
-            .map_err(io::to_failed_to_open(&new_obligations_path))?;
-
-        io::write_u32_to(
-            &new_obligations_path,
-            &mut new_obligations_file,
-            MAGIC_BYTES,
-        )?;
-
-        Ok((new_obligations_path, new_obligations_file))
-    }
-
-    pub fn switch_to_new_obligation_log(
-        &mut self,
-        new_obligations_path: path::PathBuf,
-        new_obligations_file: fs::File,
-    ) -> Result<(), (IoError, WorkingDirState)> {
-        fs::rename(&new_obligations_path, &self.obligations_path).map_err(|e| {
-            (
-                {
-                    IoError::new(
-                        format!(
-                            "Failed to rename `{}` to `{}`.",
-                            &new_obligations_path.display(),
-                            &self.obligations_path.display()
-                        ),
-                        e,
-                    )
-                },
-                WorkingDirState::Defined,
-            )
-        })?;
-
-        if let Err(err) = io::sync(&self.path, &mut self.file) {
-            // Urgh, so we renamed the file but we don't know
-            // whether this rename will ever hit disk.
-            Err((err, WorkingDirState::Undefined))
-        } else {
-            self.obligations_file = new_obligations_file;
-
-            Ok(())
-        }
     }
 
     fn load_and_index_applied_entries(&mut self) {
@@ -484,28 +386,6 @@ impl<R: RoundNum> WorkingDir<R> {
             futures::io::AllowStdIo::new(file),
         )))
     }
-
-    pub fn record_log_offsets(&mut self) -> Result<LogOffsets, IoError> {
-        Ok(LogOffsets {
-            obligations: self
-                .obligations_file
-                .seek(SeekFrom::Current(0))
-                .map_err(|e| {
-                    IoError::new(
-                        format!(
-                            "Failed to determine position in `{}`.",
-                            self.obligations_path.display()
-                        ),
-                        e,
-                    )
-                })?,
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct LogOffsets {
-    pub obligations: u64,
 }
 
 const U128_BASE62_LEN: usize = 22;

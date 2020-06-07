@@ -350,8 +350,7 @@ where
                 status: new_status, ..
             })
             | Poll::Ready(crate::Event::StatusChange { new_status, .. }) => {
-                self.suspended =
-                    matches!(new_status, NodeStatus::Stalled | NodeStatus::Disoriented);
+                self.suspended = matches!(new_status, NodeStatus::Disoriented);
 
                 if new_status == NodeStatus::Following {
                     self.queued_gaps.clear();

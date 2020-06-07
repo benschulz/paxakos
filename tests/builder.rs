@@ -32,7 +32,7 @@ fn node_given_immediately_ready_snapshot_starts_as_lagging() {
             .for_node(node_info.id())
             .working_ephemerally()
             .communicating_via(DirectCommunicator::<CalcState, u64, u32>::new())
-            .resuming_from(Snapshot::initial(CalcState::new(vec![node_info], 1)))
+            .joining_with(Snapshot::initial(CalcState::new(vec![node_info], 1)))
             .spawn_in(()),
     )
     .unwrap();

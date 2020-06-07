@@ -148,38 +148,6 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
 
     /// Resume operation from the given snapshot.
     ///
-    /// # Soundness
-    ///
-    /// Assuming a working directory is used, the node will read its obligation
-    /// log and immediately transition into active participation. This is sound
-    /// iff
-    ///  - the given snapshot was taken by the same node,
-    ///  - the same working directory was used when the snapshot was taken and
-    ///  - the working directory is still valid, i.e. the node did not run using
-    ///    a different working directory in the meantime.
-    ///
-    /// Use [recovering_with] to have a failed node recover.
-    ///
-    /// [recovering_with]:
-    /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_with
-    pub fn resuming_from<S>(
-        self,
-        snapshot: impl Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
-    ) -> NodeBuilderWithAll<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    {
-        // TODO this seems a bit fragile
-        let participation = match self.working_dir {
-            Some(_) => Participaction::Active,
-            None => Participaction::Passive,
-        };
-
-        self.with_snapshot_and_participation(snapshot.into(), participation)
-    }
-
-    /// Resume operation from the given snapshot.
-    ///
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
     pub fn recovering_with<S>(

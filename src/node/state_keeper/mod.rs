@@ -8,21 +8,19 @@ mod working_dir;
 use std::collections::btree_map;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
-use std::fs;
-use std::io::{Read, SeekFrom};
 use std::ops::RangeInclusive;
 use std::path;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use futures::channel::{mpsc, oneshot};
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use num_traits::{Bounded, One, Zero};
 use pin_project::pin_project;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
-use crate::error::{IoError, PrepareError, PrepareSnapshotError, ReadStaleError, SpawnError};
+use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError, SpawnError};
 use crate::event::{Event, ShutdownEvent};
 use crate::log::{LogEntry, LogKeeping};
 use crate::state::{ContextOf, LogEntryIdOf, LogEntryOf, OutcomeOf, State};
@@ -37,13 +35,7 @@ use super::status::NodeStatus;
 use error::{AcquireRoundNumError, ClusterError};
 pub use handle::StateKeeperHandle;
 use msg::{Release, Request, Response};
-use working_dir::{LogOffsets, WorkingDir, WorkingDirState};
-
-const MAGIC_BYTES: u32 = 0x70617861;
-
-const ACCEPT: u32 = 0x41435054;
-const APPLY: u32 = 0x41504C59;
-const PROMISE: u32 = 0x50524D53;
+use working_dir::WorkingDir;
 
 #[derive(Debug)]
 enum Participaction<R: RoundNum> {
@@ -94,9 +86,6 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     /// to track observations by round number.
     highest_observed_coord_num: C,
 
-    /// The round in which we started recording obligations (promises and
-    /// accepted entries).
-    obligations_from: R,
     /// If promises were made, promises will be kept.
     ///
     /// Promises are at the heart of Paxos and _essential_ to correctness.
@@ -143,8 +132,6 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     /// last status that was observable from the outside
     status: NodeStatus,
     event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
-    // TODO keep clean
-    log_offsets_by_snapshot: Vec<(Weak<()>, LogOffsets)>,
 
     applied_entry_buffer: VecDeque<Arc<LogEntryOf<S>>>,
 
@@ -279,7 +266,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 release_sender: rel_send,
                 release_receiver: rel_recv,
 
-                obligations_from: state_round + One::one(),
                 promises,
                 accepted_entries,
 
@@ -298,8 +284,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 status: initial_status,
                 event_emitter,
 
-                log_offsets_by_snapshot: Vec::new(),
-
                 // TODO the capacity should be configurable
                 applied_entry_buffer: VecDeque::with_capacity(1024),
 
@@ -312,23 +296,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     }
 
     fn init_and_run(mut self) {
-        // FIXME go passive if the loaded obligations don't match the snapshot
-        if let Err(e) = self.recover_obligations() {
-            error!("Failed to load log: {:?}", e);
-
-            self.become_passive();
-            self.become_stalled();
-        }
-
-        if let Some(working_dir) = self.working_dir.as_ref() {
-            debug!(
-                "Loaded obligations from `{}`, `{}` promises were made, `{}` entries are accepted.",
-                working_dir.obligations_path.display(),
-                self.promises.len(),
-                self.accepted_entries.len()
-            );
-        }
-
         crate::emit!(
             self,
             ShutdownEvent::Regular(Event::Init {
@@ -338,128 +305,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         );
 
         self.run();
-    }
-
-    // TODO emit warning when the log was truncated
-    fn recover_obligations(&mut self) -> Result<(), IoError> {
-        if let Some(working_dir) = self.working_dir.as_mut() {
-            let obligations_path = &working_dir.obligations_path;
-            let mut obligations_file = std::io::BufReader::new(&mut working_dir.obligations_file);
-
-            loop {
-                let kind = io::try_read_u32_from(obligations_path, &mut obligations_file)?;
-
-                match kind {
-                    Some(PROMISE) => {
-                        let mut checksumming_read =
-                            io::Checksumming::from(obligations_file.take(2 * (128 / 8)));
-
-                        let round_num =
-                            io::try_read_u128_from(obligations_path, &mut checksumming_read)?;
-                        let round_num = match round_num {
-                            Some(round_num) => round_num,
-                            None => return Ok(()),
-                        };
-
-                        let promise =
-                            io::try_read_u128_from(obligations_path, &mut checksumming_read)?;
-                        let promise = match promise {
-                            Some(promise) => promise,
-                            None => return Ok(()),
-                        };
-
-                        let (take, expected_checksum) = checksumming_read.into_inner();
-                        obligations_file = take.into_inner();
-
-                        if !io::try_read_and_verify_checksum_from(
-                            obligations_path,
-                            &mut obligations_file,
-                            &expected_checksum,
-                        )? {
-                            return Ok(());
-                        }
-
-                        let round_num = io::recover_round_num::<R>(round_num)?;
-                        let promise = io::recover_coord_num::<C>(promise)?;
-
-                        if let Some((r, p)) = self
-                            .promises
-                            .range(..round_num)
-                            .filter(|(_, p)| **p > promise)
-                            .nth(0)
-                        {
-                            return Err(IoError::invalid_data(
-                                "Unexpected violation of monotonicity invariant.",
-                                format!(
-                                    "New promise `{}` for round `{}` is smaller than previous `{}` in round `{}`.",
-                                    promise, round_num, p, r
-                                ),
-                            ));
-                        }
-
-                        self.promises.insert(round_num, promise);
-                    }
-                    Some(ACCEPT) => {
-                        let size = io::try_read_u32_from(obligations_path, &mut obligations_file)?;
-                        let size = match size {
-                            Some(size) => size,
-                            None => return Ok(()),
-                        };
-
-                        let mut checksumming_read = io::Checksumming::from(
-                            obligations_file.take(u64::from(size) + 2 * (128 / 8)),
-                        );
-
-                        let round_num =
-                            io::try_read_u128_from(obligations_path, &mut checksumming_read)?;
-                        let round_num = match round_num {
-                            Some(round_num) => round_num,
-                            None => return Ok(()),
-                        };
-
-                        let coord_num =
-                            io::try_read_u128_from(obligations_path, &mut checksumming_read)?;
-                        let coord_num = match coord_num {
-                            Some(coord_num) => coord_num,
-                            None => return Ok(()),
-                        };
-
-                        let log_entry = futures::executor::block_on(LogEntryOf::<S>::from_reader(
-                            futures::io::AllowStdIo::new(&mut checksumming_read),
-                        ));
-
-                        let (take, expected_checksum) = checksumming_read.into_inner();
-                        obligations_file = take.into_inner();
-
-                        if !io::try_read_and_verify_checksum_from(
-                            obligations_path,
-                            &mut obligations_file,
-                            &expected_checksum,
-                        )? {
-                            return Ok(());
-                        }
-
-                        let round_num = io::recover_round_num(round_num)?;
-                        let coord_num = io::recover_coord_num(coord_num)?;
-                        let log_entry = io::recover_log_entry(log_entry)?;
-
-                        self.accepted_entries
-                            .insert(round_num, (coord_num, Arc::new(log_entry)));
-                    }
-                    Some(unexpected) => {
-                        return Err(IoError::invalid_data(
-                            format!("Log file `{}` was corrupted.", obligations_path.display()),
-                            format!("Read unexcected value `{}`.", unexpected),
-                        ));
-                    }
-                    None => {
-                        return Ok(());
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 
     fn run(mut self) {
@@ -649,13 +494,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             } => {
                 self.observe_coord_num(coord_num);
 
-                let result = self.prepare_entry(round_num, coord_num);
-
-                if matches!(result, Err(PrepareError::IoError(_))) {
-                    self.become_stalled();
-                }
-
-                Response::PrepareEntry(result)
+                Response::PrepareEntry(self.prepare_entry(round_num, coord_num))
             }
 
             Request::AcceptEntry {
@@ -665,24 +504,12 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             } => {
                 self.observe_coord_num(coord_num);
 
-                let result = self.accept_entry(round_num, coord_num, entry);
-
-                if matches!(result, Err(AcceptError::IoError(_))) {
-                    self.become_stalled();
-                }
-
-                Response::AcceptEntry(result)
+                Response::AcceptEntry(self.accept_entry(round_num, coord_num, entry))
             }
             Request::AcceptEntries { coord_num, entries } => {
                 self.observe_coord_num(coord_num);
 
-                let result = self.accept_entries(coord_num, entries);
-
-                if matches!(result, Err(AcceptError::IoError(_))) {
-                    self.become_stalled();
-                }
-
-                Response::AcceptEntries(result)
+                Response::AcceptEntries(self.accept_entries(coord_num, entries))
             }
 
             Request::CommitEntry { round_num, entry } => {
@@ -741,13 +568,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         }
     }
 
-    // FIXME find way to invoke this in other spots (macro?)
-    fn become_stalled(&mut self) {
-        if self.status != NodeStatus::Stalled {
-            self.emit_status_change(NodeStatus::Stalled);
-        }
-    }
-
     fn emit_status_change(&mut self, new_status: NodeStatus) {
         let old_status = self.status;
         self.status = new_status;
@@ -771,87 +591,18 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             .as_ref()
             .ok_or(PrepareSnapshotError::Disoriented)?;
 
-        let snapshot = Snapshot::new(
+        Ok(Snapshot::new(
             self.state_round,
             Arc::clone(state),
             self.highest_observed_coord_num,
             self.promises.clone(),
             self.accepted_entries.clone(),
-        );
-
-        let status = self.status;
-        let log_offset_by_snapshot = &mut self.log_offsets_by_snapshot;
-
-        if let Some(working_dir) = self.working_dir.as_mut() {
-            if status != NodeStatus::Stalled {
-                log_offset_by_snapshot.push((
-                    Arc::downgrade(snapshot.identity()),
-                    working_dir.record_log_offsets()?,
-                ))
-            }
-        }
-
-        Ok(snapshot)
+        ))
     }
 
-    fn affirm_snapshot(&mut self, snapshot: Snapshot<S, R, C>) -> Result<(), AffirmSnapshotError> {
-        let log_offset_by_snapshot = &self.log_offsets_by_snapshot;
-
-        if let Some(working_dir) = self.working_dir.as_mut() {
-            let cmp = Arc::downgrade(snapshot.identity());
-
-            let status = &mut self.status;
-            let log_offsets = log_offset_by_snapshot
-                .iter()
-                .filter(|(id, _os)| id.ptr_eq(&cmp))
-                .map(|(_id, os)| os)
-                .nth(0);
-
-            match log_offsets {
-                Some(log_offsets) => {
-                    let mut obligations_file_read =
-                        fs::File::open(&working_dir.obligations_path)
-                            .map_err(io::to_failed_to_open(&working_dir.obligations_path))?;
-                    io::seek_in(
-                        &working_dir.obligations_path,
-                        &mut obligations_file_read,
-                        SeekFrom::Start(log_offsets.obligations),
-                    )?;
-
-                    let (new_obligations_path, mut new_obligations_file) =
-                        working_dir.prepare_new_obligation_log()?;
-
-                    let copied = io::copy_from_to(
-                        working_dir.obligations_path.display(),
-                        &mut obligations_file_read,
-                        new_obligations_path.display(),
-                        &mut new_obligations_file,
-                    )?;
-
-                    io::sync(&working_dir.obligations_path, &mut new_obligations_file)?;
-
-                    if let Err((err, new_state)) = working_dir
-                        .switch_to_new_obligation_log(new_obligations_path, new_obligations_file)
-                    {
-                        if new_state == WorkingDirState::Undefined {
-                            *status = NodeStatus::Stalled;
-                        }
-
-                        return Err(AffirmSnapshotError::IoError(err));
-                    };
-
-                    info!(
-                        "Affirmed snapshot, new obligation log size is {}KiB.",
-                        (4 + copied) / 1024
-                    );
-
-                    Ok(())
-                }
-                None => Err(AffirmSnapshotError::Unknown),
-            }
-        } else {
-            Ok(())
-        }
+    // TODO this doesn't do anything and probably never will, consider removal
+    fn affirm_snapshot(&mut self, _snapshot: Snapshot<S, R, C>) -> Result<(), AffirmSnapshotError> {
+        Ok(())
     }
 
     fn install_snapshot(
@@ -860,17 +611,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     ) -> Result<(), InstallSnapshotError> {
         if self.state_round > snapshot.round() {
             return Err(InstallSnapshotError::Outdated);
-        }
-
-        let status = &mut self.status;
-        if let Some(working_dir) = self.working_dir.as_mut() {
-            if let Err((err, new_state)) = working_dir.prepare_and_switch_to_new_obligation_log() {
-                if new_state == WorkingDirState::Undefined {
-                    *status = NodeStatus::Stalled;
-                }
-
-                return Err(InstallSnapshotError::IoError(err));
-            };
         }
 
         let DeconstructedSnapshot {
@@ -918,16 +658,12 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         round_num: R,
         coord_num: C,
     ) -> Result<Promise<R, C, LogEntryOf<S>>, PrepareError<S, C>> {
-        if self.status == NodeStatus::Stalled {
-            return Err(PrepareError::Stalled);
-        }
-
         if self.passive_for(round_num) {
             debug!("In passive mode, rejecting prepare request.");
             return Err(PrepareError::Passive);
         }
 
-        if round_num <= self.state_round || round_num < self.obligations_from {
+        if round_num <= self.state_round {
             return Err(PrepareError::Converged(
                 self.highest_observed_coord_num,
                 self.try_get_applied_entry(round_num),
@@ -990,23 +726,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         if coord_num <= strongest_promise {
             Err(PrepareError::Conflict(strongest_promise))
         } else {
-            if let Some(working_dir) = self.working_dir.as_mut() {
-                let obligations_path = &working_dir.obligations_path;
-                let obligations_file = &mut working_dir.obligations_file;
-
-                io::write_u32_to(obligations_path, obligations_file, PROMISE)?;
-
-                let mut checksumming_write = io::Checksumming::from(obligations_file);
-
-                io::write_u128_to(obligations_path, &mut checksumming_write, round_num)?;
-                io::write_u128_to(obligations_path, &mut checksumming_write, coord_num)?;
-
-                let (obligations_file, checksum) = checksumming_write.into_inner();
-                io::write_u256_to(obligations_path, obligations_file, &checksum)?;
-
-                io::sync(obligations_path, obligations_file)?;
-            }
-
             overriding_insert(&mut self.promises, round_num, coord_num);
 
             let promise = self
@@ -1050,7 +769,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         coord_num: C,
         entry: Arc<LogEntryOf<S>>,
     ) -> Result<(), AcceptError<S, C>> {
-        if round_num <= self.state_round || round_num < self.obligations_from {
+        if round_num <= self.state_round {
             Err(AcceptError::Converged(
                 self.highest_observed_coord_num,
                 self.try_get_applied_entry(round_num),
@@ -1080,10 +799,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         coord_num: C,
         mut entries: Vec<(R, Arc<LogEntryOf<S>>)>,
     ) -> Result<usize, AcceptError<S, C>> {
-        if self.status == NodeStatus::Stalled {
-            return Err(AcceptError::Stalled);
-        }
-
         entries.sort_unstable_by_key(|e| e.0);
 
         let first_round = entries[0].0;
@@ -1093,6 +808,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             return Err(AcceptError::Passive);
         }
 
+        // TODO write a test for passive mode, this cannot be the right place
         if let Participaction::Passive {
             first_observed_round: ref mut fr,
             ..
@@ -1103,8 +819,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
         let mut accepted = 0;
 
-        let round_range_start = self.obligations_from;
-
+        let round_range_start = self.state_round + One::one();
         let round_range_end = self
             .promises
             .iter()
@@ -1121,31 +836,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         let acceptable_entries = entries.into_iter().filter(|(r, _)| round_range.contains(r));
 
         for (round_num, log_entry) in acceptable_entries {
-            if let Some(working_dir) = self.working_dir.as_mut() {
-                let obligations_path = &working_dir.obligations_path;
-                let obligations_file = &mut working_dir.obligations_file;
-
-                io::write_u32_to(obligations_path, obligations_file, ACCEPT)?;
-                io::write_usize_as_u32_to(obligations_path, obligations_file, log_entry.size())?;
-
-                let mut checksumming_write = io::Checksumming::from(obligations_file);
-
-                io::write_u128_to(obligations_path, &mut checksumming_write, round_num)?;
-                io::write_u128_to(obligations_path, &mut checksumming_write, coord_num)?;
-
-                io::copy_from_to(
-                    format!("log-entry://{:?}", log_entry.id()),
-                    &mut log_entry.to_reader(),
-                    obligations_path.display(),
-                    &mut checksumming_write,
-                )?;
-
-                let (obligations_file, checksum) = checksumming_write.into_inner();
-                io::write_u256_to(obligations_path, obligations_file, &checksum)?;
-
-                io::sync(obligations_path, obligations_file)?;
-            }
-
             #[cfg(feature = "tracer")]
             {
                 if let Some(tracer) = self.tracer.as_mut() {

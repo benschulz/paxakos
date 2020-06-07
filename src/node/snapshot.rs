@@ -126,10 +126,6 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
         SnapshotReader(meta_state_len.chain(meta_state.chain(state)))
     }
 
-    pub(crate) fn identity(&self) -> &Arc<()> {
-        &self.identity
-    }
-
     pub fn round(&self) -> R {
         self.inner.meta_state.state_round
     }

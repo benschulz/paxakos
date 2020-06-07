@@ -111,16 +111,6 @@ pub enum AppendError {
     /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
-
-    /// Node is stalled.
-    ///
-    /// A node is stalled when it failed to write to its obligation log. Once
-    /// that happens it can no longer make promises or accept entries. This is
-    /// because there is no expectation that they will be remembered after a
-    /// potential crash.
-    // TODO allow recovery from this state
-    #[error("node is stalled")]
-    Stalled,
 }
 
 #[async_trait]

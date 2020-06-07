@@ -10,9 +10,6 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 #[derive(Debug, Error)]
 pub enum SpawnError {
-    #[error("invalid log file")]
-    InvalidObligationsFile(std::path::PathBuf, #[source] BoxError),
-
     #[error("invalid working directory")]
     InvalidWorkingDir(std::path::PathBuf, #[source] BoxError),
 
@@ -97,14 +94,8 @@ pub enum PrepareError<S: State, C: CoordNum> {
     #[error("round already converged")]
     Converged(C, Option<Arc<LogEntryOf<S>>>),
 
-    #[error("I/O error")]
-    IoError(#[from] IoError),
-
     #[error("node is passive")]
     Passive,
-
-    #[error("node is stalled")]
-    Stalled,
 
     #[error("node is shut down")]
     ShutDown,
@@ -115,9 +106,7 @@ impl<S: State, C: CoordNum> From<PrepareError<S, C>> for AppendError {
         match e {
             PrepareError::Conflict(_) => AppendError::Lost,
             PrepareError::Converged(_, _) => AppendError::Converged,
-            PrepareError::IoError(e) => AppendError::IoError(e),
             PrepareError::Passive => AppendError::Passive,
-            PrepareError::Stalled => AppendError::Stalled,
             PrepareError::ShutDown => AppendError::ShutDown,
         }
     }
@@ -132,14 +121,8 @@ pub enum AcceptError<S: State, C: CoordNum> {
     #[error("round already converged")]
     Converged(C, Option<Arc<LogEntryOf<S>>>),
 
-    #[error("I/O error")]
-    IoError(#[from] IoError),
-
     #[error("node is passive")]
     Passive,
-
-    #[error("node is stalled")]
-    Stalled,
 
     #[error("node is shut down")]
     ShutDown,
@@ -150,9 +133,7 @@ impl<S: State, C: CoordNum> From<AcceptError<S, C>> for AppendError {
         match e {
             AcceptError::Conflict(_) => AppendError::Lost,
             AcceptError::Converged(_, _) => AppendError::Converged,
-            AcceptError::IoError(e) => AppendError::IoError(e),
             AcceptError::Passive => AppendError::Passive,
-            AcceptError::Stalled => AppendError::Stalled,
             AcceptError::ShutDown => AppendError::ShutDown,
         }
     }
