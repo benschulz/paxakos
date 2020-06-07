@@ -44,10 +44,6 @@ impl<S: State, R: RoundNum, C: CoordNum> RequestHandler<S, R, C> {
     }
 
     /// Asks this node to commit the given log entry for the given round number.
-    ///
-    /// This method will typically be called in order to answer a `send_commit`
-    /// sent by another node. However, it can and should also be used to
-    /// implement catch-up mechanisms.
     pub fn handle_commit<I: Into<Arc<LogEntryOf<S>>>>(
         &self,
         round_num: R,
