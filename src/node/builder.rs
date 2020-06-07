@@ -137,6 +137,36 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
 
     /// Resume operation from the given snapshot.
     ///
+    /// # Soundness
+    ///
+    /// It is assumed that the given snapshot was yielded from the [`Last`]
+    /// event of a clean shutdown and that the node hasn't run in the meantime.
+    /// As such the node will start in active participation mode. This is
+    /// unsound if the assumptions are violated.
+    ///
+    /// Use [recovering_with] to have a failed node recover.
+    ///
+    /// [`Last`]: crate::event::ShutdownEvent::Last
+    /// [recovering_with]:
+    /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_with
+    pub fn resuming_from<S>(
+        self,
+        snapshot: impl Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
+    ) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    where
+        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    {
+        // TODO this seems a bit fragile
+        let participation = match self.working_dir {
+            Some(_) => Participaction::Active,
+            None => Participaction::Passive,
+        };
+
+        self.with_snapshot_and_participation(snapshot.into(), participation)
+    }
+
+    /// Resume operation from the given snapshot.
+    ///
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
     pub fn recovering_with<S>(
