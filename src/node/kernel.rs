@@ -34,7 +34,7 @@ where
     state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
     proof_of_life: ProofOfLife,
     commits: Commits,
-    events: EventStream<S, RoundNumOf<C>>,
+    events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
     status: NodeStatus,
     handle_send: mpsc::Sender<(
         NodeHandleRequest<S, RoundNumOf<C>>,

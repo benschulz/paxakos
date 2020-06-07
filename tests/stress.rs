@@ -176,11 +176,11 @@ fn spawn_node(
         let node = node.unwrap();
         let mut shutdown = node.shut_down();
 
-        let state = futures::executor::block_on(
+        let snapshot = futures::executor::block_on(
             futures::stream::poll_fn(|cx| shutdown.poll_shutdown(cx).map(Some))
                 .filter(|e| futures::future::ready(matches!(e, paxakos::ShutdownEvent::Last {..})))
                 .map(|e| match e {
-                    paxakos::ShutdownEvent::Last { state, .. } => state,
+                    paxakos::ShutdownEvent::Last { snapshot, .. } => snapshot,
                     _ => unreachable!(),
                 })
                 .next(),
@@ -190,7 +190,7 @@ fn spawn_node(
 
         tracing::info!("Node {} is shut down.", node_info.id());
 
-        assert_eq!(state.value(), target);
+        assert_eq!(snapshot.state().value(), target);
 
         hash_at_target.unwrap()
     })

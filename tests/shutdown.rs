@@ -31,13 +31,13 @@ fn clean_shutdown() {
     let mut states = futures::stream::poll_fn(|cx| shutdown.poll_shutdown(cx).map(Some))
         .map(|e| match e {
             ShutdownEvent::Regular(_) => futures::stream::empty().left_stream(),
-            ShutdownEvent::Last { state, .. } => {
-                futures::stream::once(futures::future::ready(state)).right_stream()
+            ShutdownEvent::Last { snapshot, .. } => {
+                futures::stream::once(futures::future::ready(snapshot)).right_stream()
             }
         })
         .flatten();
-    let final_state = states.next();
+    let final_snapshot = states.next();
 
-    let state = futures::executor::block_on(final_state).unwrap();
-    assert_eq!(Some(42.0), state.map(|s| s.value()));
+    let final_snapshot = futures::executor::block_on(final_snapshot).unwrap();
+    assert_eq!(Some(42.0), final_snapshot.map(|s| s.state().value()));
 }

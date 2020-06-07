@@ -142,8 +142,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     participaction: Participaction<R>,
     /// last status that was observable from the outside
     status: NodeStatus,
-    event_emitter: mpsc::Sender<ShutdownEvent<S, R>>,
-
+    event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
     // TODO keep clean
     log_offsets_by_snapshot: Vec<(Weak<()>, LogOffsets)>,
 
@@ -164,7 +163,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     ) -> Result<
         (
             NodeStatus,
-            EventStream<S, R>,
+            EventStream<S, R, C>,
             StateKeeperHandle<S, R, C>,
             ProofOfLife,
         ),
@@ -211,7 +210,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         participation: super::Participaction,
         log_keeping: LogKeeping,
         receiver: mpsc::Receiver<(Request<S, R, C>, oneshot::Sender<Response<S, R, C>>)>,
-        event_emitter: mpsc::Sender<ShutdownEvent<S, R>>,
+        event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
         #[cfg(feature = "tracer")] tracer: Option<Box<dyn Tracer<R, C, LogEntryIdOf<S>>>>,
     ) {
         std::thread::spawn(move || {
@@ -568,11 +567,11 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         }
     }
 
-    fn shut_down(self) {
+    fn shut_down(mut self) {
+        let snapshot = self.prepare_snapshot().ok();
         let mut emitter = self.event_emitter;
-        let state = self.state;
 
-        let _ = futures::executor::block_on(emitter.send(ShutdownEvent::Last { state }));
+        let _ = futures::executor::block_on(emitter.send(ShutdownEvent::Last { snapshot }));
     }
 
     fn handle_request_msg(
@@ -1405,13 +1404,13 @@ impl ProofOfLife {
 }
 
 #[pin_project]
-pub struct EventStream<S: State, R: RoundNum> {
+pub struct EventStream<S: State, R: RoundNum, C: CoordNum> {
     #[pin]
-    delegate: mpsc::Receiver<ShutdownEvent<S, R>>,
+    delegate: mpsc::Receiver<ShutdownEvent<S, R, C>>,
 }
 
-impl<S: State, R: RoundNum> futures::stream::Stream for EventStream<S, R> {
-    type Item = ShutdownEvent<S, R>;
+impl<S: State, R: RoundNum, C: CoordNum> futures::stream::Stream for EventStream<S, R, C> {
+    type Item = ShutdownEvent<S, R, C>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,

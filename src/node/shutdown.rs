@@ -1,7 +1,7 @@
 use futures::future::{FutureExt, LocalBoxFuture};
 use futures::stream::StreamExt;
 
-use crate::communicator::{Communicator, RoundNumOf};
+use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::event::ShutdownEvent;
 use crate::state::State;
 
@@ -17,7 +17,9 @@ pub trait Shutdown {
     fn poll_shutdown(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<ShutdownEvent<Self::State, RoundNumOf<Self::Communicator>>>;
+    ) -> std::task::Poll<
+        ShutdownEvent<Self::State, RoundNumOf<Self::Communicator>, CoordNumOf<Self::Communicator>>,
+    >;
 }
 
 pub struct DefaultShutdown<S, C>
@@ -26,7 +28,7 @@ where
     C: Communicator,
 {
     trigger: LocalBoxFuture<'static, ()>,
-    events: EventStream<S, RoundNumOf<C>>,
+    events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
     commits: Commits,
 }
 
@@ -37,7 +39,7 @@ where
 {
     pub(crate) fn new(
         trigger: LocalBoxFuture<'static, ()>,
-        events: EventStream<S, RoundNumOf<C>>,
+        events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
         commits: Commits,
     ) -> Self {
         Self {
@@ -59,7 +61,13 @@ where
     fn poll_shutdown(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<super::ShutdownEvent<Self::State, RoundNumOf<Self::Communicator>>> {
+    ) -> std::task::Poll<
+        super::ShutdownEvent<
+            Self::State,
+            RoundNumOf<Self::Communicator>,
+            CoordNumOf<Self::Communicator>,
+        >,
+    > {
         let _ = self.trigger.poll_unpin(cx);
 
         while let std::task::Poll::Ready(Some(())) = self.commits.poll_next(cx) {

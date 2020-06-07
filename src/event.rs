@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use crate::node::Snapshot;
 use crate::state::{EventOf, LogEntryOf};
-use crate::{NodeStatus, RoundNum, State};
+use crate::{CoordNum, NodeStatus, RoundNum, State};
 
 /// Emitted by `Node`'s [`poll_events`][crate::Node::poll_events] method.
 #[non_exhaustive]
@@ -59,10 +60,10 @@ pub struct Gap<R: RoundNum> {
 /// Emitted by `Shutdown`'s [`poll_shutdown`][crate::Shutdown::poll_shutdown]
 /// method.
 #[derive(Clone, Debug)]
-pub enum ShutdownEvent<S: State, R: RoundNum> {
+pub enum ShutdownEvent<S: State, R: RoundNum, C: CoordNum> {
     Regular(Event<S, R>),
     #[non_exhaustive]
     Last {
-        state: Option<Arc<S>>,
+        snapshot: Option<Snapshot<S, R, C>>,
     },
 }
