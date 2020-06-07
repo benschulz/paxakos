@@ -6,7 +6,7 @@ use crate::{CoordNum, NodeStatus, RoundNum, State};
 
 /// Emitted by `Node`'s [`poll_events`][crate::Node::poll_events] method.
 #[non_exhaustive]
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Event<S: State, R: RoundNum> {
     Init {
         status: NodeStatus,
@@ -59,7 +59,7 @@ pub struct Gap<R: RoundNum> {
 
 /// Emitted by `Shutdown`'s [`poll_shutdown`][crate::Shutdown::poll_shutdown]
 /// method.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ShutdownEvent<S: State, R: RoundNum, C: CoordNum> {
     Regular(Event<S, R>),
     #[non_exhaustive]

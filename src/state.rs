@@ -51,7 +51,7 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
     /// This result is emitted as an [Apply event][Apply] event.
     ///
     /// [Apply]: crate::event::Event::Apply
-    type Event: 'static + Clone + Debug + Send + Sync + Unpin;
+    type Event: 'static + Send + Debug;
 
     type Node: NodeInfo;
 
