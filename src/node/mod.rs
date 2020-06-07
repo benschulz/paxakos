@@ -127,6 +127,7 @@ pub struct SpawnArgs<S: State, R: RoundNum, C: CoordNum> {
     pub tracer: Option<Box<dyn Tracer<R, C, LogEntryIdOf<S>>>>,
 }
 
+// TODO expose current mode in Node/NodeHandle
 pub enum Participaction {
     Active,
     Passive,
