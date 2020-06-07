@@ -7,14 +7,15 @@ use futures::future::{FutureExt, LocalBoxFuture};
 use thiserror::Error;
 
 use crate::append::{AppendError, RetryPolicy};
-use crate::communicator::{AcceptanceOrRejection, Communicator, PromiseOrRejection};
+use crate::communicator::{AcceptanceOrRejection, AcceptanceOrRejectionFor, Communicator};
+use crate::communicator::{PromiseOrRejection, PromiseOrRejectionFor};
 use crate::error::BoxError;
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
 use crate::{AcceptError, CoordNum, LogEntry, NodeInfo, PrepareError};
 use crate::{Rejection, RequestHandler, RoundNum, State};
 
 /// A `NodeInfo` implementation for prototyping.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct PrototypingNode(usize);
 
 static NODE_ID_DISPENSER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -62,9 +63,11 @@ impl RetryPolicy for RetryIndefinitely {
     }
 }
 
+type RequestHandlers<S, R, C> = HashMap<NodeIdOf<S>, RequestHandler<S, R, C>>;
+
 #[derive(Clone, Debug)]
 pub struct DirectCommunicator<S: State, R: RoundNum, C: CoordNum> {
-    request_handlers: Arc<Mutex<HashMap<NodeIdOf<S>, RequestHandler<S, R, C>>>>,
+    request_handlers: Arc<Mutex<RequestHandlers<S, R, C>>>,
     failure_rate: Cell<f32>,
     e2e_delay_ms_distr: Cell<rand_distr::Normal<f32>>,
 }
@@ -115,6 +118,12 @@ impl<S: State, R: RoundNum, C: CoordNum> DirectCommunicator<S, R, C> {
     }
 }
 
+impl<S: State, R: RoundNum, C: CoordNum> Default for DirectCommunicator<S, R, C> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, R, C> {
     type Node = NodeOf<S>;
 
@@ -125,18 +134,18 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
 
     type Error = DirectCommunicatorError;
 
+    type SendPrepare = LocalBoxFuture<'static, Result<PromiseOrRejectionFor<Self>, Self::Error>>;
+    type SendProposal =
+        LocalBoxFuture<'static, Result<AcceptanceOrRejectionFor<Self>, Self::Error>>;
+    type SendCommit = LocalBoxFuture<'static, Result<(), Self::Error>>;
+    type SendCommitById = LocalBoxFuture<'static, Result<(), Self::Error>>;
+
     fn send_prepare<'a>(
         &mut self,
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
         coord_num: Self::CoordNum,
-    ) -> Vec<(
-        &'a Self::Node,
-        LocalBoxFuture<
-            'static,
-            Result<PromiseOrRejection<Self::RoundNum, Self::CoordNum, Self::LogEntry>, Self::Error>,
-        >,
-    )> {
+    ) -> Vec<(&'a Self::Node, Self::SendPrepare)> {
         receivers
             .iter()
             .map(move |receiver| {
@@ -195,13 +204,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         round_num: Self::RoundNum,
         coord_num: Self::CoordNum,
         log_entry: Arc<Self::LogEntry>,
-    ) -> Vec<(
-        &'a Self::Node,
-        LocalBoxFuture<
-            'static,
-            Result<AcceptanceOrRejection<Self::CoordNum, Self::LogEntry>, Self::Error>,
-        >,
-    )> {
+    ) -> Vec<(&'a Self::Node, Self::SendProposal)> {
         receivers
             .iter()
             .map(move |receiver| {
@@ -260,10 +263,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
         log_entry: Arc<Self::LogEntry>,
-    ) -> Vec<(
-        &'a Self::Node,
-        LocalBoxFuture<'static, Result<(), Self::Error>>,
-    )> {
+    ) -> Vec<(&'a Self::Node, Self::SendCommit)> {
         receivers
             .iter()
             .map(move |receiver| {
@@ -308,10 +308,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
         log_entry_id: <Self::LogEntry as LogEntry>::Id,
-    ) -> Vec<(
-        &'a Self::Node,
-        LocalBoxFuture<'static, Result<(), Self::Error>>,
-    )> {
+    ) -> Vec<(&'a Self::Node, Self::SendCommitById)> {
         receivers
             .iter()
             .map(move |receiver| {

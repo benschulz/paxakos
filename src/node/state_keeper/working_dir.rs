@@ -33,7 +33,7 @@ impl<R: RoundNum> WorkingDir<R> {
         if !working_dir_path.is_dir() {
             return Err(SpawnError::InvalidWorkingDir(
                 working_dir_path,
-                format!("not a directory").into(),
+                "not a directory".into(),
             ));
         }
 
@@ -41,10 +41,10 @@ impl<R: RoundNum> WorkingDir<R> {
         indicator_file.push(".paxakos");
 
         if !indicator_file.is_file() {
-            if !io::read_dir(&working_dir_path)?.next().is_none() {
+            if io::read_dir(&working_dir_path)?.next().is_some() {
                 return Err(SpawnError::InvalidWorkingDir(
                     working_dir_path,
-                    format!("no indicator file and not empty").into(),
+                    "no indicator file and not empty".into(),
                 ));
             }
 
@@ -262,7 +262,7 @@ impl<R: RoundNum> WorkingDir<R> {
                 .iter_mut()
                 .filter(|(r, _)| **r == current)
                 .map(|(r, (p, f))| (*r, &*p, f))
-                .nth(0)
+                .next()
                 .expect("current applied entry log")
         } else {
             match self.open_applied_entry_log_for(round_num) {
@@ -417,7 +417,7 @@ impl std::fmt::Display for Base62Of {
 
             result.push(digit);
 
-            val = val / 62;
+            val /= 62;
         }
 
         write!(

@@ -7,8 +7,13 @@ use futures::io::{self, AsyncRead, AsyncReadExt};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
+use crate::communicator::{CoordNumOf, RoundNumOf};
+use crate::node::{CommunicatorOf, StateOf};
 use crate::state::{LogEntryOf, State};
 use crate::{CoordNum, RoundNum};
+
+pub type SnapshotFor<N> =
+    Snapshot<StateOf<N>, RoundNumOf<CommunicatorOf<N>>, CoordNumOf<CommunicatorOf<N>>>;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(
@@ -146,19 +151,19 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
             .unwrap_or_else(|s| DeconstructedSnapshot {
                 state_round: s.meta_state.state_round,
                 state: Arc::clone(&s.state),
-                highest_observed_coord_num: s.meta_state.highest_observed_coord_num.clone(),
+                highest_observed_coord_num: s.meta_state.highest_observed_coord_num,
                 promises: s.meta_state.promises.clone(),
                 accepted_entries: s.meta_state.accepted_entries.clone(),
             })
     }
 }
 
-pub struct SnapshotReader<S: State>(
-    std::io::Chain<
-        std::io::Cursor<[u8; 64 / 8]>,
-        std::io::Chain<std::io::Cursor<Vec<u8>>, <S as State>::Reader>,
-    >,
-);
+type MetaStateLenAndMetaStateAndState<S> =
+    std::io::Chain<std::io::Cursor<[u8; 64 / 8]>, MetaStateAndState<S>>;
+
+type MetaStateAndState<S> = std::io::Chain<std::io::Cursor<Vec<u8>>, <S as State>::Reader>;
+
+pub struct SnapshotReader<S: State>(MetaStateLenAndMetaStateAndState<S>);
 
 impl<S: State> Read for SnapshotReader<S> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {

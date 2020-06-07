@@ -1,3 +1,7 @@
+use crate::communicator::{CoordNumOf, LogEntryIdOf, RoundNumOf};
+
+pub type TracerFor<C> = dyn Tracer<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>>;
+
 pub trait Tracer<R, C, I>: std::fmt::Debug + Send
 where
     R: crate::RoundNum,

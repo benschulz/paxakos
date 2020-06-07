@@ -1,8 +1,15 @@
 use std::sync::Arc;
 
-use crate::node::Snapshot;
-use crate::state::{EventOf, LogEntryOf};
-use crate::{CoordNum, NodeStatus, RoundNum, State};
+use crate::communicator::{CoordNumOf, RoundNumOf};
+use crate::node::{NodeStatus, Shutdown, Snapshot};
+use crate::state::{EventOf, LogEntryOf, State};
+use crate::{CoordNum, RoundNum};
+
+pub type ShutdownEventFor<S> = ShutdownEvent<
+    <S as Shutdown>::State,
+    RoundNumOf<<S as Shutdown>::Communicator>,
+    CoordNumOf<<S as Shutdown>::Communicator>,
+>;
 
 /// Emitted by `Node`'s [`poll_events`][crate::Node::poll_events] method.
 #[non_exhaustive]

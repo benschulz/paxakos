@@ -8,20 +8,15 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use crate::append::{AppendArgs, AppendError};
 use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::event::{Event, ShutdownEvent};
-use crate::log::LogKeeping;
-#[cfg(feature = "tracer")]
-use crate::state::LogEntryIdOf;
-use crate::state::{ContextOf, LogEntryOf, NodeIdOf, State};
-#[cfg(feature = "tracer")]
-use crate::tracer::Tracer;
+use crate::state::{LogEntryOf, NodeIdOf, State};
 
 use super::commits::{Commit, Commits};
 use super::handle::{NodeHandleRequest, NodeHandleResponse};
 use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
-use super::snapshot::Snapshot;
+use super::snapshot::{Snapshot, SnapshotFor};
 use super::state_keeper::{EventStream, ProofOfLife, StateKeeper, StateKeeperHandle};
-use super::{Node, NodeHandle, NodeStatus, Participaction, RequestHandler};
+use super::{Node, NodeHandle, NodeStatus, RequestHandler};
 
 /// The default [`Node`][crate::Node] implementation.
 // TODO a better name may be needed…
@@ -36,14 +31,8 @@ where
     commits: Commits,
     events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
     status: NodeStatus,
-    handle_send: mpsc::Sender<(
-        NodeHandleRequest<S, RoundNumOf<C>>,
-        oneshot::Sender<NodeHandleResponse<S>>,
-    )>,
-    handle_recv: mpsc::Receiver<(
-        NodeHandleRequest<S, RoundNumOf<C>>,
-        oneshot::Sender<NodeHandleResponse<S>>,
-    )>,
+    handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<S, RoundNumOf<C>>>,
+    handle_recv: mpsc::Receiver<super::handle::RequestAndResponseSender<S, RoundNumOf<C>>>,
     handle_appends: FuturesUnordered<LocalBoxFuture<'static, ()>>,
 }
 
@@ -101,10 +90,8 @@ where
 
     fn prepare_snapshot(
         &self,
-    ) -> LocalBoxFuture<
-        'static,
-        Result<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>, crate::error::PrepareSnapshotError>,
-    > {
+    ) -> LocalBoxFuture<'static, Result<SnapshotFor<Self>, crate::error::PrepareSnapshotError>>
+    {
         self.state_keeper.prepare_snapshot().boxed_local()
     }
 
@@ -155,17 +142,10 @@ where
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     C: Communicator,
 {
-    pub(crate) async fn new(
-        context: ContextOf<S>,
-        working_dir: Option<std::path::PathBuf>,
+    pub(crate) async fn spawn(
         id: NodeIdOf<S>,
         communicator: C,
-        snapshot: Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>,
-        participation: Participaction,
-        log_keeping: LogKeeping,
-        #[cfg(feature = "tracer")] tracer: Option<
-            Box<dyn Tracer<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<S>>>,
-        >,
+        args: super::SpawnArgs<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> Result<
         (
             RequestHandler<S, RoundNumOf<C>, CoordNumOf<C>>,
@@ -173,16 +153,8 @@ where
         ),
         crate::error::SpawnError,
     > {
-        let (initial_status, events, state_keeper, proof_of_life) = StateKeeper::spawn(
-            context,
-            working_dir,
-            snapshot,
-            participation,
-            log_keeping,
-            #[cfg(feature = "tracer")]
-            tracer,
-        )
-        .await?;
+        let (initial_status, events, state_keeper, proof_of_life) =
+            StateKeeper::spawn(args).await?;
 
         let req_handler = RequestHandler::new(state_keeper.clone());
         let commits = Commits::new();

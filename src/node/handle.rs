@@ -17,6 +17,11 @@ use super::{Admin, NodeStatus};
 // macros
 use crate::dispatch_node_handle_req;
 
+pub type RequestAndResponseSender<S, R> = (
+    NodeHandleRequest<S, R>,
+    oneshot::Sender<NodeHandleResponse<S>>,
+);
+
 /// A remote handle for a paxakos [`Node`][crate::Node].
 #[derive(Clone)]
 pub struct NodeHandle<S, R, C>
@@ -25,10 +30,7 @@ where
     R: RoundNum,
     C: CoordNum,
 {
-    sender: mpsc::Sender<(
-        NodeHandleRequest<S, R>,
-        oneshot::Sender<NodeHandleResponse<S>>,
-    )>,
+    sender: mpsc::Sender<RequestAndResponseSender<S, R>>,
     state_keeper: StateKeeperHandle<S, R, C>,
 }
 
@@ -39,10 +41,7 @@ where
     C: CoordNum,
 {
     pub(crate) fn new(
-        sender: mpsc::Sender<(
-            NodeHandleRequest<S, R>,
-            oneshot::Sender<NodeHandleResponse<S>>,
-        )>,
+        sender: mpsc::Sender<RequestAndResponseSender<S, R>>,
         state_keeper: StateKeeperHandle<S, R, C>,
     ) -> Self {
         Self {
@@ -142,7 +141,9 @@ mod macros {
             let (s, r) = oneshot::channel();
 
             async move {
-                match (sender.send((req, s)).await, r.await) {
+                let send_res = sender.send((req, s)).await;
+
+                match (send_res, r.await) {
                     (Ok(_), Ok(NodeHandleResponse::$name(r))) => Some(r),
                     (Err(_), _) | (_, Err(_)) => None,
                     _ => unreachable!(),
@@ -157,7 +158,9 @@ mod macros {
             let (s, r) = oneshot::channel();
 
             async move {
-                match (sender.send((req, s)).await, r.await) {
+                let send_res = sender.send((req, s)).await;
+
+                match (send_res, r.await) {
                     (Ok(_), Ok(NodeHandleResponse::$name(r))) => Some(r),
                     (Err(_), _) | (_, Err(_)) => None,
                     _ => unreachable!(),

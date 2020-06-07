@@ -112,7 +112,7 @@ fn setup_node() -> (RequestHandler<CalcState, u64, u32>, CalcNode) {
         paxakos::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
-            .communicating_via(communicator.clone())
+            .communicating_via(communicator)
             .with_initial_state(CalcState::new(vec![node_info], 1))
             .spawn_in(()),
     )

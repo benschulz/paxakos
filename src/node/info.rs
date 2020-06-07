@@ -18,7 +18,5 @@ pub trait NodeInfo: 'static + std::fmt::Debug + Send + Sync {
 impl NodeInfo for () {
     type Id = ();
 
-    fn id(&self) -> Self::Id {
-        ()
-    }
+    fn id(&self) -> Self::Id {}
 }

@@ -2,7 +2,7 @@ use futures::future::{FutureExt, LocalBoxFuture};
 use futures::stream::StreamExt;
 
 use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
-use crate::event::ShutdownEvent;
+use crate::event::ShutdownEventFor;
 use crate::state::State;
 
 use super::commits::Commits;
@@ -17,9 +17,7 @@ pub trait Shutdown {
     fn poll_shutdown(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<
-        ShutdownEvent<Self::State, RoundNumOf<Self::Communicator>, CoordNumOf<Self::Communicator>>,
-    >;
+    ) -> std::task::Poll<ShutdownEventFor<Self>>;
 }
 
 pub struct DefaultShutdown<S, C>
@@ -61,13 +59,7 @@ where
     fn poll_shutdown(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<
-        super::ShutdownEvent<
-            Self::State,
-            RoundNumOf<Self::Communicator>,
-            CoordNumOf<Self::Communicator>,
-        >,
-    > {
+    ) -> std::task::Poll<ShutdownEventFor<Self>> {
         let _ = self.trigger.poll_unpin(cx);
 
         while let std::task::Poll::Ready(Some(())) = self.commits.poll_next(cx) {

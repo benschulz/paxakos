@@ -6,16 +6,16 @@ use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::deco::Decoration;
 use crate::error::SpawnError;
 use crate::log::LogKeeping;
-use crate::node::Participaction;
+use crate::node::{Participaction, RequestHandlerFor};
 #[cfg(feature = "tracer")]
 use crate::state::LogEntryIdOf;
 use crate::state::{ContextOf, NodeIdOf};
 #[cfg(feature = "tracer")]
-use crate::tracer::Tracer;
+use crate::tracer::{Tracer, TracerFor};
 use crate::{Identifier, Node, State};
 
-use super::snapshot::Snapshot;
-use super::{CommunicatorOf, NodeKernel, RequestHandler, StateOf};
+use super::snapshot::{Snapshot, SnapshotFor};
+use super::{CommunicatorOf, NodeKernel, StateOf};
 
 /// Builder to spawn a `Node`.
 ///
@@ -26,19 +26,7 @@ use super::{CommunicatorOf, NodeKernel, RequestHandler, StateOf};
 //      better approach?
 pub trait NodeBuilder: Sized {
     type Node: 'static + Node;
-    type Future: Future<
-        Output = Result<
-            (
-                RequestHandler<
-                    StateOf<Self::Node>,
-                    RoundNumOf<CommunicatorOf<Self::Node>>,
-                    CoordNumOf<CommunicatorOf<Self::Node>>,
-                >,
-                Self::Node,
-            ),
-            SpawnError,
-        >,
-    >;
+    type Future: Future<Output = Result<(RequestHandlerFor<Self::Node>, Self::Node), SpawnError>>;
 
     fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilderWithAll<D>
     where
@@ -58,6 +46,7 @@ pub trait NodeBuilder: Sized {
     fn spawn_in(self, context: ContextOf<StateOf<Self::Node>>) -> Self::Future;
 }
 
+#[derive(Default)]
 pub struct NodeBuilderBlank;
 
 impl NodeBuilderBlank {
@@ -141,7 +130,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
         self.with_snapshot_and_participation(
-            initial_state.into().map(|s| Snapshot::initial(s)),
+            initial_state.into().map(Snapshot::initial),
             Participaction::Active,
         )
     }
@@ -199,7 +188,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
             snapshot,
             participation,
             log_keeping: Default::default(),
-            finisher: Box::new(|x| Ok(x)),
+            finisher: Box::new(Ok),
 
             #[cfg(feature = "tracer")]
             tracer: None,
@@ -207,26 +196,19 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     }
 }
 
+type Finisher<N> = dyn FnOnce(NodeKernel<StateOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
+
 pub struct NodeBuilderWithAll<N: Node> {
     working_dir: Option<std::path::PathBuf>,
     node_id: NodeIdOf<StateOf<N>>,
     communicator: CommunicatorOf<N>,
-    snapshot:
-        Option<Snapshot<StateOf<N>, RoundNumOf<CommunicatorOf<N>>, CoordNumOf<CommunicatorOf<N>>>>,
+    snapshot: Option<SnapshotFor<N>>,
     participation: Participaction,
     log_keeping: LogKeeping,
-    finisher: Box<dyn FnOnce(NodeKernel<StateOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>>,
+    finisher: Box<Finisher<N>>,
 
     #[cfg(feature = "tracer")]
-    tracer: Option<
-        Box<
-            dyn Tracer<
-                RoundNumOf<CommunicatorOf<N>>,
-                CoordNumOf<CommunicatorOf<N>>,
-                LogEntryIdOf<StateOf<N>>,
-            >,
-        >,
-    >,
+    tracer: Option<Box<TracerFor<CommunicatorOf<N>>>>,
 }
 
 impl<S, C> NodeBuilderWithAll<NodeKernel<S, C>>
@@ -261,20 +243,7 @@ where
 
 impl<N: 'static + Node> NodeBuilder for NodeBuilderWithAll<N> {
     type Node = N;
-    type Future = LocalBoxFuture<
-        'static,
-        Result<
-            (
-                RequestHandler<
-                    StateOf<N>,
-                    RoundNumOf<CommunicatorOf<N>>,
-                    CoordNumOf<CommunicatorOf<N>>,
-                >,
-                N,
-            ),
-            SpawnError,
-        >,
-    >;
+    type Future = LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>>;
 
     fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilderWithAll<D>
     where
@@ -299,16 +268,18 @@ impl<N: 'static + Node> NodeBuilder for NodeBuilderWithAll<N> {
     fn spawn_in(self, context: ContextOf<StateOf<N>>) -> Self::Future {
         let finisher = self.finisher;
 
-        NodeKernel::new(
-            context,
-            self.working_dir,
+        NodeKernel::spawn(
             self.node_id,
             self.communicator,
-            self.snapshot,
-            self.participation,
-            self.log_keeping,
-            #[cfg(feature = "tracer")]
-            self.tracer,
+            super::SpawnArgs {
+                context,
+                working_dir: self.working_dir,
+                snapshot: self.snapshot,
+                participation: self.participation,
+                log_keeping: self.log_keeping,
+                #[cfg(feature = "tracer")]
+                tracer: self.tracer,
+            },
         )
         .and_then(|(req_handler, kernel)| {
             futures::future::ready(finisher(kernel).map(|node| (req_handler, node)))

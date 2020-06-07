@@ -146,57 +146,55 @@
 //!
 //! type ChatCommunicator = DirectCommunicator<ChatState, u64, u32>;
 //!
-//! fn main() {
-//!     let node_a = PrototypingNode::new();
-//!     let node_b = PrototypingNode::new();
-//!     let node_c = PrototypingNode::new();
+//! let node_a = PrototypingNode::new();
+//! let node_b = PrototypingNode::new();
+//! let node_c = PrototypingNode::new();
 //!
-//!     let nodes = vec![node_a.clone(), node_b.clone(), node_c.clone()];
+//! let nodes = vec![node_a, node_b, node_c];
 //!
-//!     let communicator = ChatCommunicator::new();
+//! let communicator = ChatCommunicator::new();
 //!
-//!     let node_a = spawn_node(node_a, nodes.clone(), communicator.clone());
-//!     let node_b = spawn_node(node_b, nodes.clone(), communicator.clone());
-//!     let node_c = spawn_node(node_c, nodes.clone(), communicator.clone());
+//! let node_a = spawn_node(node_a, nodes.clone(), communicator.clone());
+//! let node_b = spawn_node(node_b, nodes.clone(), communicator.clone());
+//! let node_c = spawn_node(node_c, nodes, communicator);
 //!
-//!     futures::executor::block_on(async move {
-//!         let _ = node_a
-//!             .append(msg("Alice", "Oh, hey guys"), always_retry())
+//! futures::executor::block_on(async move {
+//!     let _ = node_a
+//!         .append(msg("Alice", "Oh, hey guys"), always_retry())
+//!         .await;
+//! });
+//!
+//! // Because Bob and Charlie reply without synchronization, either may reply
+//! // first. However, all participants will observe the same person replying
+//! // first.
+//! let b = std::thread::spawn(|| {
+//! futures::executor::block_on(async move {
+//!         let _ = node_b
+//!             .append(msg("Bob", "Hi Alice, long time no see!"), always_retry())
 //!             .await;
 //!     });
-//!
-//!     // Because Bob and Charlie reply without synchronization, either may reply
-//!     // first. However, all participants will observe the same person replying
-//!     // first.
-//!     let b = std::thread::spawn(|| {
-//!         futures::executor::block_on(async move {
-//!             let _ = node_b
-//!                 .append(msg("Bob", "Hi Alice, long time no see!"), always_retry())
-//!                 .await;
-//!         });
+//! });
+//! let c = std::thread::spawn(|| {
+//!     futures::executor::block_on(async move {
+//!         let _ = node_c
+//!             .append(msg("Charlie", "Hi Alice, how are you?"), always_retry())
+//!             .await;
 //!     });
-//!     let c = std::thread::spawn(|| {
-//!         futures::executor::block_on(async move {
-//!             let _ = node_c
-//!                 .append(msg("Charlie", "Hi Alice, how are you?"), always_retry())
-//!                 .await;
-//!         });
-//!     });
+//! });
 //!
-//!     // Let's wait for the appends to go through.
-//!     b.join().unwrap();
-//!     c.join().unwrap();
+//! // Let's wait for the appends to go through.
+//! b.join().unwrap();
+//! c.join().unwrap();
 //!
-//!     // It is guaranteed that all messages above have been appended to the shared log
-//!     // at this point. However, one node may not know about it yet and the others may
-//!     // not have gotten a chance to apply it to their state. Let's give them a chance
-//!     // to do that.
-//!     std::thread::sleep(std::time::Duration::from_millis(10));
+//! // It is guaranteed that all messages above have been appended to the shared log
+//! // at this point. However, one node may not know about it yet and the others may
+//! // not have gotten a chance to apply it to their state. Let's give them a chance
+//! // to do that.
+//! std::thread::sleep(std::time::Duration::from_millis(10));
 //!
-//!     // Graceful shutdown is possible (see `Node::shut_down`) but is too involved for
-//!     // this example.
-//!     std::process::exit(0);
-//! }
+//! // Graceful shutdown is possible (see `Node::shut_down`) but is too involved for
+//! // this example.
+//! std::process::exit(0);
 //!
 //! fn spawn_node(
 //!     node_info: PrototypingNode,
@@ -677,8 +675,7 @@ where
     pub(crate) fn log_entry_for(&self, round_num: R) -> Option<Arc<E>> {
         self.0
             .iter()
-            .filter(|(r, _, _)| *r == round_num)
-            .nth(0)
+            .find(|(r, _, _)| *r == round_num)
             .map(|(_, _, e)| Arc::clone(e))
     }
 
@@ -696,8 +693,8 @@ where
 
         loop {
             match (a_next, b_next) {
-                (Some((ra, ca, ea)), Some((rb, cb, eb))) => {
-                    if ra == rb {
+                (Some((ra, ca, ea)), Some((rb, cb, eb))) => match ra.cmp(&rb) {
+                    std::cmp::Ordering::Equal => {
                         if ca > cb {
                             max.push((ra, ca, ea));
                         } else {
@@ -706,16 +703,18 @@ where
 
                         a_next = a.next();
                         b_next = b.next();
-                    } else if ra < rb {
+                    }
+                    std::cmp::Ordering::Less => {
                         max.push((ra, ca, ea));
                         a_next = a.next();
                         b_next = Some((rb, cb, eb));
-                    } else {
+                    }
+                    std::cmp::Ordering::Greater => {
                         max.push((rb, cb, eb));
                         b_next = b.next();
                         a_next = Some((ra, ca, ea));
                     }
-                }
+                },
                 (Some((ra, ca, ea)), None) => {
                     max.push((ra, ca, ea));
                     max.extend(a);

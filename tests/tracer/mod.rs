@@ -50,12 +50,10 @@ where
             let mut received_events = Vec::new();
             let mut received_events_indexed: BTreeMap<R, BTreeMap<N, Vec<_>>> = BTreeMap::new();
 
-            use futures::stream::BoxStream;
-
-            let event_stream: StreamUnordered<BoxStream<'static, (N, Event<R, C, L>)>> = receivers
+            let event_stream = receivers
                 .into_iter()
                 .map(|(n, r)| r.map(move |e| (n, e)).boxed())
-                .collect();
+                .collect::<StreamUnordered<_>>();
 
             futures::executor::block_on(StreamExt::for_each(event_stream, |i| {
                 let (n, e) = match i {
@@ -65,7 +63,7 @@ where
 
                 received_events.push((n, e.clone()));
 
-                match e.clone() {
+                match e {
                     Event::Promise(r, _, _) | Event::Accept(r, _, _) => {
                         received_events_indexed
                             .entry(r)
@@ -102,7 +100,7 @@ where
                                         n
                                     )
                                     .unwrap();
-                                    writeln!(trace_file, "").unwrap();
+                                    writeln!(trace_file).unwrap();
 
                                     let mut log_entry_ids = HashSet::new();
 
@@ -120,7 +118,7 @@ where
                                         }
                                     }
 
-                                    writeln!(trace_file, "").unwrap();
+                                    writeln!(trace_file).unwrap();
                                     writeln!(trace_file, "  Relevant Accepts:").unwrap();
 
                                     let mut coord_nums = HashSet::new();
@@ -140,7 +138,7 @@ where
                                         }
                                     }
 
-                                    writeln!(trace_file, "").unwrap();
+                                    writeln!(trace_file).unwrap();
                                     writeln!(trace_file, "  Relevant Promises:").unwrap();
 
                                     for n in &nodes {
@@ -156,8 +154,8 @@ where
                                         }
                                     }
 
-                                    writeln!(trace_file, "").unwrap();
-                                    writeln!(trace_file, "").unwrap();
+                                    writeln!(trace_file).unwrap();
+                                    writeln!(trace_file).unwrap();
 
                                     for n in &nodes {
                                         writeln!(trace_file, "Node {:?}:", n).unwrap();
@@ -168,7 +166,7 @@ where
                                             }
                                         }
 
-                                        writeln!(trace_file, "").unwrap();
+                                        writeln!(trace_file).unwrap();
                                     }
 
                                     trace_file.flush().unwrap();

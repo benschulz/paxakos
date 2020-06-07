@@ -1,12 +1,16 @@
+use std::future::Future;
 use std::sync::Arc;
-
-use futures::future::LocalBoxFuture;
 
 use crate::{CoordNum, LogEntry, NodeInfo, Promise, Rejection, RoundNum};
 
 pub type CoordNumOf<C> = <C as Communicator>::CoordNum;
 pub type ErrorOf<C> = <C as Communicator>::Error;
+pub type LogEntryOf<C> = <C as Communicator>::LogEntry;
+pub type LogEntryIdOf<C> = <LogEntryOf<C> as LogEntry>::Id;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
+
+pub type AcceptanceOrRejectionFor<C> = AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<C>>;
+pub type PromiseOrRejectionFor<C> = PromiseOrRejection<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>;
 
 pub trait Communicator: 'static {
     type Node: NodeInfo;
@@ -18,18 +22,17 @@ pub trait Communicator: 'static {
 
     type Error: std::error::Error + Send + Sync + 'static;
 
+    type SendPrepare: Future<Output = Result<PromiseOrRejectionFor<Self>, Self::Error>>;
+    type SendProposal: Future<Output = Result<AcceptanceOrRejectionFor<Self>, Self::Error>>;
+    type SendCommit: Future<Output = Result<(), Self::Error>>;
+    type SendCommitById: Future<Output = Result<(), Self::Error>>;
+
     fn send_prepare<'a>(
         &mut self,
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
         coord_num: Self::CoordNum,
-    ) -> Vec<(
-        &'a Self::Node,
-        LocalBoxFuture<
-            'static,
-            Result<PromiseOrRejection<Self::RoundNum, Self::CoordNum, Self::LogEntry>, Self::Error>,
-        >,
-    )>;
+    ) -> Vec<(&'a Self::Node, Self::SendPrepare)>;
 
     fn send_proposal<'a>(
         &mut self,
@@ -37,33 +40,21 @@ pub trait Communicator: 'static {
         round_num: Self::RoundNum,
         coord_num: Self::CoordNum,
         log_entry: Arc<Self::LogEntry>,
-    ) -> Vec<(
-        &'a Self::Node,
-        LocalBoxFuture<
-            'static,
-            Result<AcceptanceOrRejection<Self::CoordNum, Self::LogEntry>, Self::Error>,
-        >,
-    )>;
+    ) -> Vec<(&'a Self::Node, Self::SendProposal)>;
 
     fn send_commit<'a>(
         &mut self,
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
         log_entry: Arc<Self::LogEntry>,
-    ) -> Vec<(
-        &'a Self::Node,
-        LocalBoxFuture<'static, Result<(), Self::Error>>,
-    )>;
+    ) -> Vec<(&'a Self::Node, Self::SendCommit)>;
 
     fn send_commit_by_id<'a>(
         &mut self,
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
         log_entry_id: <Self::LogEntry as LogEntry>::Id,
-    ) -> Vec<(
-        &'a Self::Node,
-        LocalBoxFuture<'static, Result<(), Self::Error>>,
-    )>;
+    ) -> Vec<(&'a Self::Node, Self::SendCommitById)>;
 }
 
 #[derive(Clone, Debug)]

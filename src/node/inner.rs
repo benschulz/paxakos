@@ -118,7 +118,7 @@ where
         let reservation = self.state_keeper.reserve_round_num(args.round).await?;
 
         let result = self
-            .try_append_internal(log_entry.into(), reservation.round_num(), args.importance)
+            .try_append_internal(log_entry, reservation.round_num(), args.importance)
             .await;
 
         // The reservation must be held until the attempt is over.
@@ -402,7 +402,7 @@ where
         let mut max_promise = own_promise;
 
         while let Some(response) = pending_responses.next().await {
-            pending_len = pending_len - 1;
+            pending_len -= 1;
 
             match response {
                 Err(_) => {
@@ -524,7 +524,7 @@ where
         let mut conflict = None;
 
         while let Some((node_id, response)) = pending_responses.next().await {
-            pending_len = pending_len - 1;
+            pending_len -= 1;
 
             match response {
                 Ok(AcceptanceOrRejection::Acceptance) => {
@@ -631,7 +631,7 @@ where
                             .borrow_mut()
                             .send_commit_by_id(&[node], round_num, cle_id)
                             .into_iter()
-                            .nth(0)
+                            .next()
                             .expect("Expected exactly one element.")
                             .1
                             .map(|_| ());
@@ -644,7 +644,7 @@ where
                             .borrow_mut()
                             .send_commit(&[node], round_num, Arc::clone(&log_entry_for_others))
                             .into_iter()
-                            .nth(0)
+                            .next()
                             .expect("Expected exactly one element.")
                             .1
                             .map(|_| ());

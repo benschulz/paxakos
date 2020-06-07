@@ -16,17 +16,22 @@ use futures::future::{BoxFuture, LocalBoxFuture};
 
 use crate::append::{AppendArgs, AppendError};
 use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
-use crate::state::LogEntryOf;
-use crate::{Event, ShutdownEvent, State};
+use crate::log::LogKeeping;
+#[cfg(feature = "tracer")]
+use crate::state::LogEntryIdOf;
+use crate::state::{ContextOf, LogEntryOf};
+#[cfg(feature = "tracer")]
+use crate::tracer::Tracer;
+use crate::{CoordNum, Event, RoundNum, State};
 
 pub use builder::NodeBuilder;
 pub use commits::Commit;
 pub use handle::NodeHandle;
 pub use info::NodeInfo;
 pub use kernel::NodeKernel;
-pub use req_handler::RequestHandler;
+pub use req_handler::{RequestHandler, RequestHandlerFor};
 pub use shutdown::{DefaultShutdown, Shutdown};
-pub use snapshot::Snapshot;
+pub use snapshot::{Snapshot, SnapshotFor};
 pub use status::NodeStatus;
 
 pub type StateOf<N> = <N as Node>::State;
@@ -62,13 +67,7 @@ pub trait Node: Sized {
 
     fn prepare_snapshot(
         &self,
-    ) -> LocalBoxFuture<
-        'static,
-        Result<
-            Snapshot<Self::State, RoundNumOf<Self::Communicator>, CoordNumOf<Self::Communicator>>,
-            crate::error::PrepareSnapshotError,
-        >,
-    >;
+    ) -> LocalBoxFuture<'static, Result<SnapshotFor<Self>, crate::error::PrepareSnapshotError>>;
 
     fn affirm_snapshot(
         &self,
@@ -116,6 +115,16 @@ pub trait Admin {
     /// [joining_with]:
     /// builder::NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::joining_with
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ()>>;
+}
+
+pub struct SpawnArgs<S: State, R: RoundNum, C: CoordNum> {
+    pub context: ContextOf<S>,
+    pub working_dir: Option<std::path::PathBuf>,
+    pub snapshot: Option<Snapshot<S, R, C>>,
+    pub participation: Participaction,
+    pub log_keeping: LogKeeping,
+    #[cfg(feature = "tracer")]
+    pub tracer: Option<Box<dyn Tracer<R, C, LogEntryIdOf<S>>>>,
 }
 
 pub enum Participaction {

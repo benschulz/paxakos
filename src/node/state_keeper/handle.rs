@@ -19,12 +19,12 @@ use super::{ProofOfLife, RoundNumReservation};
 
 #[derive(Clone, Debug)]
 pub struct StateKeeperHandle<S: State, R: RoundNum, C: CoordNum> {
-    sender: mpsc::Sender<(Request<S, R, C>, oneshot::Sender<Response<S, R, C>>)>,
+    sender: mpsc::Sender<super::RequestAndResponseSender<S, R, C>>,
 }
 
 impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
     pub(super) fn new(
-        sender: mpsc::Sender<(Request<S, R, C>, oneshot::Sender<Response<S, R, C>>)>,
+        sender: mpsc::Sender<super::RequestAndResponseSender<S, R, C>>,
     ) -> Self {
         Self { sender }
     }
@@ -190,7 +190,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
     }
 
     pub fn force_active(&self) -> impl Future<Output = Result<bool, ()>> {
-        crate::dispatch_state_keeper_req!(self, ForceActive).map_err(ShutDown::as_unit::<bool>)
+        crate::dispatch_state_keeper_req!(self, ForceActive).map_err(ShutDown::into_unit::<bool>)
     }
 
     pub fn shut_down(&self, _proof_of_life: ProofOfLife) -> impl Future<Output = ()> {

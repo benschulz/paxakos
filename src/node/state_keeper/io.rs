@@ -146,7 +146,7 @@ pub fn recover_round_num<R: RoundNum>(round_num: u128) -> Result<R, IoError> {
 
 pub fn recover_log_entry<E: LogEntry>(read_result: Result<E, BoxError>) -> Result<E, IoError> {
     read_result
-        .map_err(|e| IoError::invalid_data(format!("Log entry could not be deserialized."), e))
+        .map_err(|e| IoError::invalid_data("Log entry could not be deserialized.", e))
 }
 
 pub fn write_usize_as_u32_to(

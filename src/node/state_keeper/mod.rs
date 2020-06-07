@@ -9,7 +9,6 @@ use std::collections::btree_map;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
 use std::ops::RangeInclusive;
-use std::path;
 use std::sync::Arc;
 
 use futures::channel::{mpsc, oneshot};
@@ -22,7 +21,7 @@ use tracing::{debug, info};
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError, SpawnError};
 use crate::event::{Event, ShutdownEvent};
-use crate::log::{LogEntry, LogKeeping};
+use crate::log::LogEntry;
 use crate::state::{ContextOf, LogEntryIdOf, LogEntryOf, OutcomeOf, State};
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
@@ -31,11 +30,16 @@ use crate::{CoordNum, Promise, RoundNum};
 use super::commits::Commit;
 use super::snapshot::{DeconstructedSnapshot, Snapshot};
 use super::status::NodeStatus;
+use super::SpawnArgs;
 
 use error::{AcquireRoundNumError, ClusterError};
 pub use handle::StateKeeperHandle;
 use msg::{Release, Request, Response};
 use working_dir::WorkingDir;
+
+type RequestAndResponseSender<S, R, C> = (Request<S, R, C>, ResponseSender<S, R, C>);
+type ResponseSender<S, R, C> = oneshot::Sender<Response<S, R, C>>;
+type Awaiter<S> = oneshot::Sender<Result<OutcomeOf<S>, CommitError<S>>>;
 
 #[derive(Debug)]
 enum Participaction<R: RoundNum> {
@@ -71,7 +75,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     context: ContextOf<S>,
     working_dir: Option<WorkingDir<R>>,
 
-    receiver: mpsc::Receiver<(Request<S, R, C>, oneshot::Sender<Response<S, R, C>>)>,
+    receiver: mpsc::Receiver<RequestAndResponseSender<S, R, C>>,
 
     release_sender: mpsc::UnboundedSender<Release<R>>,
     release_receiver: mpsc::UnboundedReceiver<Release<R>>,
@@ -122,11 +126,11 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     /// Current state or `None` iff the node is `Disoriented`.
     state: Option<Arc<S>>,
 
-    round_num_requests: VecDeque<(RangeInclusive<R>, oneshot::Sender<Response<S, R, C>>)>,
+    round_num_requests: VecDeque<(RangeInclusive<R>, ResponseSender<S, R, C>)>,
     acquired_round_nums: HashSet<R>,
 
     pending_commits: BTreeMap<R, (std::time::Instant, Arc<LogEntryOf<S>>)>,
-    awaiters: HashMap<LogEntryIdOf<S>, Vec<oneshot::Sender<Result<OutcomeOf<S>, CommitError<S>>>>>,
+    awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S>>>,
 
     participaction: Participaction<R>,
     /// last status that was observable from the outside
@@ -141,12 +145,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
 
 impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     pub async fn spawn(
-        context: ContextOf<S>,
-        working_dir: Option<path::PathBuf>,
-        snapshot: Option<Snapshot<S, R, C>>,
-        participation: super::Participaction,
-        log_keeping: LogKeeping,
-        #[cfg(feature = "tracer")] tracer: Option<Box<dyn Tracer<R, C, LogEntryIdOf<S>>>>,
+        args: SpawnArgs<S, R, C>,
     ) -> Result<
         (
             NodeStatus,
@@ -164,18 +163,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
         let (send, recv) = oneshot::channel();
 
-        Self::start_and_run_new(
-            send,
-            context,
-            working_dir,
-            snapshot,
-            participation,
-            log_keeping,
-            req_recv,
-            evt_send,
-            #[cfg(feature = "tracer")]
-            tracer,
-        );
+        Self::start_and_run_new(args, send, req_recv, evt_send);
 
         let start_result = recv.await.expect("StateKeeper failed to start");
 
@@ -190,17 +178,20 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     }
 
     fn start_and_run_new(
+        spawn_args: SpawnArgs<S, R, C>,
         start_result_sender: oneshot::Sender<Result<NodeStatus, SpawnError>>,
-        context: ContextOf<S>,
-        working_dir: Option<path::PathBuf>,
-        snapshot: Option<Snapshot<S, R, C>>,
-        participation: super::Participaction,
-        log_keeping: LogKeeping,
-        receiver: mpsc::Receiver<(Request<S, R, C>, oneshot::Sender<Response<S, R, C>>)>,
+        receiver: mpsc::Receiver<RequestAndResponseSender<S, R, C>>,
         event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
-        #[cfg(feature = "tracer")] tracer: Option<Box<dyn Tracer<R, C, LogEntryIdOf<S>>>>,
     ) {
         std::thread::spawn(move || {
+            let context = spawn_args.context;
+            let working_dir = spawn_args.working_dir;
+            let snapshot = spawn_args.snapshot;
+            let participation = spawn_args.participation;
+            let log_keeping = spawn_args.log_keeping;
+            #[cfg(feature = "tracer")]
+            let tracer = spawn_args.tracer;
+
             // assume we're lagging
             let initial_status = snapshot
                 .as_ref()
@@ -269,7 +260,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 promises,
                 accepted_entries,
 
-                state_round: state_round,
+                state_round,
                 state,
 
                 round_num_requests: VecDeque::new(),
@@ -379,9 +370,13 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                     }
 
                     // Limit the range to the concurrency window.
-                    let concurrency_bound = R::try_from(usize::from(state.concurrency()))
+                    let concurrency_bound = state.concurrency();
+                    let concurrency_bound = R::try_from(usize::from(concurrency_bound))
                         .unwrap_or_else(|_| {
-                            panic!("Cannot convert concurrency `{}` into a round number.")
+                            panic!(
+                                "Cannot convert concurrency `{}` into a round number.",
+                                concurrency_bound
+                            )
                         });
                     let range =
                         *range.start()..=std::cmp::min(round + concurrency_bound, *range.end());
@@ -831,7 +826,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         let round_range = round_range_start
             ..=(round_range_end
                 .map(|r| std::cmp::max(r, One::one()) - One::one())
-                .unwrap_or(Bounded::max_value()));
+                .unwrap_or_else(Bounded::max_value));
 
         let acceptable_entries = entries.into_iter().filter(|(r, _)| round_range.contains(r));
 
@@ -935,11 +930,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         let mut round = self.state_round;
         let mut state = Arc::try_unwrap(state).unwrap_or_else(|s| (&*s).clone());
 
-        loop {
-            let entry = match self.pending_commits.remove(&(round + One::one())) {
-                Some((_, e)) => e, // yes, we can
-                None => break,     // no, we can't
-            };
+        while let Some((_, entry)) = self.pending_commits.remove(&(round + One::one())) {
             round = round + One::one();
 
             let awaiters = self.awaiters.remove(&entry.id()).unwrap_or_default();
@@ -990,7 +981,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             crate::emit!(
                 self,
                 ShutdownEvent::Regular(Event::Apply {
-                    round: round,
+                    round,
                     log_entry: entry,
                     result: event
                 })

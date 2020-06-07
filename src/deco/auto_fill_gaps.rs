@@ -8,7 +8,7 @@ use futures::stream::StreamExt;
 use crate::append::{AppendArgs, AppendError, DoNotRetry, Importance, Peeryness};
 use crate::communicator::{CoordNumOf, RoundNumOf};
 use crate::node::builder::NodeBuilderWithAll;
-use crate::node::{Commit, CommunicatorOf, NodeStatus, Snapshot, StateOf};
+use crate::node::{Commit, CommunicatorOf, NodeStatus, Snapshot, SnapshotFor, StateOf};
 use crate::state::LogEntryOf;
 use crate::{Node, NodeBuilder, RoundNum};
 
@@ -109,7 +109,7 @@ where
         AutoFillGapsArgs {
             entry_producer: self.entry_producer,
             batch_size: self.batch_size.unwrap_or(1),
-            delay: self.delay.unwrap_or(Duration::from_millis(400)),
+            delay: self.delay.unwrap_or_else(|| Duration::from_millis(400)),
             retry_interval: self.retry_interval,
 
             _node: std::marker::PhantomData,
@@ -404,13 +404,8 @@ where
 
     fn prepare_snapshot(
         &self,
-    ) -> LocalBoxFuture<
-        'static,
-        Result<
-            Snapshot<Self::State, RoundNumOf<Self::Communicator>, CoordNumOf<Self::Communicator>>,
-            crate::error::PrepareSnapshotError,
-        >,
-    > {
+    ) -> LocalBoxFuture<'static, Result<SnapshotFor<Self>, crate::error::PrepareSnapshotError>>
+    {
         self.decorated.prepare_snapshot()
     }
 

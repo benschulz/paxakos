@@ -10,7 +10,7 @@ use crate::{CoordNum, RoundNum};
 pub struct ShutDown;
 
 impl ShutDown {
-    pub(super) fn as_unit<T>(self) -> () {}
+    pub(super) fn into_unit<T>(self) {}
 
     pub(super) fn rule_out<T>(result: Result<T, ShutDown>) -> T {
         result.unwrap()

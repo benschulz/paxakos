@@ -102,11 +102,13 @@ impl<N: crate::NodeInfo + Clone> Cluster<N> {
             removed_nodes.sort_by_key(|n| n.id());
             removed_nodes.dedup_by_key(|n| n.id());
 
-            if added_nodes.iter().any(|a| {
+            let any_node_added_and_removed = added_nodes.iter().any(|a| {
                 removed_nodes
                     .binary_search_by_key(&a.id(), |n| n.id())
                     .is_ok()
-            }) {
+            });
+
+            if any_node_added_and_removed {
                 panic!("Simultaneously adding and removing a node is undefined.");
             }
         }

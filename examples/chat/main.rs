@@ -15,13 +15,13 @@ fn main() {
     let node_b = PrototypingNode::new();
     let node_c = PrototypingNode::new();
 
-    let nodes = vec![node_a.clone(), node_b.clone(), node_c.clone()];
+    let nodes = vec![node_a, node_b, node_c];
 
     let communicator = ChatCommunicator::new();
 
     let node_a = spawn_node(node_a, nodes.clone(), communicator.clone());
     let node_b = spawn_node(node_b, nodes.clone(), communicator.clone());
-    let node_c = spawn_node(node_c, nodes.clone(), communicator.clone());
+    let node_c = spawn_node(node_c, nodes, communicator);
 
     futures::executor::block_on(async move {
         let _ = node_a

@@ -1,11 +1,16 @@
 use std::future::Future;
 use std::sync::Arc;
 
+use crate::communicator::{CoordNumOf, RoundNumOf};
 use crate::error::{AcceptError, CommitError, PrepareError};
+use crate::node::{CommunicatorOf, StateOf};
 use crate::state::{LogEntryIdOf, LogEntryOf};
 use crate::{CoordNum, Promise, RoundNum, State};
 
 use super::state_keeper::StateKeeperHandle;
+
+pub type RequestHandlerFor<N> =
+    RequestHandler<StateOf<N>, RoundNumOf<CommunicatorOf<N>>, CoordNumOf<CommunicatorOf<N>>>;
 
 /// Used by [`Communicator`][crate::communicator::Communicator]s to prepare
 /// replies.

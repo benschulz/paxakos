@@ -42,12 +42,10 @@ fn stress_test() {
 
     for n in nodes.clone() {
         join_handles.push(spawn_node(
-            n.clone(),
+            n,
             nodes.clone(),
             communicator.clone(),
-            (1..=ops_per_node)
-                .into_iter()
-                .map(|i| CalcOp::Add(f64::from(i), Uuid::new_v4())),
+            (1..=ops_per_node).map(|i| CalcOp::Add(f64::from(i), Uuid::new_v4())),
             target,
             &mut consistency_checker,
         ));
@@ -111,7 +109,7 @@ fn spawn_node(
             while let std::task::Poll::Ready(e) = node.as_mut().unwrap().poll_events(cx) {
                 match (&mut deadline, e) {
                     (deadline @ None, paxakos::Event::Apply { result, .. }) => {
-                        if result.0 == target {
+                        if target - result.0 < f64::EPSILON {
                             tracing::info!(
                                 "Node {} reached target, sets deadline.",
                                 node_info.id()
@@ -136,7 +134,7 @@ fn spawn_node(
 
             if let Some(deadline) = deadline.as_mut() {
                 if let std::task::Poll::Ready(_) = deadline.poll_unpin(cx) {
-                    return std::task::Poll::Ready(std::mem::replace(&mut node, None));
+                    return std::task::Poll::Ready(node.take());
                 }
             }
 
@@ -190,7 +188,7 @@ fn spawn_node(
 
         tracing::info!("Node {} is shut down.", node_info.id());
 
-        assert_eq!(snapshot.state().value(), target);
+        assert!(target - snapshot.state().value() < f64::EPSILON);
 
         hash_at_target.unwrap()
     })
