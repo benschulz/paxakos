@@ -1,5 +1,4 @@
 #![cfg(all(feature = "prototyping", feature = "tracer"))]
-#![feature(iterator_fold_self)]
 
 mod calc_app;
 mod tracer;
@@ -56,7 +55,7 @@ fn stress_test() {
     join_handles
         .into_iter()
         .map(|h| h.join().unwrap())
-        .fold_first(|a, b| {
+        .reduce(|a, b| {
             assert_eq!(a, b);
 
             a
