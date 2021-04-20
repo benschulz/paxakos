@@ -112,7 +112,7 @@ pub struct NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C: Communicator> {
 
 impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     /// Starts the node without any state.
-    pub fn without_state<S>(self) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    pub fn without<S>(self) -> NodeBuilderWithAll<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
@@ -156,13 +156,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        // TODO this seems a bit fragile
-        let participation = match self.working_dir {
-            Some(_) => Participaction::Active,
-            None => Participaction::Passive,
-        };
-
-        self.with_snapshot_and_participation(snapshot.into(), participation)
+        self.with_snapshot_and_participation(snapshot.into(), Participaction::Active)
     }
 
     /// Resume operation from the given snapshot.
@@ -179,7 +173,18 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
         self.with_snapshot_and_participation(snapshot.into(), Participaction::Passive)
     }
 
-    /// Resume operation from the given snapshot.
+    /// Resume operation without a snapshot.
+    ///
+    /// The node will participate passively until it can be certain that it is
+    /// not breaking any previous commitments.
+    pub fn recovering_without<S>(self) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    where
+        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    {
+        self.with_snapshot_and_participation(None, Participaction::Passive)
+    }
+
+    /// Commence operation from the given snapshot.
     ///
     /// # Soundness
     ///
@@ -201,6 +206,27 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
         self.with_snapshot_and_participation(snapshot.into(), Participaction::Active)
+    }
+
+    /// Commence operation without a snapshot.
+    ///
+    /// # Soundness
+    ///
+    /// This method assumes that the node is  (re-)joining the Paxos cluster.
+    /// Use [recovering_without] to have a failed node recover.
+    ///
+    /// A node is considered to rejoin iff there is a previous round `r` such
+    /// that this node
+    ///  - was not considered a member of the cluster for `r` and
+    ///  - it did not participate in any rounds since `r`.
+    ///
+    /// [recovering_without]:
+    /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_without
+    pub fn joining_without<S>(self) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    where
+        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    {
+        self.with_snapshot_and_participation(None, Participaction::Active)
     }
 
     fn with_snapshot_and_participation<S>(

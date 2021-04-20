@@ -15,7 +15,7 @@ fn node_without_state_starts_as_lost() {
             .for_node(PrototypingNode::new().id())
             .working_ephemerally()
             .communicating_via(DirectCommunicator::<CalcState, u64, u32>::new())
-            .without_state::<CalcState>()
+            .without::<CalcState>()
             .spawn_in(()),
     )
     .unwrap();
