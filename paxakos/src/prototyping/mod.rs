@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -7,12 +8,12 @@ use futures::future::{FutureExt, LocalBoxFuture};
 use thiserror::Error;
 
 use crate::append::{AppendError, RetryPolicy};
-use crate::communicator::{AcceptanceOrRejection, AcceptanceOrRejectionFor, Communicator};
-use crate::communicator::{PromiseOrRejection, PromiseOrRejectionFor};
+use crate::communicator::{AcceptanceOrRejectionFor, Committed};
+use crate::communicator::{Communicator, PromiseOrRejectionFor};
 use crate::error::BoxError;
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
-use crate::{AcceptError, CoordNum, LogEntry, NodeInfo, PrepareError};
-use crate::{Rejection, RequestHandler, RoundNum, State};
+use crate::{CoordNum, LogEntry, NodeInfo};
+use crate::{RequestHandler, RoundNum, State};
 
 /// A `NodeInfo` implementation for prototyping.
 #[derive(Clone, Copy, Debug, Default)]
@@ -124,6 +125,55 @@ impl<S: State, R: RoundNum, C: CoordNum> Default for DirectCommunicator<S, R, C>
     }
 }
 
+macro_rules! send_fn {
+    ($self:ident, $receivers:ident $(, $non_copy_arg:ident)* ; $method:ident $(, $arg:ident)* ) => {{
+        $receivers
+            .iter()
+            .map(move |receiver| {
+                let this = $self.clone();
+                let receiver_id = receiver.id();
+
+                $( send_fn!(@ $non_copy_arg); )*
+
+                (
+                    receiver,
+                    async move {
+                        futures_timer::Delay::new(delay(&this.e2e_delay_ms_distr.get())).await;
+
+                        if roll_for_failure(this.failure_rate.get()) {
+                            return Err(DirectCommunicatorError::Timeout);
+                        }
+
+                        let response = {
+                            let handlers = this.request_handlers.lock().unwrap();
+                            let handler = match handlers.get(&receiver_id) {
+                                Some(handler) => handler,
+                                None => return Err(DirectCommunicatorError::Other),
+                            };
+
+                            handler.$method($($arg),*)
+                        }
+                        .await;
+
+                        if roll_for_failure(this.failure_rate.get()) {
+                            return Err(DirectCommunicatorError::Timeout);
+                        }
+
+                        response
+                            .try_into()
+                            .map_err(|_| DirectCommunicatorError::Other)
+                    }
+                    .boxed_local(),
+                )
+            })
+            .collect()
+    }};
+
+    (@ $non_copy_arg:ident) => {
+        let $non_copy_arg = $non_copy_arg.clone();
+    }
+}
+
 impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, R, C> {
     type Node = NodeOf<S>;
 
@@ -137,8 +187,8 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
     type SendPrepare = LocalBoxFuture<'static, Result<PromiseOrRejectionFor<Self>, Self::Error>>;
     type SendProposal =
         LocalBoxFuture<'static, Result<AcceptanceOrRejectionFor<Self>, Self::Error>>;
-    type SendCommit = LocalBoxFuture<'static, Result<(), Self::Error>>;
-    type SendCommitById = LocalBoxFuture<'static, Result<(), Self::Error>>;
+    type SendCommit = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
+    type SendCommitById = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
 
     fn send_prepare<'a>(
         &mut self,
@@ -146,56 +196,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         round_num: Self::RoundNum,
         coord_num: Self::CoordNum,
     ) -> Vec<(&'a Self::Node, Self::SendPrepare)> {
-        receivers
-            .iter()
-            .map(move |receiver| {
-                let this = self.clone();
-                let receiver_id = receiver.id();
-
-                (
-                    receiver,
-                    async move {
-                        futures_timer::Delay::new(delay(&this.e2e_delay_ms_distr.get())).await;
-
-                        if roll_for_failure(this.failure_rate.get()) {
-                            return Err(DirectCommunicatorError::Timeout);
-                        }
-
-                        let response = {
-                            let handlers = this.request_handlers.lock().unwrap();
-                            let handler = match handlers.get(&receiver_id) {
-                                Some(handler) => handler,
-                                None => return Err(DirectCommunicatorError::Other),
-                            };
-
-                            handler.handle_prepare(round_num, coord_num)
-                        }
-                        .await;
-
-                        if roll_for_failure(this.failure_rate.get()) {
-                            return Err(DirectCommunicatorError::Timeout);
-                        }
-
-                        match response {
-                            Ok(promise) => Ok(PromiseOrRejection::Promise(promise)),
-                            Err(PrepareError::Conflict(coord_num)) => {
-                                Ok(PromiseOrRejection::Rejection(Rejection::Conflict {
-                                    coord_num,
-                                }))
-                            }
-                            Err(PrepareError::Converged(coord_num, log_entry)) => {
-                                Ok(PromiseOrRejection::Rejection(Rejection::Converged {
-                                    coord_num,
-                                    log_entry,
-                                }))
-                            }
-                            Err(_) => Err(DirectCommunicatorError::Other),
-                        }
-                    }
-                    .boxed_local(),
-                )
-            })
-            .collect()
+        send_fn!(self, receivers; handle_prepare, round_num, coord_num)
     }
 
     fn send_proposal<'a>(
@@ -205,57 +206,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         coord_num: Self::CoordNum,
         log_entry: Arc<Self::LogEntry>,
     ) -> Vec<(&'a Self::Node, Self::SendProposal)> {
-        receivers
-            .iter()
-            .map(move |receiver| {
-                let this = self.clone();
-                let receiver_id = receiver.id();
-                let log_entry = Arc::clone(&log_entry);
-
-                (
-                    receiver,
-                    async move {
-                        futures_timer::Delay::new(delay(&this.e2e_delay_ms_distr.get())).await;
-
-                        if roll_for_failure(this.failure_rate.get()) {
-                            return Err(DirectCommunicatorError::Timeout);
-                        }
-
-                        let response = {
-                            let handlers = this.request_handlers.lock().unwrap();
-                            let handler = match handlers.get(&receiver_id) {
-                                Some(handler) => handler,
-                                None => return Err(DirectCommunicatorError::Other),
-                            };
-
-                            handler.handle_proposal(round_num, coord_num, log_entry)
-                        }
-                        .await;
-
-                        if roll_for_failure(this.failure_rate.get()) {
-                            return Err(DirectCommunicatorError::Timeout);
-                        }
-
-                        match response {
-                            Ok(()) => Ok(AcceptanceOrRejection::Acceptance),
-                            Err(AcceptError::Conflict(coord_num)) => {
-                                Ok(AcceptanceOrRejection::Rejection(Rejection::Conflict {
-                                    coord_num,
-                                }))
-                            }
-                            Err(AcceptError::Converged(coord_num, log_entry)) => {
-                                Ok(AcceptanceOrRejection::Rejection(Rejection::Converged {
-                                    coord_num,
-                                    log_entry,
-                                }))
-                            }
-                            Err(_) => Err(DirectCommunicatorError::Other),
-                        }
-                    }
-                    .boxed_local(),
-                )
-            })
-            .collect()
+        send_fn!(self, receivers, log_entry; handle_proposal, round_num, coord_num, log_entry)
     }
 
     fn send_commit<'a>(
@@ -265,43 +216,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         coord_num: Self::CoordNum,
         log_entry: Arc<Self::LogEntry>,
     ) -> Vec<(&'a Self::Node, Self::SendCommit)> {
-        receivers
-            .iter()
-            .map(move |receiver| {
-                let this = self.clone();
-                let receiver_id = receiver.id();
-                let log_entry = Arc::clone(&log_entry);
-
-                (
-                    receiver,
-                    async move {
-                        futures_timer::Delay::new(delay(&this.e2e_delay_ms_distr.get())).await;
-
-                        if roll_for_failure(this.failure_rate.get()) {
-                            return Err(DirectCommunicatorError::Timeout);
-                        }
-
-                        let response = {
-                            let handlers = this.request_handlers.lock().unwrap();
-                            let handler = match handlers.get(&receiver_id) {
-                                Some(handler) => handler,
-                                None => return Err(DirectCommunicatorError::Other),
-                            };
-
-                            handler.handle_commit(round_num, coord_num, log_entry)
-                        }
-                        .await;
-
-                        if roll_for_failure(this.failure_rate.get()) {
-                            return Err(DirectCommunicatorError::Timeout);
-                        }
-
-                        response.map_err(|_| DirectCommunicatorError::Other)
-                    }
-                    .boxed_local(),
-                )
-            })
-            .collect()
+        send_fn!(self, receivers, log_entry; handle_commit, round_num, coord_num, log_entry)
     }
 
     fn send_commit_by_id<'a>(
@@ -311,42 +226,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         coord_num: Self::CoordNum,
         log_entry_id: <Self::LogEntry as LogEntry>::Id,
     ) -> Vec<(&'a Self::Node, Self::SendCommitById)> {
-        receivers
-            .iter()
-            .map(move |receiver| {
-                let this = self.clone();
-                let receiver_id = receiver.id();
-
-                (
-                    receiver,
-                    async move {
-                        futures_timer::Delay::new(delay(&this.e2e_delay_ms_distr.get())).await;
-
-                        if roll_for_failure(this.failure_rate.get()) {
-                            return Err(DirectCommunicatorError::Timeout);
-                        }
-
-                        let response = {
-                            let handlers = this.request_handlers.lock().unwrap();
-                            let handler = match handlers.get(&receiver_id) {
-                                Some(handler) => handler,
-                                None => return Err(DirectCommunicatorError::Other),
-                            };
-
-                            handler.handle_commit_by_id(round_num, coord_num, log_entry_id)
-                        }
-                        .await;
-
-                        if roll_for_failure(this.failure_rate.get()) {
-                            return Err(DirectCommunicatorError::Timeout);
-                        }
-
-                        response.map_err(|_| DirectCommunicatorError::Other)
-                    }
-                    .boxed_local(),
-                )
-            })
-            .collect()
+        send_fn!(self, receivers; handle_commit_by_id, round_num, coord_num, log_entry_id)
     }
 }
 
