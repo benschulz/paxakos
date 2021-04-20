@@ -4,7 +4,7 @@ use std::io::Read;
 use std::sync::Arc;
 
 use futures::io::{self, AsyncRead, AsyncReadExt};
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 
 use crate::node::{CoordNumOf, RoundNumOf, StateOf};
@@ -77,12 +77,12 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
 
     pub fn initial(state: impl Into<Arc<S>>) -> Self {
         let mut promises = BTreeMap::new();
-        promises.insert(Zero::zero(), Zero::zero());
+        promises.insert(Zero::zero(), One::one());
 
         Self::new(
             Zero::zero(),
             state.into(),
-            Zero::zero(),
+            One::one(),
             promises,
             BTreeMap::new(),
         )

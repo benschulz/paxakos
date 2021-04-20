@@ -224,10 +224,10 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                         (
                             Zero::zero(),
                             None,
-                            Zero::zero(),
+                            One::one(),
                             {
                                 let mut promises = BTreeMap::new();
-                                promises.insert(Zero::zero(), Zero::zero());
+                                promises.insert(Zero::zero(), One::one());
                                 promises
                             },
                             BTreeMap::new(),
@@ -828,12 +828,11 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         // Paxos requires that we reject requests whose coordination number is less than
         // or equal to the one of the previously accepted proposal. Because of how we
         // determine coordination numbers, equal numbers imply the same proposer. That
-        // makes it tempting to weaken this constraint to just "less than". After all,
-        // why would the proposer be inconsistent with itself?
+        // alone is not enough to weaken this constraint to just "less than" because a
+        // proposer may be inconsistent with itself.
         //
-        // It turns out that a proposer may indeed be inconsistent with itself. Consider
-        // the following scenario with two concurrently running appends in a three node
-        // cluster.
+        // Consider the following scenario with two concurrently running appends in a
+        // three node cluster.
         //
         //  1. (1) A asks for promise from A, B.
         //  1. (2) A asks for promise from A, C.
@@ -843,9 +842,11 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         //  3. (2) C promises, requires nothing.
         //  4. (2) A has no requirements, overwrites implicit accept of R.
         //
-        // This can be prevented with sufficient synchronization on the proposer-side,
-        // but it's fragile and the upside is questionable.
-        if coord_num <= strongest_promise {
+        // However, such scenarios have been ruled out by limiting nodes to one election
+        // run at a time (see NodeInner::ensure_leadership). Building on top of those
+        // two (intentional) implementation details we get to weaken "less than" to
+        // "less" here.
+        if coord_num < strongest_promise {
             Err(PrepareError::Conflict(strongest_promise))
         } else {
             overriding_insert(&mut self.promises, round_num, coord_num);
