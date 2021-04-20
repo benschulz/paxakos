@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::future::Future;
+use std::ops::RangeInclusive;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use futures::stream::StreamExt;
 use num_traits::{One, Zero};
 use tracing::debug;
 
-use crate::append::{AppendArgs, AppendError, Importance, Peeryness, RetryPolicy};
+use crate::append::{AppendArgs, AppendError, Importance, Peeryness};
 use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::communicator::{AcceptanceOrRejection, Communicator, CoordNumOf, ErrorOf};
 use crate::communicator::{PromiseOrRejection, RoundNumOf};
@@ -82,7 +83,7 @@ where
                 Err(_) => futures::future::pending().right_future(),
             });
 
-        let active = self.append_actively(log_entry, args.retry_policy);
+        let active = self.append_actively(log_entry, args);
 
         crate::util::Race::between(active, passive)
             .await
@@ -92,13 +93,13 @@ where
     async fn append_actively(
         self: Rc<Self>,
         log_entry: Arc<LogEntryOf<S>>,
-        mut retry_policy: Box<dyn RetryPolicy>,
+        mut args: AppendArgs<RoundNumOf<C>>,
     ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
         let mut i: usize = 0;
 
         loop {
             let error = match Rc::clone(&self)
-                .try_append(Arc::clone(&log_entry), Default::default())
+                .try_append(Arc::clone(&log_entry), args.round.clone(), args.importance)
                 .await
             {
                 Ok(r) => {
@@ -107,7 +108,7 @@ where
                 Err(e) => e,
             };
 
-            if let Err(abortion) = retry_policy.eval(error).await {
+            if let Err(abortion) = args.retry_policy.eval(error).await {
                 break Err(AppendError::Aborted(abortion));
             }
 
@@ -122,12 +123,13 @@ where
     async fn try_append(
         self: Rc<Self>,
         log_entry: Arc<LogEntryOf<S>>,
-        args: AppendArgs<RoundNumOf<C>>,
+        round: RangeInclusive<RoundNumOf<C>>,
+        importance: Importance,
     ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
-        let reservation = self.state_keeper.reserve_round_num(args.round).await?;
+        let reservation = self.state_keeper.reserve_round_num(round).await?;
 
         let result = self
-            .try_append_internal(log_entry, reservation.round_num(), args.importance)
+            .try_append_internal(log_entry, reservation.round_num(), importance)
             .await;
 
         // The reservation must be held until the attempt is over.
