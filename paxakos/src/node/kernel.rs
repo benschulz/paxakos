@@ -10,13 +10,13 @@ use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::event::{Event, ShutdownEvent};
 use crate::state::{LogEntryOf, NodeIdOf, State};
 
-use super::commits::{Commit, Commits};
+use super::commits::Commits;
 use super::handle::{NodeHandleRequest, NodeHandleResponse};
 use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
 use super::snapshot::{Snapshot, SnapshotFor};
 use super::state_keeper::{EventStream, ProofOfLife, StateKeeper, StateKeeperHandle};
-use super::{EventFor, Node, NodeHandle, NodeStatus, RequestHandler};
+use super::{CommitFor, EventFor, Node, NodeHandle, NodeStatus, RequestHandler};
 
 /// The default [`Node`][crate::Node] implementation.
 // TODO a better name may be needed…
@@ -110,7 +110,7 @@ where
         &self,
         log_entry: impl Into<Arc<LogEntryOf<S>>>,
         args: AppendArgs<RoundNumOf<C>>,
-    ) -> LocalBoxFuture<'static, Result<Commit<S>, AppendError>> {
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, AppendError>> {
         Rc::clone(&self.inner)
             .append(log_entry.into(), args)
             .boxed_local()
@@ -186,7 +186,7 @@ where
     fn process_handle_req(
         &mut self,
         req: NodeHandleRequest<S, RoundNumOf<C>>,
-        send: oneshot::Sender<NodeHandleResponse<S>>,
+        send: oneshot::Sender<NodeHandleResponse<S, RoundNumOf<C>>>,
     ) {
         match req {
             NodeHandleRequest::Status => {

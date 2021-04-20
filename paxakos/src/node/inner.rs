@@ -66,14 +66,19 @@ where
         self: Rc<Self>,
         log_entry: Arc<LogEntryOf<S>>,
         args: AppendArgs<RoundNumOf<C>>,
-    ) -> Result<Commit<S>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
         let log_entry_id = log_entry.id();
 
         let passive = self
             .state_keeper
             .await_commit_of(log_entry_id)
-            .await
-            .map(|r| Ok(Commit::ready(r)));
+            .await?
+            .then(|r| match r {
+                Ok((round_num, outcome)) => {
+                    futures::future::ready(Ok(Commit::ready(round_num, outcome))).left_future()
+                }
+                Err(_) => futures::future::pending().right_future(),
+            });
 
         let active = self.append_actively(log_entry, args.retry_policy);
 
@@ -84,7 +89,7 @@ where
         self: Rc<Self>,
         log_entry: Arc<LogEntryOf<S>>,
         mut retry_policy: Box<dyn RetryPolicy>,
-    ) -> Result<Commit<S>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
         let mut i: usize = 0;
 
         loop {
@@ -114,7 +119,7 @@ where
         self: Rc<Self>,
         log_entry: Arc<LogEntryOf<S>>,
         args: AppendArgs<RoundNumOf<C>>,
-    ) -> Result<Commit<S>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
         let reservation = self.state_keeper.reserve_round_num(args.round).await?;
 
         let result = self
@@ -132,7 +137,7 @@ where
         log_entry: Arc<LogEntryOf<S>>,
         round_num: RoundNumOf<C>,
         importance: Importance,
-    ) -> Result<Commit<S>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
         let node_id = self.id;
 
         let log_entry_id = log_entry.id();
@@ -592,7 +597,7 @@ where
                     ),
                 >,
         >,
-    ) -> Result<Commit<S>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
         let accepted = other_nodes
             .drain_filter(|n| accepted.contains(&n.id()))
             .collect::<Vec<_>>();

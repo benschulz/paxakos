@@ -1,10 +1,12 @@
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
+use futures::channel::oneshot;
+
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
-use crate::node::{Commit, Snapshot};
-use crate::state::{LogEntryIdOf, LogEntryOf, NodeOf, State};
+use crate::node::Snapshot;
+use crate::state::{LogEntryIdOf, LogEntryOf, NodeOf, OutcomeOf, State};
 use crate::{CoordNum, Promise, RoundNum};
 
 use super::error::{AcquireRoundNumError, ClusterError};
@@ -83,7 +85,7 @@ pub enum Response<S: State, R: RoundNum, C: CoordNum> {
 
     ReadStale(Result<Arc<S>, ReadStaleError>),
 
-    AwaitCommitOf(Result<Commit<S>, !>),
+    AwaitCommitOf(Result<oneshot::Receiver<(R, OutcomeOf<S>)>, !>),
 
     AcquireRoundNum(Result<RoundNumReservation<R>, AcquireRoundNumError>),
 

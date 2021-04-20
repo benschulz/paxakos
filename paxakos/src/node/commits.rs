@@ -81,33 +81,55 @@ impl std::fmt::Debug for Commits {
 /// there is a gap in the log. A `Commit` is a `Future` that represents such a
 /// log entry. Once the entry is applied, the future will become ready.
 #[derive(Debug)]
-pub struct Commit<S: State> {
-    receiver: oneshot::Receiver<Result<OutcomeOf<S>, CommitError<S>>>,
+pub struct Commit<S: State, R> {
+    round_num: R,
+    receiver: oneshot::Receiver<(R, OutcomeOf<S>)>,
 }
 
-impl<S: State> Commit<S> {
-    pub(crate) fn new(receiver: oneshot::Receiver<Result<OutcomeOf<S>, CommitError<S>>>) -> Self {
-        Self { receiver }
+impl<S: State, R: Copy> Commit<S, R> {
+    pub(crate) fn new(round_num: R, receiver: oneshot::Receiver<(R, OutcomeOf<S>)>) -> Self {
+        Self {
+            round_num,
+            receiver,
+        }
     }
 
-    pub(crate) fn ready(result: Result<OutcomeOf<S>, CommitError<S>>) -> Self {
+    pub(crate) fn ready(round_num: R, outcome: OutcomeOf<S>) -> Self {
         let (send, recv) = futures::channel::oneshot::channel();
 
-        let _ = send.send(result);
+        let _ = send.send((round_num, outcome));
 
-        Self { receiver: recv }
+        Self {
+            round_num,
+            receiver: recv,
+        }
+    }
+
+    /// The round this commit is slated for.
+    ///
+    /// This information is useful when, in a concurrent setting, another log
+    /// entry is to be applied in a round later than the log entry underlying
+    /// this commit.
+    pub fn round_num(&self) -> R {
+        self.round_num
     }
 }
 
-impl<S: State> Future for Commit<S> {
+// TODO ShutDown is the only reachable error variant
+impl<S, R> Future for Commit<S, R>
+where
+    S: State,
+    R: crate::RoundNum,
+{
     type Output = Result<OutcomeOf<S>, CommitError<S>>;
 
     fn poll(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        self.receiver
-            .poll_unpin(cx)
-            .map(|r| r.map_err(|_| CommitError::ShutDown).and_then(|v| v))
+        self.receiver.poll_unpin(cx).map(|r| {
+            r.map(|(_, outcome)| outcome)
+                .map_err(|_| CommitError::ShutDown)
+        })
     }
 }

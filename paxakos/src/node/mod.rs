@@ -44,6 +44,7 @@ pub type NodeOf<N> = crate::state::NodeOf<StateOf<N>>;
 pub type NodeIdOf<N> = crate::state::NodeIdOf<StateOf<N>>;
 pub type EventOf<N> = EventFor<StateOf<N>>;
 
+pub type CommitFor<N> = Commit<StateOf<N>, RoundNumOf<N>>;
 pub type EventFor<N> = Event<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 
 pub fn builder() -> builder::NodeBuilderBlank {
@@ -93,7 +94,7 @@ pub trait Node: Sized {
         &self,
         log_entry: impl Into<Arc<LogEntryOf<Self>>>,
         args: AppendArgs<RoundNumOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<Commit<Self::State>, AppendError>>;
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, AppendError>>;
 
     fn shut_down(self) -> Self::Shutdown;
 }

@@ -27,7 +27,6 @@ use crate::state::{ContextOf, LogEntryIdOf, LogEntryOf, OutcomeOf, State};
 use crate::tracer::Tracer;
 use crate::{CoordNum, Promise, RoundNum};
 
-use super::commits::Commit;
 use super::snapshot::{DeconstructedSnapshot, Snapshot};
 use super::status::NodeStatus;
 use super::SpawnArgs;
@@ -39,7 +38,7 @@ use working_dir::WorkingDir;
 
 type RequestAndResponseSender<S, R, C> = (Request<S, R, C>, ResponseSender<S, R, C>);
 type ResponseSender<S, R, C> = oneshot::Sender<Response<S, R, C>>;
-type Awaiter<S> = oneshot::Sender<Result<OutcomeOf<S>, CommitError<S>>>;
+type Awaiter<S, R> = oneshot::Sender<(R, OutcomeOf<S>)>;
 
 #[derive(Debug)]
 enum Participaction<R: RoundNum> {
@@ -130,7 +129,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     acquired_round_nums: HashSet<R>,
 
     pending_commits: BTreeMap<R, (std::time::Instant, C, Arc<LogEntryOf<S>>)>,
-    awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S>>>,
+    awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S, R>>>,
 
     participaction: Participaction<R>,
     /// last status that was observable from the outside
@@ -434,7 +433,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
                 self.awaiters.entry(entry_id).or_default().push(s);
 
-                Response::AwaitCommitOf(Ok(Commit::new(r)))
+                Response::AwaitCommitOf(Ok(r))
             }
 
             Request::AcquireRoundNum { range } => {
@@ -1042,7 +1041,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 awaiters.into_iter().for_each(|a| {
                     // avoid clone if possible
                     if !a.is_canceled() {
-                        let _ = a.send(Ok(outcome.clone()));
+                        let _ = a.send((round, outcome.clone()));
                     }
                 });
 

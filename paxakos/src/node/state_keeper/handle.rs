@@ -10,7 +10,7 @@ use futures::sink::SinkExt;
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
 use crate::node::{Commit, Snapshot};
-use crate::state::{LogEntryIdOf, LogEntryOf, NodeOf, State};
+use crate::state::{LogEntryIdOf, LogEntryOf, NodeOf, OutcomeOf, State};
 use crate::{CoordNum, LogEntry, Promise, RoundNum};
 
 use super::error::{AcquireRoundNumError, ClusterError, ShutDown};
@@ -63,12 +63,11 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
         crate::dispatch_state_keeper_req!(self, ReadStale)
     }
 
-    pub fn await_commit_of(&self, entry_id: LogEntryIdOf<S>) -> impl Future<Output = Commit<S>> {
-        crate::dispatch_state_keeper_req!(self, AwaitCommitOf, { entry_id }).map(
-            |r: Result<_, ShutDown>| {
-                r.unwrap_or_else(|_| Commit::ready(Err(CommitError::ShutDown)))
-            },
-        )
+    pub fn await_commit_of(
+        &self,
+        entry_id: LogEntryIdOf<S>,
+    ) -> impl Future<Output = Result<oneshot::Receiver<(R, OutcomeOf<S>)>, ShutDown>> {
+        crate::dispatch_state_keeper_req!(self, AwaitCommitOf, { entry_id })
     }
 
     pub fn reserve_round_num(
@@ -156,13 +155,14 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
         round_num: R,
         coord_num: C,
         entry: Arc<LogEntryOf<S>>,
-    ) -> impl Future<Output = Result<Commit<S>, CommitError<S>>> {
+    ) -> impl Future<Output = Result<Commit<S, R>, CommitError<S>>> {
         let recv = self.await_commit_of(entry.id());
         let commit = self.handle_commit(round_num, coord_num, entry);
 
         async move {
-            let recv = recv.await;
-            commit.await.map(|_| recv)
+            let recv = recv.await?;
+
+            commit.await.map(|_| Commit::new(round_num, recv))
         }
     }
 

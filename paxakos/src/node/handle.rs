@@ -19,7 +19,7 @@ use crate::dispatch_node_handle_req;
 
 pub type RequestAndResponseSender<S, R> = (
     NodeHandleRequest<S, R>,
-    oneshot::Sender<NodeHandleResponse<S>>,
+    oneshot::Sender<NodeHandleResponse<S, R>>,
 );
 
 /// A remote handle for a paxakos [`Node`][crate::Node].
@@ -82,7 +82,7 @@ where
         &self,
         log_entry: I,
         args: AppendArgs<R>,
-    ) -> impl Future<Output = Result<Commit<S>, AppendError>> {
+    ) -> impl Future<Output = Result<Commit<S, R>, AppendError>> {
         dispatch_node_handle_req!(self, Append, {
             log_entry: log_entry.into(),
             args,
@@ -124,10 +124,10 @@ pub enum NodeHandleRequest<S: State, R: RoundNum> {
 }
 
 #[derive(Debug)]
-pub enum NodeHandleResponse<S: State> {
+pub enum NodeHandleResponse<S: State, R> {
     Status(NodeStatus),
 
-    Append(Result<Commit<S>, AppendError>),
+    Append(Result<Commit<S, R>, AppendError>),
 }
 
 mod macros {
