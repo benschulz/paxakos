@@ -71,6 +71,10 @@ pub trait Node: Sized {
     /// drives the actions that keep the node up to date.
     fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<EventFor<Self>>;
 
+    fn next_event(&mut self) -> NextEvent<'_, Self> {
+        NextEvent(self)
+    }
+
     fn handle(&self) -> NodeHandle<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>;
 
     fn prepare_snapshot(
@@ -96,6 +100,22 @@ pub trait Node: Sized {
     ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>>;
 
     fn shut_down(self) -> Self::Shutdown;
+}
+
+pub struct NextEvent<'a, N: ?Sized>(&'a mut N);
+
+impl<'a, N> std::future::Future for NextEvent<'a, N>
+where
+    N: Node,
+{
+    type Output = Event<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        self.0.poll_events(cx)
+    }
 }
 
 /// Exposes seldomly used administrative operations.
