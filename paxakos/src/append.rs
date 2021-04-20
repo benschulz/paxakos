@@ -86,7 +86,7 @@ pub enum AppendError {
     #[error("node lost its mandate or failed in acquiring one")]
     Lost,
 
-    /// Failed in achieving achieve a quorum.
+    /// Failed in achieving a quorum.
     ///
     /// This commonly indicates communication errors.
     #[error("node could not achieve a quorum")]

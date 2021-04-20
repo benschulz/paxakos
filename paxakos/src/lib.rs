@@ -348,10 +348,10 @@
 //!    - **Stability** implies that once a node learns that a log entry `a` has
 //!      been appended to the distributed log, it will never learn that a
 //!      different entry `b` belongs in its place.
-//!    - **Consistency** means that all nodes in the Paxakos network agree about
+//!    - **Consistency** means that all nodes in the Paxakos network agree on
 //!      the contents of their shared log. While nodes may temporarily fall
-//!      behind, i.e. their log may be shorter than other nodes', they're logs
-//!      must otherwise be equivalent.
+//!      behind, i.e. their log may be shorter than other nodes', their logs
+//!      must be otherwise equivalent.
 //!    - **Liveness** means that the system won't get stuck, i.e. progress is
 //!      always eventually made (assuming a there is no contention/some degree
 //!      of cooperation).
@@ -513,7 +513,7 @@
 //! # Future Direction
 //!
 //! Paxakos will probably remain dormant for the near future. This is because
-//! it needs to see some use and experimentation. Likeley exceptions are the
+//! it needs to see some use and experimentation. Likely exceptions are the
 //! following changes.
 //!
 //! - Improving Compile Times
