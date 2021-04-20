@@ -23,9 +23,7 @@ pub struct StateKeeperHandle<S: State, R: RoundNum, C: CoordNum> {
 }
 
 impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
-    pub(super) fn new(
-        sender: mpsc::Sender<super::RequestAndResponseSender<S, R, C>>,
-    ) -> Self {
+    pub(super) fn new(sender: mpsc::Sender<super::RequestAndResponseSender<S, R, C>>) -> Self {
         Self { sender }
     }
 

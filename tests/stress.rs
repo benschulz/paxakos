@@ -175,7 +175,9 @@ fn spawn_node(
 
         let snapshot = futures::executor::block_on(
             futures::stream::poll_fn(|cx| shutdown.poll_shutdown(cx).map(Some))
-                .filter(|e| futures::future::ready(matches!(e, paxakos::ShutdownEvent::Last {..})))
+                .filter(|e| {
+                    futures::future::ready(matches!(e, paxakos::ShutdownEvent::Last { .. }))
+                })
                 .map(|e| match e {
                     paxakos::ShutdownEvent::Last { snapshot, .. } => snapshot,
                     _ => unreachable!(),
