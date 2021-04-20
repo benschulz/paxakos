@@ -43,24 +43,18 @@ impl Commits {
             self.waker = cx.waker().clone();
         }
 
-        let mut result = self.inner.active.borrow_mut().poll_next_unpin(cx);
+        loop {
+            self.inner
+                .active
+                .borrow_mut()
+                .extend(self.inner.submitted.borrow_mut().drain(..));
 
-        while {
-            let mut submitted = self.inner.submitted.borrow_mut();
+            let result = self.inner.active.borrow_mut().poll_next_unpin(cx);
 
-            match submitted.is_empty() {
-                true => false,
-                false => {
-                    self.inner.active.borrow_mut().extend(submitted.drain(..));
-
-                    true
-                }
+            if self.inner.submitted.borrow().is_empty() {
+                return result;
             }
-        } {
-            result = self.inner.active.borrow_mut().poll_next_unpin(cx);
         }
-
-        result
     }
 }
 
