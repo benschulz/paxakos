@@ -41,7 +41,7 @@ macro_rules! dispatch_state_keeper_req {
 macro_rules! emit {
     ($self:ident, $event:expr) => {{
         let event = $event;
-        tracing::debug!("Emitting event {:?}.", event);
+        tracing::trace!("Emitting event {:?}.", event);
         let _ = futures::executor::block_on($self.event_emitter.send(event));
     }};
 }
