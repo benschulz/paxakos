@@ -79,7 +79,11 @@ pub struct Cluster<N> {
     log_entries: VecDeque<(NonZeroUsize, Vec<N>, Vec<N>)>,
 }
 
-impl<N: crate::NodeInfo + Clone> Cluster<N> {
+impl<N, I> Cluster<N>
+where
+    N: crate::NodeInfo<Id = I> + Clone,
+    I: crate::Identifier + Ord,
+{
     /// Returns a new cluster with the given initial state.
     pub fn new(nodes: Vec<N>, concurrency: NonZeroUsize) -> Self {
         Cluster {

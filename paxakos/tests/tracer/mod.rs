@@ -21,7 +21,7 @@ where
 
 impl<N, R, C, L> StabilityChecker<N, R, C, L>
 where
-    N: Identifier,
+    N: Identifier + Ord,
     R: RoundNum,
     C: CoordNum,
     L: Identifier,

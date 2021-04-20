@@ -647,7 +647,7 @@ impl<T: Number> CoordNum for T {}
 
 /// Trait bound of [log entry ids][crate::LogEntry::Id] and [node
 /// ids][crate::NodeInfo::Id].
-pub trait Identifier: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin {}
+pub trait Identifier: 'static + Copy + Debug + Eq + Hash + Send + Sync + Unpin {}
 
 impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifier for T {}
 
