@@ -660,7 +660,6 @@ where
             .into_iter()
             .for_each(|(_n, f)| commits.submit(f.map(|_| ())));
 
-        let commits_for_pending = commits.clone();
         let pending = async move {
             while let Some((node_id, response)) = pending_acceptances.next().await {
                 let node = pending_nodes_by_id.remove(&node_id).expect("pending node");
@@ -677,7 +676,7 @@ where
                             .1
                             .map(|_| ());
 
-                        commits_for_pending.submit(commit);
+                        self.commits.submit(commit);
                     }
                     _ => {
                         let commit = self
@@ -695,7 +694,7 @@ where
                             .1
                             .map(|_| ());
 
-                        commits_for_pending.submit(commit);
+                        self.commits.submit(commit);
                     }
                 }
             }
