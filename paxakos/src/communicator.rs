@@ -46,6 +46,7 @@ pub trait Communicator: 'static {
         &mut self,
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
+        coord_num: Self::CoordNum,
         log_entry: Arc<Self::LogEntry>,
     ) -> Vec<(&'a Self::Node, Self::SendCommit)>;
 
@@ -53,6 +54,7 @@ pub trait Communicator: 'static {
         &mut self,
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
+        coord_num: Self::CoordNum,
         log_entry_id: <Self::LogEntry as LogEntry>::Id,
     ) -> Vec<(&'a Self::Node, Self::SendCommitById)>;
 }

@@ -60,11 +60,13 @@ pub enum Request<S: State, R: RoundNum, C: CoordNum> {
 
     CommitEntry {
         round_num: R,
+        coord_num: C,
         entry: Arc<LogEntryOf<S>>,
     },
 
     CommitEntryById {
         round_num: R,
+        coord_num: C,
         entry_id: LogEntryIdOf<S>,
     },
 

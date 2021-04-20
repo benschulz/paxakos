@@ -262,6 +262,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         &mut self,
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
+        coord_num: Self::CoordNum,
         log_entry: Arc<Self::LogEntry>,
     ) -> Vec<(&'a Self::Node, Self::SendCommit)> {
         receivers
@@ -287,7 +288,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
                                 None => return Err(DirectCommunicatorError::Other),
                             };
 
-                            handler.handle_commit(round_num, log_entry)
+                            handler.handle_commit(round_num, coord_num, log_entry)
                         }
                         .await;
 
@@ -307,6 +308,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
         &mut self,
         receivers: &'a [Self::Node],
         round_num: Self::RoundNum,
+        coord_num: Self::CoordNum,
         log_entry_id: <Self::LogEntry as LogEntry>::Id,
     ) -> Vec<(&'a Self::Node, Self::SendCommitById)> {
         receivers
@@ -331,7 +333,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
                                 None => return Err(DirectCommunicatorError::Other),
                             };
 
-                            handler.handle_commit_by_id(round_num, log_entry_id)
+                            handler.handle_commit_by_id(round_num, coord_num, log_entry_id)
                         }
                         .await;
 

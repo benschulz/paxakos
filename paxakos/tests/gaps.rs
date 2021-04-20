@@ -21,7 +21,7 @@ type CalcNode = NodeKernel<CalcState, CalcCommunicator>;
 fn emit_gaps_event_when_it_first_appears() {
     let (req_handler, mut node) = setup_node();
 
-    commit(&req_handler, 5, CalcOp::Add(123f64, Uuid::new_v4()));
+    commit(&req_handler, 5, 1, CalcOp::Add(123f64, Uuid::new_v4()));
     let gaps_event = next_gaps_event(&mut node);
 
     assert_eq!(ranges_of(&gaps_event), vec![1..5]);
@@ -31,9 +31,9 @@ fn emit_gaps_event_when_it_first_appears() {
 fn shrunk_gap_maintains_age() {
     let (req_handler, mut node) = setup_node();
 
-    commit(&req_handler, 5, CalcOp::Add(123f64, Uuid::new_v4()));
+    commit(&req_handler, 5, 1, CalcOp::Add(123f64, Uuid::new_v4()));
     let first_event = next_gaps_event(&mut node);
-    commit(&req_handler, 3, CalcOp::Add(321f64, Uuid::new_v4()));
+    commit(&req_handler, 3, 1, CalcOp::Add(321f64, Uuid::new_v4()));
     let second_event = next_gaps_event(&mut node);
 
     assert_eq!(ranges_of(&second_event), vec![1..3, 4..5]);
@@ -51,9 +51,9 @@ fn shrunk_gap_maintains_age() {
 fn later_gap_is_younger() {
     let (req_handler, mut node) = setup_node();
 
-    commit(&req_handler, 2, CalcOp::Add(321f64, Uuid::new_v4()));
+    commit(&req_handler, 2, 1, CalcOp::Add(321f64, Uuid::new_v4()));
     let first_event = next_gaps_event(&mut node);
-    commit(&req_handler, 4, CalcOp::Add(123f64, Uuid::new_v4()));
+    commit(&req_handler, 4, 1, CalcOp::Add(123f64, Uuid::new_v4()));
     let second_event = next_gaps_event(&mut node);
 
     assert_eq!(ranges_of(&first_event), vec![1..2]);
@@ -89,7 +89,7 @@ fn auto_fill_gaps() {
     futures::executor::block_on(node.append(CalcOp::Mul(0.0, Uuid::new_v4()), Default::default()))
         .unwrap();
 
-    commit(&req_handler, 5, CalcOp::Add(target, Uuid::new_v4()));
+    commit(&req_handler, 5, 0, CalcOp::Add(target, Uuid::new_v4()));
 
     let events = futures::stream::poll_fn(|cx| node.poll_events(cx).map(Some));
 
@@ -123,10 +123,11 @@ fn setup_node() -> (RequestHandler<CalcState, u64, u32>, CalcNode) {
 
 fn commit<S: State, R: RoundNum, C: CoordNum>(
     req_handler: &RequestHandler<S, R, C>,
-    round: R,
-    op: LogEntryOf<S>,
+    round_num: R,
+    coord_num: C,
+    log_entry: LogEntryOf<S>,
 ) {
-    let _ = futures::executor::block_on(req_handler.handle_commit(round, op));
+    let _ = futures::executor::block_on(req_handler.handle_commit(round_num, coord_num, log_entry));
 }
 
 fn next_gaps_event<N, S, C>(node: &mut N) -> Event<S, RoundNumOf<C>>

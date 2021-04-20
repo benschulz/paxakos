@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 
 use crate::error::{IoError, SpawnError};
 use crate::log::{LogEntry, LogKeeping};
-use crate::RoundNum;
+use crate::{CoordNum, RoundNum};
 
 use super::io;
 
@@ -227,7 +227,12 @@ impl<R: RoundNum> WorkingDir<R> {
         Ok(results)
     }
 
-    pub fn log_application_of_at(&mut self, log_entry: &impl LogEntry, round_num: R) {
+    pub fn log_entry_application<C: CoordNum>(
+        &mut self,
+        round_num: R,
+        coord_num: C,
+        log_entry: &impl LogEntry,
+    ) {
         if self.current_applied_entry_log.is_some()
             && self.current_applied_entry_log
                 <= crate::util::try_usize_sub(round_num, self.log_keeping.entry_limit)
@@ -276,26 +281,29 @@ impl<R: RoundNum> WorkingDir<R> {
             }
         };
 
-        let offset = match Self::append_applied_entry_log_entry(path, file, round_num, log_entry) {
-            Ok(offset) => offset,
-            Err(err) => {
-                return warn!(
+        let offset =
+            match Self::append_applied_entry_log_entry(path, file, round_num, coord_num, log_entry)
+            {
+                Ok(offset) => offset,
+                Err(err) => {
+                    return warn!(
                     "Failed to append entry `{:?}` for round `{}` to applied entry log `{}`: {:?}",
                     log_entry.id(),
                     round_num,
                     path.display(),
                     err
                 );
-            }
-        };
+                }
+            };
 
         self.applied_entry_index.insert(round_num, (handle, offset));
     }
 
-    fn append_applied_entry_log_entry(
+    fn append_applied_entry_log_entry<C: CoordNum>(
         path: &path::Path,
         file: &mut fs::File,
         round_num: R,
+        coord_num: C,
         log_entry: &impl LogEntry,
     ) -> Result<u64, IoError> {
         let offset = io::seek_in(path, file, SeekFrom::End(0))?;
@@ -306,6 +314,7 @@ impl<R: RoundNum> WorkingDir<R> {
         let mut checksumming_write = io::Checksumming::from(file);
 
         io::write_u128_to(path, &mut checksumming_write, round_num)?;
+        io::write_u128_to(path, &mut checksumming_write, coord_num)?;
 
         io::copy_from_to(
             format!("log-entry://{:?}", log_entry.id()),
@@ -345,7 +354,10 @@ impl<R: RoundNum> WorkingDir<R> {
         Ok((round_num, &*path, file))
     }
 
-    pub fn try_get_entry_applied_in<E: LogEntry>(&mut self, round_num: R) -> Option<Arc<E>> {
+    pub fn try_get_entry_applied_in<C: CoordNum, E: LogEntry>(
+        &mut self,
+        round_num: R,
+    ) -> Option<(C, Arc<E>)> {
         let (log_handle, offset) = match self.applied_entry_index.get(&round_num) {
             Some(v) => v,
             None => {
@@ -358,8 +370,8 @@ impl<R: RoundNum> WorkingDir<R> {
             .get_mut(&log_handle)
             .expect("applied entry log given handle");
 
-        let log_entry = match Self::read_log_entry_from(path, file, *offset) {
-            Ok(log_entry) => log_entry,
+        match Self::read_applied_entry(path, file, *offset) {
+            Ok(log_entry) => Some(log_entry),
             Err(err) => {
                 warn!(
                     "Failed to load log entry from offset `{}` in `{}`: {:?}",
@@ -368,23 +380,33 @@ impl<R: RoundNum> WorkingDir<R> {
                     err
                 );
 
-                return None;
+                None
             }
-        };
-
-        Some(Arc::new(log_entry))
+        }
     }
 
-    fn read_log_entry_from<E: LogEntry>(
+    fn read_applied_entry<C: CoordNum, E: LogEntry>(
         path: &path::Path,
         file: &mut fs::File,
         offset: u64,
-    ) -> Result<E, IoError> {
+    ) -> Result<(C, Arc<E>), IoError> {
+        // TODO calculate and compare the checksum
         io::seek_in(path, file, SeekFrom::Start(offset))?;
-
-        io::recover_log_entry(futures::executor::block_on(E::from_reader(
+        let coord_num = io::try_read_u128_from(path, file)?.ok_or_else(|| {
+            IoError::new(
+                "Could not read coordination number.",
+                std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    format!("Applied entry log `{}` is truncated.", path.display()),
+                ),
+            )
+        })?;
+        let coord_num = io::recover_coord_num(coord_num)?;
+        let log_entry = io::recover_log_entry(futures::executor::block_on(E::from_reader(
             futures::io::AllowStdIo::new(file),
-        )))
+        )))?;
+
+        Ok((coord_num, Arc::new(log_entry)))
     }
 }
 

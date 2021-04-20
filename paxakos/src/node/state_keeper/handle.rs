@@ -154,10 +154,11 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
     pub fn commit_entry(
         &self,
         round_num: R,
+        coord_num: C,
         entry: Arc<LogEntryOf<S>>,
     ) -> impl Future<Output = Result<Commit<S>, CommitError<S>>> {
         let recv = self.await_commit_of(entry.id());
-        let commit = self.handle_commit(round_num, entry);
+        let commit = self.handle_commit(round_num, coord_num, entry);
 
         async move {
             let recv = recv.await;
@@ -168,10 +169,12 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
     pub fn handle_commit(
         &self,
         round_num: R,
+        coord_num: C,
         entry: impl Into<Arc<LogEntryOf<S>>>,
     ) -> impl Future<Output = Result<(), CommitError<S>>> {
         crate::dispatch_state_keeper_req!(self, CommitEntry, {
             round_num,
+            coord_num,
             entry: entry.into(),
         })
     }
@@ -179,10 +182,12 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
     pub fn handle_commit_by_id(
         &self,
         round_num: R,
+        coord_num: C,
         entry_id: <LogEntryOf<S> as LogEntry>::Id,
     ) -> impl Future<Output = Result<(), CommitError<S>>> {
         crate::dispatch_state_keeper_req!(self, CommitEntryById, {
             round_num,
+            coord_num,
             entry_id,
         })
     }

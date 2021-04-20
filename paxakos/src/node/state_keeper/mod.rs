@@ -129,7 +129,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     round_num_requests: VecDeque<(RangeInclusive<R>, ResponseSender<S, R, C>)>,
     acquired_round_nums: HashSet<R>,
 
-    pending_commits: BTreeMap<R, (std::time::Instant, Arc<LogEntryOf<S>>)>,
+    pending_commits: BTreeMap<R, (std::time::Instant, C, Arc<LogEntryOf<S>>)>,
     awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S>>>,
 
     participaction: Participaction<R>,
@@ -137,7 +137,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     status: NodeStatus,
     event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
 
-    applied_entry_buffer: VecDeque<Arc<LogEntryOf<S>>>,
+    applied_entry_buffer: VecDeque<(C, Arc<LogEntryOf<S>>)>,
 
     #[cfg(feature = "tracer")]
     tracer: Option<Box<dyn Tracer<R, C, LogEntryIdOf<S>>>>,
@@ -507,20 +507,29 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 Response::AcceptEntries(self.accept_entries(coord_num, entries))
             }
 
-            Request::CommitEntry { round_num, entry } => {
-                Response::CommitEntry(self.commit_entry(round_num, entry))
+            Request::CommitEntry {
+                round_num,
+                coord_num,
+                entry,
+            } => {
+                self.observe_coord_num(coord_num);
+
+                Response::CommitEntry(self.commit_entry(round_num, coord_num, entry))
             }
 
             Request::CommitEntryById {
                 round_num,
+                coord_num,
                 entry_id,
             } => {
+                self.observe_coord_num(coord_num);
+
                 // We _should_ only get a request to commit _by id_ if we accepted the entry.
                 // It's unlikely that we would accept another entry between then and the commit.
                 // That means we can just look the entry up by the round number.
                 match self.accepted_entries.get(&round_num).cloned() {
                     Some((_, e)) if e.id() == entry_id => {
-                        Response::CommitEntryById(self.commit_entry(round_num, e))
+                        Response::CommitEntryById(self.commit_entry(round_num, coord_num, e))
                     }
                     _ => Response::CommitEntryById(Err(CommitError::InvalidEntryId(entry_id))),
                 }
@@ -664,11 +673,12 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 self.try_get_applied_entry(round_num),
             ));
         } else if let btree_map::Entry::Occupied(e) = self.pending_commits.entry(round_num) {
-            let log_entry = Arc::clone(&e.get().1);
+            let coord_num = e.get().1;
+            let log_entry = Arc::clone(&e.get().2);
 
             return Err(PrepareError::Converged(
                 self.highest_observed_coord_num,
-                Some(log_entry),
+                Some((coord_num, log_entry)),
             ));
         }
 
@@ -744,10 +754,10 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         }
     }
 
-    fn try_get_applied_entry(&mut self, round_num: R) -> Option<Arc<LogEntryOf<S>>> {
+    fn try_get_applied_entry(&mut self, round_num: R) -> Option<(C, Arc<LogEntryOf<S>>)> {
         if let Some(offset) = crate::util::try_usize_delta(self.state_round, round_num) {
-            if let Some(e) = self.applied_entry_buffer.get(offset) {
-                return Some(Arc::clone(e));
+            if let Some((c, e)) = self.applied_entry_buffer.get(offset) {
+                return Some((*c, Arc::clone(e)));
             }
         }
 
@@ -770,11 +780,12 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 self.try_get_applied_entry(round_num),
             ))
         } else if let btree_map::Entry::Occupied(e) = self.pending_commits.entry(round_num) {
-            let log_entry = Arc::clone(&e.get().1);
+            let coord_num = e.get().1;
+            let log_entry = Arc::clone(&e.get().2);
 
             Err(AcceptError::Converged(
                 self.highest_observed_coord_num,
-                Some(log_entry),
+                Some((coord_num, log_entry)),
             ))
         } else {
             let relevant_promise =
@@ -862,6 +873,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     fn commit_entry(
         &mut self,
         round_num: R,
+        coord_num: C,
         entry: Arc<LogEntryOf<S>>,
     ) -> Result<(), CommitError<S>> {
         #[cfg(feature = "tracer")]
@@ -897,7 +909,8 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             .unwrap_or_else(std::time::Instant::now);
 
         debug!("Queuing entry {:?} for round {}.", entry, round_num);
-        self.pending_commits.insert(round_num, (gap_time, entry));
+        self.pending_commits
+            .insert(round_num, (gap_time, coord_num, entry));
 
         // Are we missing commits between this one and the last one applied?
         if round_num > self.state_round + One::one() {
@@ -930,7 +943,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         let mut round = self.state_round;
         let mut state = Arc::try_unwrap(state).unwrap_or_else(|s| (&*s).clone());
 
-        while let Some((_, entry)) = self.pending_commits.remove(&(round + One::one())) {
+        while let Some((_, coord_num, entry)) = self.pending_commits.remove(&(round + One::one())) {
             round = round + One::one();
 
             let awaiters = self.awaiters.remove(&entry.id()).unwrap_or_default();
@@ -971,11 +984,12 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 if self.applied_entry_buffer.len() == self.applied_entry_buffer.capacity() {
                     self.applied_entry_buffer.pop_back();
                 }
-                self.applied_entry_buffer.push_front(Arc::clone(&entry));
+                self.applied_entry_buffer
+                    .push_front((coord_num, Arc::clone(&entry)));
             }
 
             if let Some(working_dir) = self.working_dir.as_mut() {
-                working_dir.log_application_of_at(&*entry, round);
+                working_dir.log_entry_application(round, coord_num, &*entry);
             }
 
             crate::emit!(

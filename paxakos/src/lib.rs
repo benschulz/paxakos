@@ -459,7 +459,7 @@
 //!       acknowledge your bid to become leader and give you my vote. However,
 //!       in return you must respect these previous commitments I've made."
 //!
-//!    2. Rejection `(CoordNum, Option<LogEntry>)`
+//!    2. Rejection `(CoordNum, Option<(CoordNum, LogEntry)>)`
 //!
 //!       A rejection is sent with the highest observed coordination number so
 //!       far. For the special case that the round has already converged and the
@@ -485,7 +485,7 @@
 //!    accepted the entry. Otherwise it will respond with a rejection.
 //!
 //!    1. Acceptance `()`
-//!    2. Rejection `(CoordNum, Option<LogEntry>)`
+//!    2. Rejection `(CoordNum, Option<(CoordNum, LogEntry)>)`
 //!
 //!       See 2.2.
 //!
@@ -742,7 +742,7 @@ pub enum Rejection<C, E> {
     },
     Converged {
         coord_num: C,
-        log_entry: Option<Arc<E>>,
+        log_entry: Option<(C, Arc<E>)>,
     },
 }
 

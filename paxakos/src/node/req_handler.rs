@@ -47,18 +47,24 @@ impl<S: State, R: RoundNum, C: CoordNum> RequestHandler<S, R, C> {
     pub fn handle_commit<I: Into<Arc<LogEntryOf<S>>>>(
         &self,
         round_num: R,
+        coord_num: C,
         entry: I,
     ) -> impl Future<Output = Result<(), CommitError<S>>> {
-        self.0.handle_commit(round_num, entry)
+        self.0.handle_commit(round_num, coord_num, entry)
     }
 
     /// Asks this node to answer a `send_commit_by_id` sent by another node.
     pub fn handle_commit_by_id(
         &self,
         round_num: R,
+        coord_num: C,
         entry_id: LogEntryIdOf<S>,
     ) -> impl Future<Output = Result<(), CommitError<S>>> {
         let handle = self.0.clone();
-        async move { handle.handle_commit_by_id(round_num, entry_id).await }
+        async move {
+            handle
+                .handle_commit_by_id(round_num, coord_num, entry_id)
+                .await
+        }
     }
 }

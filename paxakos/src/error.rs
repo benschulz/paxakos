@@ -92,7 +92,7 @@ pub enum PrepareError<S: State, C: CoordNum> {
     Conflict(C),
 
     #[error("round already converged")]
-    Converged(C, Option<Arc<LogEntryOf<S>>>),
+    Converged(C, Option<(C, Arc<LogEntryOf<S>>)>),
 
     #[error("node is passive")]
     Passive,
@@ -119,7 +119,7 @@ pub enum AcceptError<S: State, C: CoordNum> {
     Conflict(C),
 
     #[error("round already converged")]
-    Converged(C, Option<Arc<LogEntryOf<S>>>),
+    Converged(C, Option<(C, Arc<LogEntryOf<S>>)>),
 
     #[error("node is passive")]
     Passive,

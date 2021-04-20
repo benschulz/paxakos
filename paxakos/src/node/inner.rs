@@ -179,6 +179,7 @@ where
         let commit = self
             .commit_entry(
                 round_num,
+                coord_num,
                 converged_log_entry,
                 other_nodes,
                 accepted,
@@ -366,10 +367,14 @@ where
                     .await?;
 
                 if let Rejection::Converged {
-                    log_entry: Some(e), ..
+                    log_entry: Some((coord_num, entry)),
+                    ..
                 } = rejection
                 {
-                    let _ = self.state_keeper.commit_entry(round_num, e).await;
+                    let _ = self
+                        .state_keeper
+                        .commit_entry(round_num, coord_num, entry)
+                        .await;
                 }
 
                 Err(AppendError::Lost)
@@ -417,12 +422,12 @@ where
                         .await?;
 
                     if let Rejection::Converged {
-                        log_entry: Some(log_entry),
+                        log_entry: Some((coord_num, entry)),
                         ..
                     } = &rejection
                     {
                         self.state_keeper
-                            .commit_entry(round_num, Arc::clone(log_entry))
+                            .commit_entry(round_num, *coord_num, Arc::clone(entry))
                             .await?;
                     }
 
@@ -535,10 +540,12 @@ where
                     }
                 }
                 Ok(AcceptanceOrRejection::Rejection(Rejection::Converged {
-                    log_entry: Some(log_entry),
+                    log_entry: Some((coord_num, entry)),
                     ..
                 })) => {
-                    self.state_keeper.commit_entry(round_num, log_entry).await?;
+                    self.state_keeper
+                        .commit_entry(round_num, coord_num, entry)
+                        .await?;
 
                     return Err(AppendError::Converged);
                 }
@@ -567,9 +574,11 @@ where
         panic!("await_accepted_quorum: insufficient pending_responses");
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn commit_entry(
         self: Rc<Self>,
         round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
         log_entry: Arc<LogEntryOf<S>>,
         mut other_nodes: Vec<NodeOf<S>>,
         accepted: HashSet<NodeIdOf<S>>,
@@ -605,7 +614,7 @@ where
 
         self.communicator
             .borrow_mut()
-            .send_commit_by_id(&accepted, round_num, cle_id)
+            .send_commit_by_id(&accepted, round_num, coord_num, cle_id)
             .into_iter()
             .for_each(|(_n, f)| commits.submit(f.map(|_| ())));
 
@@ -614,6 +623,7 @@ where
             .send_commit(
                 &rejected_or_failed,
                 round_num,
+                coord_num,
                 Arc::clone(&log_entry_for_others),
             )
             .into_iter()
@@ -629,7 +639,7 @@ where
                         let commit = self
                             .communicator
                             .borrow_mut()
-                            .send_commit_by_id(&[node], round_num, cle_id)
+                            .send_commit_by_id(&[node], round_num, coord_num, cle_id)
                             .into_iter()
                             .next()
                             .expect("Expected exactly one element.")
@@ -642,7 +652,12 @@ where
                         let commit = self
                             .communicator
                             .borrow_mut()
-                            .send_commit(&[node], round_num, Arc::clone(&log_entry_for_others))
+                            .send_commit(
+                                &[node],
+                                round_num,
+                                coord_num,
+                                Arc::clone(&log_entry_for_others),
+                            )
                             .into_iter()
                             .next()
                             .expect("Expected exactly one element.")
@@ -657,6 +672,8 @@ where
 
         commits.submit(pending);
 
-        Ok(state_keeper.commit_entry(round_num, log_entry).await?)
+        Ok(state_keeper
+            .commit_entry(round_num, coord_num, log_entry)
+            .await?)
     }
 }
