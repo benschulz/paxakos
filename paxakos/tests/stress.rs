@@ -118,7 +118,7 @@ fn spawn_node(
                             *deadline = Some(futures_timer::Delay::new(deadline_duration));
 
                             // make sure that everyone gets a chance to finish
-                            communicator.faiure_rate(0.0);
+                            communicator.failure_rate(0.0);
                             queued_ops.push(CalcOp::Div(1.0, Uuid::new_v4()));
                         }
                     }

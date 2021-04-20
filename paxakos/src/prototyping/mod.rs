@@ -100,7 +100,7 @@ impl<S: State, R: RoundNum, C: CoordNum> DirectCommunicator<S, R, C> {
     }
 
     #[allow(dead_code)]
-    pub fn faiure_rate(&mut self, failure_rate: f32) {
+    pub fn failure_rate(&mut self, failure_rate: f32) {
         self.failure_rate.set(failure_rate);
     }
 
