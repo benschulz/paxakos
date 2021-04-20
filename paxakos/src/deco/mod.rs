@@ -1,9 +1,9 @@
-mod auto_fill_gaps;
+mod fill_gaps;
 
 use crate::error::SpawnError;
 use crate::Node;
 
-pub use auto_fill_gaps::{AutoFillGaps, AutoFillGapsBuilderExt};
+pub use fill_gaps::{FillGaps, FillGapsBuilderExt};
 
 pub trait Decoration
 where

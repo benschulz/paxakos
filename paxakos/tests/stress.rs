@@ -9,7 +9,7 @@ use rand::seq::SliceRandom;
 use uuid::Uuid;
 
 use paxakos::append::AppendArgs;
-use paxakos::deco::AutoFillGapsBuilderExt;
+use paxakos::deco::FillGapsBuilderExt;
 use paxakos::prototyping::{DirectCommunicator, PrototypingNode, RetryIndefinitely};
 use paxakos::{Node, NodeBuilder, NodeInfo, Shutdown};
 

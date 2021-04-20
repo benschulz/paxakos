@@ -67,7 +67,7 @@ fn later_gap_is_younger() {
 fn auto_fill_gaps() {
     let node_info = PrototypingNode::new();
 
-    use paxakos::deco::AutoFillGapsBuilderExt;
+    use paxakos::deco::FillGapsBuilderExt;
 
     let (req_handler, mut node) = futures::executor::block_on(
         paxakos::node_builder()
