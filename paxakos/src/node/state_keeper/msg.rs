@@ -72,6 +72,11 @@ pub enum Request<S: State, R: RoundNum, C: CoordNum> {
         entry_id: LogEntryIdOf<S>,
     },
 
+    AssumeLeadership {
+        round_num: R,
+        coord_num: C,
+    },
+
     ForceActive,
 
     Shutdown,
@@ -104,6 +109,8 @@ pub enum Response<S: State, R: RoundNum, C: CoordNum> {
     CommitEntry(Result<(), CommitError<S>>),
 
     CommitEntryById(Result<(), CommitError<S>>),
+
+    AssumeLeadership(Result<(), !>),
 
     ForceActive(Result<bool, !>),
 

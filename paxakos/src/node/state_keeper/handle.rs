@@ -192,6 +192,21 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
         })
     }
 
+    pub fn assume_leadership(
+        &self,
+        round_num: R,
+        coord_num: C,
+    ) -> impl Future<Output = Result<(), ShutDown>> {
+        crate::dispatch_state_keeper_req!(
+            self,
+            AssumeLeadership,
+            {
+                round_num,
+                coord_num,
+            }
+        )
+    }
+
     pub fn force_active(&self) -> impl Future<Output = Result<bool, ()>> {
         crate::dispatch_state_keeper_req!(self, ForceActive).map_err(ShutDown::into_unit::<bool>)
     }

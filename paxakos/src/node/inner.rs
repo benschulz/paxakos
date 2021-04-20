@@ -375,6 +375,10 @@ where
                 self.term_start.set(round_num);
                 self.campaigned_on.set(coord_num);
 
+                self.state_keeper
+                    .assume_leadership(round_num, coord_num)
+                    .await?;
+
                 Ok(converged_log_entry)
             }
 

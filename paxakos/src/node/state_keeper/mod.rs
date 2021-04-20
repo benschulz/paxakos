@@ -79,6 +79,9 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     release_sender: mpsc::UnboundedSender<Release<R>>,
     release_receiver: mpsc::UnboundedReceiver<Release<R>>,
 
+    // TODO persist in snapshots
+    highest_observed_round_num: Option<R>,
+
     /// The highest coordination _observed_ number so far.
     ///
     /// Naively it might make sense to track these in a BTreeMap, similar to
@@ -119,6 +122,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     /// [concurrency]: crate::state::State::concurrency
     promises: BTreeMap<R, C>,
     accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
+    leadership: (R, C),
 
     /// Round number of the last applied log entry, initially `Zero::zero()`.
     state_round: R,
@@ -258,6 +262,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
                 promises,
                 accepted_entries,
+                leadership: (Zero::zero(), Zero::zero()),
 
                 state_round,
                 state,
@@ -265,6 +270,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 round_num_requests: VecDeque::new(),
                 acquired_round_nums: HashSet::new(),
 
+                highest_observed_round_num: None,
                 highest_observed_coord_num,
 
                 pending_commits: BTreeMap::new(),
@@ -303,6 +309,27 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             self.apply_commits();
             self.release_round_nums();
             self.hand_out_round_nums();
+
+            let expected_status = match &self.state {
+                Some(state) => {
+                    if self
+                        .highest_observed_round_num
+                        .unwrap_or_else(Bounded::max_value)
+                        > self.state_round + into_round_num(state.concurrency())
+                    {
+                        NodeStatus::Lagging
+                    } else if self.highest_observed_coord_num == self.leadership.1 {
+                        NodeStatus::Leading
+                    } else {
+                        NodeStatus::Following
+                    }
+                }
+                None => NodeStatus::Disoriented,
+            };
+
+            if self.status != expected_status {
+                self.emit_status_change(expected_status);
+            }
         }
 
         self.shut_down()
@@ -480,6 +507,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 round_num,
                 coord_num,
             } => {
+                self.observe_round_num(round_num);
                 self.observe_coord_num(coord_num);
 
                 let result = self.prepare_entry(round_num, coord_num);
@@ -496,6 +524,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 coord_num,
                 entry,
             } => {
+                self.observe_round_num(round_num);
                 self.observe_coord_num(coord_num);
 
                 let result = self.accept_entry(round_num, coord_num, entry);
@@ -506,7 +535,13 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
                 Response::AcceptEntry(result)
             }
-            Request::AcceptEntries { coord_num, entries } => {
+            Request::AcceptEntries {
+                coord_num,
+                mut entries,
+            } => {
+                entries.sort_unstable_by_key(|(r, _)| *r);
+
+                self.observe_round_num(entries[entries.len() - 1].0);
                 self.observe_coord_num(coord_num);
 
                 // No need to emit multiple events. If there are entries for whose round an
@@ -532,6 +567,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 coord_num,
                 entry,
             } => {
+                self.observe_round_num(round_num);
                 self.observe_coord_num(coord_num);
 
                 let result = self.commit_entry(round_num, coord_num, entry);
@@ -548,6 +584,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 coord_num,
                 entry_id,
             } => {
+                self.observe_round_num(round_num);
                 self.observe_coord_num(coord_num);
 
                 // We _should_ only get a request to commit _by id_ if we accepted the entry.
@@ -565,6 +602,15 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                     }
                     _ => Response::CommitEntryById(Err(CommitError::InvalidEntryId(entry_id))),
                 }
+            }
+
+            Request::AssumeLeadership {
+                round_num,
+                coord_num,
+            } => {
+                self.leadership = (round_num, coord_num);
+
+                Response::AssumeLeadership(Ok(()))
             }
 
             Request::ForceActive => Response::ForceActive({
@@ -653,6 +699,13 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         }
     }
 
+    fn observe_round_num(&mut self, round_num: R) {
+        self.highest_observed_round_num = self
+            .highest_observed_round_num
+            .map(|r| std::cmp::max(r, round_num))
+            .or(Some(round_num));
+    }
+
     fn observe_coord_num(&mut self, coord_num: C) {
         self.highest_observed_coord_num = std::cmp::max(self.highest_observed_coord_num, coord_num);
     }
@@ -708,10 +761,6 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 state
             })
         );
-
-        if self.status != NodeStatus::Lagging {
-            self.emit_status_change(NodeStatus::Lagging);
-        }
 
         let extraneous_commits: Vec<_> = self
             .pending_commits
@@ -871,10 +920,8 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     fn accept_entries(
         &mut self,
         coord_num: C,
-        mut entries: Vec<(R, Arc<LogEntryOf<S>>)>,
+        entries: Vec<(R, Arc<LogEntryOf<S>>)>,
     ) -> Result<usize, AcceptError<S, C>> {
-        entries.sort_unstable_by_key(|e| e.0);
-
         let first_round = entries[0].0;
 
         if self.passive_for(first_round) {
@@ -1073,13 +1120,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         self.clean_up_after_applies();
 
         if !self.pending_commits.is_empty() {
-            if self.status != NodeStatus::Lagging {
-                self.emit_status_change(NodeStatus::Lagging);
-            }
-
             crate::emit_gaps!(self, round);
-        } else if self.status != NodeStatus::Following {
-            self.emit_status_change(NodeStatus::Following);
         }
 
         (round, Arc::new(state))

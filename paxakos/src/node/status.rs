@@ -1,5 +1,4 @@
 /// A node's status, usually `Leading` or `Following`.
-// TODO most states should expose a "since: Instant"
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NodeStatus {
     /// The node has no state and needs to install a snapshot.
@@ -8,11 +7,13 @@ pub enum NodeStatus {
     /// The node appears to be up to date.
     Following,
 
-    /// The node has gaps in its log and its state may not be up to date.
+    /// The node has state but it has *definitely* fallen behind.
+    ///
+    /// A node is considered lagging when it has received a request for a round
+    /// outside its concurrency window.
     Lagging,
 
     /// The node committed the latest entry and no other node has been observed
     /// in an attempt to commit an entry for a later round.
-    // FIXME this status is currently never taken on
     Leading,
 }
