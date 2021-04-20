@@ -103,20 +103,6 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
         self.apply(log_entry, context).1
     }
 
-    /// Returns whether an entry with `log_entry_id` was applied to this state.
-    ///
-    /// This method is called before a node attempts to append an entry to the
-    /// log. When `false` is returned the node proceeds in its attempt.
-    /// Otherwise the attempt is abandoned with an appropriate error.
-    ///
-    /// Careful: Please note that this is strictly an optimization. There is no
-    /// way to prevent an event from being applied multiple times unless the
-    /// concurrency level is reduced to one.
-    // TODO this method is no longer used, consider removing it entirely
-    fn contains(&self, _log_entry_id: <Self::LogEntry as LogEntry>::Id) -> Result<bool, ()> {
-        Ok(false)
-    }
-
     /// Returns the current level of concurrency, defaults to one.
     fn concurrency(&self) -> std::num::NonZeroUsize {
         std::num::NonZeroUsize::new(1).unwrap()

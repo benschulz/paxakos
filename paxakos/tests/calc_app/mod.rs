@@ -131,10 +131,6 @@ impl State for CalcState {
         (self.value, (self.value, self.hasher.finalize()))
     }
 
-    fn contains(&self, _log_entry_id: <Self::LogEntry as LogEntry>::Id) -> Result<bool, ()> {
-        unimplemented!()
-    }
-
     fn concurrency(&self) -> std::num::NonZeroUsize {
         self.concurrency
     }
