@@ -26,7 +26,7 @@ fn stress_test() {
 
     let mut consistency_checker = StabilityChecker::new();
     let communicator =
-        DirectCommunicator::with_characteristics(0.1, rand_distr::Normal::new(8.0, 3.0).unwrap());
+        DirectCommunicator::with_characteristics(0.1, rand_distr::Normal::new(5.0, 3.0).unwrap());
 
     let node_count = 5;
     let ops_per_node = 70;

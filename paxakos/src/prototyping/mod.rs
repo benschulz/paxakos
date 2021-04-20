@@ -155,6 +155,8 @@ macro_rules! send_fn {
                         }
                         .await;
 
+                        futures_timer::Delay::new(delay(&this.e2e_delay_ms_distr.get())).await;
+
                         if roll_for_failure(this.failure_rate.get()) {
                             return Err(DirectCommunicatorError::Timeout);
                         }
