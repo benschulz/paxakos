@@ -1,9 +1,11 @@
 mod fill_gaps;
+mod track_leadership;
 
 use crate::error::SpawnError;
 use crate::Node;
 
 pub use fill_gaps::{FillGaps, FillGapsBuilderExt};
+pub use track_leadership::{LeadershipAwareNode, TrackLeadership, TrackLeadershipBuilderExt};
 
 pub trait Decoration
 where

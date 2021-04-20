@@ -338,6 +338,7 @@
 
 //
 // Nightly features
+#![feature(array_windows)]
 #![feature(btree_drain_filter)]
 #![feature(drain_filter)]
 #![feature(map_first_last)]
