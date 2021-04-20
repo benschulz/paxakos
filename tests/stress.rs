@@ -108,7 +108,7 @@ fn spawn_node(
             while let std::task::Poll::Ready(e) = node.as_mut().unwrap().poll_events(cx) {
                 match (&mut deadline, e) {
                     (deadline @ None, paxakos::Event::Apply { result, .. }) => {
-                        if target - result.0 < f64::EPSILON {
+                        if (target - result.0).abs() < f64::EPSILON {
                             tracing::info!(
                                 "Node {} reached target, sets deadline.",
                                 node_info.id()
@@ -187,7 +187,7 @@ fn spawn_node(
 
         tracing::info!("Node {} is shut down.", node_info.id());
 
-        assert!(target - snapshot.state().value() < f64::EPSILON);
+        assert!((target - snapshot.state().value()).abs() < f64::EPSILON);
 
         hash_at_target.unwrap()
     })
