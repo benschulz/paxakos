@@ -296,14 +296,49 @@
 //!    inform other nodes as well. Nodes who sent an acceptance will only be
 //!    sent the log entry's id, others will receive the full entry.
 //!
-//! ## Status
+//! ## Project Status
 //!
-//! The core algorithm of Paxakos is reasonably well-tested. However,
-//! "ancillary" features such as snapshots and passive mode are not well tested
-//! and presumably contain bugs. Also, APIs and serialized representations will
-//! likely change.
+//! This section examines different aspects of paxakos, how far along they are
+//! and what's missing or in need of improvement.
 //!
-//! **Use at your own risk.**
+//! ### ☀️ Consensus Implementation ☀️
+//!
+//! The core algorithm of paxakos is well-tested and has been exercised a lot.
+//! There is reason to be confident in its correctness.
+//!
+//! ### 🌧️ Passive Mode 🌧️
+//!
+//! When a node shuts down, it returns a final snapshot. This snapshot can be
+//! used to restart the node. When restarted in such a fashion, the node is
+//! aware of any and all commitments it made previously.
+//!
+//! Conversely, when a node crashes and restarts off some other snapshot, it is
+//! unaware of any commitments it made prior to crashing. To prevent the node
+//! from inadvertantly breaking any such commitments and introducing
+//! inconsistencies, it is started in passive mode.
+//!
+//! While in passive mode, a node does not vote and does not accept any entries.
+//! It remains in this mode until all rounds it may have participated in before
+//! have been settled.
+//!
+//! The APIs and a crude implementation exist, but the implementation is
+//! **broken and untested**.
+//!
+//! ### 🌧️ Serialization 🌧️
+//!
+//! Snapshot serialization needs to be reworked to allow for backward compat.
+//!
+//! ### ⛅ API Stability ⛅
+//!
+//! The API has been fairly stable and there is no reason to expect big changes.
+//! The decorations may be reworked so that their configuration *can* be moved
+//! into the `State`.
+//!
+//! ### ☁️ Efficiency ☁️
+//!
+//! With its support for concurrency, paxakos has the potential to be very
+//! efficient. To fully unlock this potential, an implementation of master
+//! leases is required.
 //!
 //! ### Nightly Features
 //!
@@ -312,18 +347,16 @@
 //!
 //! # Future Direction
 //!
-//! Paxakos will probably remain dormant for the near future. This is because
-//! it needs to see some use and experimentation. Likely exceptions are the
-//! following changes.
+//! This is a side project. I will work on the following as my time allows (in
+//! no particular order).
 //!
-//! - Improving Compile Times
+//! - Passive Mode
 //!
-//!   Any suggestions as to how comile times may be reduced are welcome. Compile
-//!   times of _dependent_ projects are the primary concern.
+//! - Tests
 //!
 //! - Adding comments and documentation
 //!
-//! - Adding convenience methods and decorations.
+//! - Additional decorations
 //!
 //! - Support for _Master Leases_ (see section 5.2 of [Paxos Made
 //!   Live][paxos-made-live]).
