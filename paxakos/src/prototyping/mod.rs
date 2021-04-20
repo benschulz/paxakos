@@ -53,7 +53,7 @@ impl RetryPolicy for RetryIndefinitely {
         if self.0 > 0 {
             use rand::Rng;
 
-            let delay = rand::thread_rng().gen_range(0, self.0);
+            let delay = rand::thread_rng().gen_range(0..=self.0);
             let delay = std::time::Duration::from_millis(delay);
 
             futures_timer::Delay::new(delay).await;
