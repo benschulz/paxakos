@@ -266,6 +266,8 @@ where
             }
             Importance::MaintainLeadership(peeryness) => {
                 if peeryness == Peeryness::Peery && !other_nodes.is_empty() {
+                    let coord_num = self.campaigned_on.get();
+
                     let pending_responses = self
                         .communicator
                         .borrow_mut()
