@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use tracing::{debug, warn};
 
-use crate::error::{IoError, SpawnError};
+use crate::error::{BoxError, IoError, SpawnError};
 use crate::log::{LogEntry, LogKeeping};
 use crate::{CoordNum, RoundNum};
 
@@ -402,9 +402,10 @@ impl<R: RoundNum> WorkingDir<R> {
             )
         })?;
         let coord_num = io::recover_coord_num(coord_num)?;
-        let log_entry = io::recover_log_entry(futures::executor::block_on(E::from_reader(
-            futures::io::AllowStdIo::new(file),
-        )))?;
+        let log_entry = io::recover_log_entry(
+            futures::executor::block_on(E::from_reader(futures::io::AllowStdIo::new(file)))
+                .map_err::<BoxError, _>(|e| Box::new(e)),
+        )?;
 
         Ok((coord_num, Arc::new(log_entry)))
     }

@@ -1,6 +1,7 @@
 #![cfg(all(feature = "prototyping", feature = "tracer"))]
 
 use std::collections::HashSet;
+use std::convert::Infallible;
 
 use async_trait::async_trait;
 use futures::io::AsyncRead;
@@ -22,10 +23,9 @@ pub enum CalcOp {
 impl LogEntry for CalcOp {
     type Id = Uuid;
     type Reader = std::io::Cursor<Vec<u8>>;
+    type ReadError = Infallible;
 
-    async fn from_reader<R: AsyncRead + Send + Unpin>(
-        _read: R,
-    ) -> Result<Self, paxakos::error::BoxError> {
+    async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
         unimplemented!()
     }
 
@@ -82,6 +82,7 @@ impl State for CalcState {
     type Context = ();
 
     type Reader = std::io::Cursor<Vec<u8>>;
+    type ReadError = Infallible;
 
     type LogEntry = CalcOp;
     type Outcome = f64;
@@ -89,9 +90,7 @@ impl State for CalcState {
 
     type Node = PrototypingNode;
 
-    async fn from_reader<R: AsyncRead + Send + Unpin>(
-        _read: R,
-    ) -> Result<Self, paxakos::error::BoxError> {
+    async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
         unimplemented!()
     }
 

@@ -1,6 +1,8 @@
 //! This example is for illustrative purposes only. Basing a chat protocol on
 //! consensus is a bad idea, but makes a neat example.
 
+use std::convert::Infallible;
+
 use async_trait::async_trait;
 use futures::io::AsyncRead;
 use paxakos::append::AppendArgs;
@@ -120,10 +122,9 @@ pub struct ChatMessage {
 impl LogEntry for ChatMessage {
     type Id = Uuid;
     type Reader = std::io::Cursor<Vec<u8>>;
+    type ReadError = Infallible;
 
-    async fn from_reader<R: AsyncRead + Send + Unpin>(
-        _read: R,
-    ) -> Result<Self, paxakos::error::BoxError> {
+    async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
         unimplemented!()
     }
 
@@ -157,6 +158,7 @@ impl State for ChatState {
     type Context = ();
 
     type Reader = std::io::Cursor<Vec<u8>>;
+    type ReadError = Infallible;
 
     type LogEntry = ChatMessage;
     type Outcome = ();
@@ -164,9 +166,7 @@ impl State for ChatState {
 
     type Node = PrototypingNode;
 
-    async fn from_reader<R: AsyncRead + Send + Unpin>(
-        _read: R,
-    ) -> Result<Self, paxakos::error::BoxError> {
+    async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
         unimplemented!()
     }
 

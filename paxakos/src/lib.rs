@@ -21,6 +21,7 @@
 //!
 //! ```
 //! use std::collections::HashSet;
+//! # use std::convert::Infallible;
 //!
 //! # use async_trait::async_trait;
 //! # use futures::io::AsyncRead;
@@ -40,8 +41,9 @@
 //!     type Id = Uuid;
 //!
 //! #   type Reader = std::io::Cursor<Vec<u8>>;
+//! #   type ReadError = Infallible;
 //! #   
-//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
+//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
 //! #       unimplemented!()
 //! #   }
 //! #   
@@ -80,10 +82,11 @@
 //!     type Event = f64;
 //!
 //! #   type Reader = std::io::Cursor<Vec<u8>>;
+//! #   type ReadError = Infallible;
 //! #   
 //! #   type Node = ();
 //! #   
-//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
+//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
 //! #       unimplemented!()
 //! #   }
 //! #   

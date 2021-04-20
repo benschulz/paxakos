@@ -8,15 +8,14 @@ use crate::Identifier;
 pub trait LogEntry: 'static + Clone + std::fmt::Debug + Send + Sync + Unpin {
     type Id: Identifier;
     type Reader: std::io::Read;
+    type ReadError: std::error::Error + Send + Sync + 'static;
 
     /// Deserializes log entry that was previously serialized using
     /// `to_reader()`.
     ///
     /// While implementations need not detect arbitrary data corruption, they
     /// must not panic.
-    async fn from_reader<R: AsyncRead + Send + Unpin>(
-        read: R,
-    ) -> Result<Self, crate::error::BoxError>;
+    async fn from_reader<R: AsyncRead + Send + Unpin>(read: R) -> Result<Self, Self::ReadError>;
 
     /// Number of bytes the result of `to_reader()` will emit.
     fn size(&self) -> usize;
