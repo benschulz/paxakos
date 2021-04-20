@@ -1,10 +1,12 @@
 mod fill_gaps;
+mod send_heartbeats;
 mod track_leadership;
 
 use crate::error::SpawnError;
 use crate::Node;
 
 pub use fill_gaps::{FillGaps, FillGapsBuilderExt};
+pub use send_heartbeats::{SendHeartbeats, SendHeartbeatsBuilderExt};
 pub use track_leadership::{LeadershipAwareNode, TrackLeadership, TrackLeadershipBuilderExt};
 
 pub trait Decoration
