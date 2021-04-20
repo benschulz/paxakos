@@ -7,13 +7,11 @@ use futures::io::{self, AsyncRead, AsyncReadExt};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
-use crate::communicator::{CoordNumOf, RoundNumOf};
-use crate::node::{CommunicatorOf, StateOf};
+use crate::node::{CoordNumOf, RoundNumOf, StateOf};
 use crate::state::{LogEntryOf, State};
 use crate::{CoordNum, RoundNum};
 
-pub type SnapshotFor<N> =
-    Snapshot<StateOf<N>, RoundNumOf<CommunicatorOf<N>>, CoordNumOf<CommunicatorOf<N>>>;
+pub type SnapshotFor<N> = Snapshot<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(

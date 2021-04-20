@@ -15,11 +15,9 @@ use std::sync::Arc;
 use futures::future::{BoxFuture, LocalBoxFuture};
 
 use crate::append::{AppendArgs, AppendError};
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
+use crate::communicator::Communicator;
 use crate::log::LogKeeping;
-#[cfg(feature = "tracer")]
-use crate::state::LogEntryIdOf;
-use crate::state::{ContextOf, LogEntryOf};
+use crate::state::ContextOf;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::{CoordNum, Event, RoundNum, State};
@@ -36,6 +34,17 @@ pub use status::NodeStatus;
 
 pub type StateOf<N> = <N as Node>::State;
 pub type CommunicatorOf<N> = <N as Node>::Communicator;
+
+pub type RoundNumOf<N> = crate::communicator::RoundNumOf<CommunicatorOf<N>>;
+pub type CoordNumOf<N> = crate::communicator::CoordNumOf<CommunicatorOf<N>>;
+
+pub type LogEntryOf<N> = crate::state::LogEntryOf<StateOf<N>>;
+pub type LogEntryIdOf<N> = crate::state::LogEntryIdOf<StateOf<N>>;
+pub type NodeOf<N> = crate::state::NodeOf<StateOf<N>>;
+pub type NodeIdOf<N> = crate::state::NodeIdOf<StateOf<N>>;
+pub type EventOf<N> = EventFor<StateOf<N>>;
+
+pub type EventFor<N> = Event<StateOf<N>, RoundNumOf<N>>;
 
 pub fn builder() -> builder::NodeBuilderBlank {
     builder::NodeBuilderBlank::new()
@@ -56,14 +65,9 @@ pub trait Node: Sized {
     ///
     /// It is important to poll the node's event stream because it implicitly
     /// drives the actions that keep the node up to date.
-    fn poll_events(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Event<Self::State, RoundNumOf<Self::Communicator>>>;
+    fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<EventFor<Self>>;
 
-    fn handle(
-        &self,
-    ) -> NodeHandle<Self::State, RoundNumOf<Self::Communicator>, CoordNumOf<Self::Communicator>>;
+    fn handle(&self) -> NodeHandle<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>;
 
     fn prepare_snapshot(
         &self,
@@ -71,20 +75,12 @@ pub trait Node: Sized {
 
     fn affirm_snapshot(
         &self,
-        snapshot: Snapshot<
-            Self::State,
-            RoundNumOf<Self::Communicator>,
-            CoordNumOf<Self::Communicator>,
-        >,
+        snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>>;
 
     fn install_snapshot(
         &self,
-        snapshot: Snapshot<
-            Self::State,
-            RoundNumOf<Self::Communicator>,
-            CoordNumOf<Self::Communicator>,
-        >,
+        snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>>;
 
     fn read_stale(&self) -> LocalBoxFuture<'static, Result<Arc<Self::State>, ()>>;
@@ -95,8 +91,8 @@ pub trait Node: Sized {
     //    narrow the output type)
     fn append(
         &self,
-        log_entry: impl Into<Arc<LogEntryOf<Self::State>>>,
-        args: AppendArgs<RoundNumOf<Self::Communicator>>,
+        log_entry: impl Into<Arc<LogEntryOf<Self>>>,
+        args: AppendArgs<RoundNumOf<Self>>,
     ) -> LocalBoxFuture<'static, Result<Commit<Self::State>, AppendError>>;
 
     fn shut_down(self) -> Self::Shutdown;
@@ -124,7 +120,7 @@ pub struct SpawnArgs<S: State, R: RoundNum, C: CoordNum> {
     pub participation: Participaction,
     pub log_keeping: LogKeeping,
     #[cfg(feature = "tracer")]
-    pub tracer: Option<Box<dyn Tracer<R, C, LogEntryIdOf<S>>>>,
+    pub tracer: Option<Box<dyn Tracer<R, C, crate::state::LogEntryIdOf<S>>>>,
 }
 
 // TODO expose current mode in Node/NodeHandle
