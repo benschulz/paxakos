@@ -291,6 +291,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             self,
             ShutdownEvent::Regular(Event::Init {
                 status: self.status,
+                round: self.state_round,
                 state: self.state.as_ref().map(Arc::clone),
             })
         );

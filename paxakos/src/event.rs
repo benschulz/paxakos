@@ -17,6 +17,7 @@ pub type ShutdownEventFor<S> = ShutdownEvent<
 pub enum Event<S: State, R: RoundNum> {
     Init {
         status: NodeStatus,
+        round: R,
         state: Option<Arc<S>>,
     },
 
