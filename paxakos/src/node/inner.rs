@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
+use futures::lock::Mutex;
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt;
 use num_traits::{One, Zero};
@@ -24,6 +25,8 @@ use super::commits::{Commit, Commits};
 use super::state_keeper::StateKeeperHandle;
 use super::NodeInfo;
 
+struct ElectionToken;
+
 pub struct NodeInner<S, C>
 where
     S: State,
@@ -34,6 +37,7 @@ where
 
     state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
 
+    election_lock: Mutex<ElectionToken>,
     term_start: Cell<RoundNumOf<C>>,
     campaigned_on: Cell<CoordNumOf<C>>,
 
@@ -57,6 +61,7 @@ where
 
             state_keeper,
 
+            election_lock: Mutex::new(ElectionToken),
             term_start: Cell::new(Zero::zero()),
             campaigned_on: Cell::new(Zero::zero()),
 
@@ -265,8 +270,40 @@ where
         // We're not leader for `round_num`, what now??
         match importance {
             Importance::GainLeadership => {
-                self.become_leader(round_num, coord_num, quorum_prime, other_nodes)
-                    .await
+                // We limit ourselves to one election at a time.
+                //
+                // This is relevant in the common case of multiple concurrent appends by one
+                // node. In such cases the mandate obtained by a successful election result of
+                // the first append can be used skip the election of any subsequent appends.
+                //
+                // Limiting ourselves to one election therefore reduces network traffic. It will
+                // even reduce latencies because the result of the first election will, on
+                // average, be available before the results of additional elections would have
+                // been.
+                //
+                // Also, subsequent elections would have failed, assuming they would have used
+                // the same coordination number (see StateKeeper::prepare_entry). This way we
+                // get to re-check for a mandate below.
+                //
+                // The downside is that latencies are increased in rare cases where multiple
+                // elections are required. This happens when the first append targets a later
+                // round or if a coordination number of another node is observed.
+                let election_token = self.election_lock.lock().await;
+
+                // Check whether we now have a valid mandate due to another election finishing
+                // while we waited on the lock.
+                if round_num >= self.term_start.get() && coord_num == self.campaigned_on.get() {
+                    return Ok(self.state_keeper.accepted_entry_of(round_num).await?);
+                }
+
+                self.become_leader(
+                    &*election_token,
+                    round_num,
+                    coord_num,
+                    quorum_prime,
+                    other_nodes,
+                )
+                .await
             }
             Importance::MaintainLeadership(peeryness) => {
                 if peeryness == Peeryness::Peery && !other_nodes.is_empty() {
@@ -298,6 +335,7 @@ where
 
     async fn become_leader(
         &self,
+        _election_token: &ElectionToken,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         quorum_prime: usize,
