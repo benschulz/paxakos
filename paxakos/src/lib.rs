@@ -34,13 +34,13 @@
 //!     Sub(f64, Uuid),
 //! }
 //!
-//! # #[async_trait(?Send)]
+//! # #[async_trait]
 //! impl LogEntry for CalcOp {
 //!     type Id = Uuid;
 //!
 //! #   type Reader = std::io::Cursor<Vec<u8>>;
 //! #   
-//! #   async fn from_reader<R: AsyncRead + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
+//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
 //! #       unimplemented!()
 //! #   }
 //! #   
@@ -70,7 +70,7 @@
 //!     value: f64,
 //! }
 //!
-//! # #[async_trait(?Send)]
+//! # #[async_trait]
 //! impl State for CalcState {
 //!     type Context = ();
 //!
@@ -82,7 +82,7 @@
 //! #   
 //! #   type Node = ();
 //! #   
-//! #   async fn from_reader<R: AsyncRead + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
+//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
 //! #       unimplemented!()
 //! #   }
 //! #   
@@ -250,12 +250,12 @@
 //!     message: String,
 //! }
 //!
-//! #[async_trait(?Send)]
+//! #[async_trait]
 //! impl LogEntry for ChatMessage {
 //!     type Id = Uuid;
 //! #   type Reader = std::io::Cursor<Vec<u8>>;
 //! #
-//! #   async fn from_reader<R: AsyncRead + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
+//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
 //! #       unimplemented!()
 //! #   }
 //! #
@@ -284,7 +284,7 @@
 //!     }
 //! }
 //!
-//! #[async_trait(?Send)]
+//! #[async_trait]
 //! impl State for ChatState {
 //!     type Context = ();
 //!
@@ -296,7 +296,7 @@
 //!
 //!     type Node = PrototypingNode;
 //!
-//! #   async fn from_reader<R: AsyncRead + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
+//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
 //! #       unimplemented!()
 //! #   }
 //! #

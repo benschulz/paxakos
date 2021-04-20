@@ -116,12 +116,14 @@ pub struct ChatMessage {
     message: String,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LogEntry for ChatMessage {
     type Id = Uuid;
     type Reader = std::io::Cursor<Vec<u8>>;
 
-    async fn from_reader<R: AsyncRead + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
+    async fn from_reader<R: AsyncRead + Send + Unpin>(
+        _read: R,
+    ) -> Result<Self, paxakos::error::BoxError> {
         unimplemented!()
     }
 
@@ -150,7 +152,7 @@ impl ChatState {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl State for ChatState {
     type Context = ();
 
@@ -162,7 +164,9 @@ impl State for ChatState {
 
     type Node = PrototypingNode;
 
-    async fn from_reader<R: AsyncRead + Unpin>(_read: R) -> Result<Self, paxakos::error::BoxError> {
+    async fn from_reader<R: AsyncRead + Send + Unpin>(
+        _read: R,
+    ) -> Result<Self, paxakos::error::BoxError> {
         unimplemented!()
     }
 

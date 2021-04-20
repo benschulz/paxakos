@@ -90,7 +90,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
         )
     }
 
-    pub async fn from_reader<T: AsyncRead + Unpin>(
+    pub async fn from_reader<T: AsyncRead + Send + Unpin>(
         mut read: T,
     ) -> Result<Self, crate::error::BoxError>
     where

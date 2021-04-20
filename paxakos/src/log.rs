@@ -4,7 +4,7 @@ use futures::io::AsyncRead;
 use crate::Identifier;
 
 /// Appended to the shared log and applied to the shared `State`.
-#[async_trait(?Send)]
+#[async_trait]
 pub trait LogEntry: 'static + Clone + std::fmt::Debug + Send + Sync + Unpin {
     type Id: Identifier;
     type Reader: std::io::Read;
@@ -14,7 +14,9 @@ pub trait LogEntry: 'static + Clone + std::fmt::Debug + Send + Sync + Unpin {
     ///
     /// While implementations need not detect arbitrary data corruption, they
     /// must not panic.
-    async fn from_reader<R: AsyncRead + Unpin>(read: R) -> Result<Self, crate::error::BoxError>;
+    async fn from_reader<R: AsyncRead + Send + Unpin>(
+        read: R,
+    ) -> Result<Self, crate::error::BoxError>;
 
     /// Number of bytes the result of `to_reader()` will emit.
     fn size(&self) -> usize;
