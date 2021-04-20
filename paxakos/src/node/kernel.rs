@@ -47,6 +47,10 @@ where
 
     type Shutdown = DefaultShutdown<S, C>;
 
+    fn id(&self) -> NodeIdOf<S> {
+        self.inner.id()
+    }
+
     fn status(&self) -> NodeStatus {
         self.status
     }

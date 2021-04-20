@@ -64,6 +64,10 @@ where
         }
     }
 
+    pub fn id(&self) -> NodeIdOf<S> {
+        self.id
+    }
+
     pub async fn append<A: ApplicableTo<S>>(
         self: Rc<Self>,
         applicable: A,

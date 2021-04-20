@@ -9,7 +9,7 @@ use crate::append::{AppendArgs, AppendError, DoNotRetry, Importance, Peeryness};
 use crate::applicable::ApplicableTo;
 use crate::communicator::{CoordNumOf, RoundNumOf};
 use crate::node::builder::NodeBuilderWithAll;
-use crate::node::{CommitFor, CommunicatorOf, EventFor, NodeStatus};
+use crate::node::{CommitFor, CommunicatorOf, EventFor, NodeIdOf, NodeStatus};
 use crate::node::{Snapshot, SnapshotFor, StateOf};
 use crate::state::LogEntryOf;
 use crate::{Node, NodeBuilder, RoundNum};
@@ -336,6 +336,10 @@ where
     type State = StateOf<N>;
     type Communicator = CommunicatorOf<N>;
     type Shutdown = <N as Node>::Shutdown;
+
+    fn id(&self) -> NodeIdOf<Self> {
+        self.decorated.id()
+    }
 
     fn status(&self) -> crate::NodeStatus {
         self.decorated.status()

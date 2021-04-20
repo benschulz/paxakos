@@ -61,6 +61,8 @@ pub trait Node: Sized {
 
     type Shutdown: Shutdown;
 
+    fn id(&self) -> NodeIdOf<Self>;
+
     fn status(&self) -> NodeStatus;
 
     /// Polls the node's event stream.
