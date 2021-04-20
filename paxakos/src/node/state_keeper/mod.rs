@@ -846,6 +846,15 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         // run at a time (see NodeInner::ensure_leadership). Building on top of those
         // two (intentional) implementation details we get to weaken "less than" to
         // "less" here.
+        //
+        // We exploit this weakened constraint in a very subtle way to preserve
+        // liveness:
+        //
+        // It is possible for a node to become leader without learning that fact due to
+        // a communication error. It will reuse the same coordination number in
+        // subsequent attempts to become leader/learn that it is leader. With a stronger
+        // constraint here, these attempts would fail. That would prevent the node from
+        // making progress and thereby break liveness.
         if coord_num < strongest_promise {
             Err(PrepareError::Conflict(strongest_promise))
         } else {

@@ -17,7 +17,6 @@ use crate::append::{AppendArgs, AppendError, Importance, Peeryness};
 use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::communicator::{AcceptanceOrRejection, Communicator, CoordNumOf, ErrorOf};
 use crate::communicator::{PromiseOrRejection, RoundNumOf};
-use crate::error::PrepareError;
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
 use crate::{LogEntry, Promise, Rejection, State};
 
@@ -341,37 +340,10 @@ where
         quorum_prime: usize,
         other_nodes: &[NodeOf<S>],
     ) -> Result<Option<Arc<LogEntryOf<S>>>, AppendError> {
-        let own_promise = match self.state_keeper.prepare_entry(round_num, coord_num).await {
-            Ok(promise) => promise,
-            Err(err) => {
-                if let PrepareError::Conflict(conflict) = err {
-                    if conflict == coord_num {
-                        // This is a somewhat ugly hack.
-                        //
-                        // What can happen is that we were elected leader but due to a communication
-                        // error we don't realize. Because we don't know, we cannot skip election,
-                        // but because we are leader and haven't observed a high enough coordination
-                        // number, we keep reusing the one that should still be good. (And it would
-                        // be good, if only we knew it.) But we cannot win an election with it.
-                        //
-                        // It's very difficult to work around this issue without either
-                        //  - introducing lots of complexity,
-                        //  - constantly bumping coordination numbers
-                        //  - losing liveness or even (*shudder*)
-                        //  - consistency (additional notes in `StateKeeper::prepare_entry`).
-                        //
-                        // So here we simply bump the coordination number after we've failed to
-                        // vote for ourselves because of a conflict with the same coordination
-                        // number.
-                        self.state_keeper
-                            .observe_coord_num(conflict + One::one())
-                            .await?;
-                    }
-                }
-
-                return Err(err.into());
-            }
-        };
+        let own_promise = self
+            .state_keeper
+            .prepare_entry(round_num, coord_num)
+            .await?;
 
         let pending_responses = self
             .communicator
