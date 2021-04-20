@@ -1185,19 +1185,7 @@ fn overriding_insert<R: RoundNum, C: CoordNum>(
     round_num: R,
     coord_num: C,
 ) {
-    let next_round = round_num + One::one();
-    assert!(next_round > round_num);
-
-    // https://github.com/rust-lang/rust/issues/59618
-    let overridden = map
-        .range(next_round..)
-        .filter(|(_, c)| **c <= coord_num)
-        .map(|(r, _)| *r)
-        .collect::<Vec<_>>();
-    for r in overridden {
-        map.remove(&r);
-    }
-
+    map.drain_filter(|r, c| *r > round_num && *c <= coord_num);
     map.insert(round_num, coord_num);
 }
 

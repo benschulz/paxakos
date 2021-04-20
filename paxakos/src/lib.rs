@@ -335,6 +335,7 @@
 
 //
 // Nightly features
+#![feature(btree_drain_filter)]
 #![feature(drain_filter)]
 #![feature(map_first_last)]
 #![feature(never_type)]
