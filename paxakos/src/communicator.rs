@@ -20,7 +20,7 @@ pub trait Communicator: 'static {
 
     type LogEntry: LogEntry;
 
-    type Error: std::error::Error + Send + Sync + 'static;
+    type Error: Send + Sync + 'static;
 
     type SendPrepare: Future<Output = Result<PromiseOrRejectionFor<Self>, Self::Error>>;
     type SendProposal: Future<Output = Result<AcceptanceOrRejectionFor<Self>, Self::Error>>;
