@@ -44,7 +44,7 @@ pub type NodeOf<N> = crate::state::NodeOf<StateOf<N>>;
 pub type NodeIdOf<N> = crate::state::NodeIdOf<StateOf<N>>;
 pub type EventOf<N> = EventFor<StateOf<N>>;
 
-pub type EventFor<N> = Event<StateOf<N>, RoundNumOf<N>>;
+pub type EventFor<N> = Event<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 
 pub fn builder() -> builder::NodeBuilderBlank {
     builder::NodeBuilderBlank::new()

@@ -371,14 +371,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                     }
 
                     // Limit the range to the concurrency window.
-                    let concurrency_bound = state.concurrency();
-                    let concurrency_bound = R::try_from(usize::from(concurrency_bound))
-                        .unwrap_or_else(|_| {
-                            panic!(
-                                "Cannot convert concurrency `{}` into a round number.",
-                                concurrency_bound
-                            )
-                        });
+                    let concurrency_bound = into_round_num(state.concurrency());
                     let range =
                         *range.start()..=std::cmp::min(round + concurrency_bound, *range.end());
 
@@ -490,7 +483,13 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             } => {
                 self.observe_coord_num(coord_num);
 
-                Response::PrepareEntry(self.prepare_entry(round_num, coord_num))
+                let result = self.prepare_entry(round_num, coord_num);
+
+                if result.is_ok() {
+                    self.emit_directive(round_num, coord_num);
+                }
+
+                Response::PrepareEntry(result)
             }
 
             Request::AcceptEntry {
@@ -500,12 +499,33 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             } => {
                 self.observe_coord_num(coord_num);
 
-                Response::AcceptEntry(self.accept_entry(round_num, coord_num, entry))
+                let result = self.accept_entry(round_num, coord_num, entry);
+
+                if result.is_ok() {
+                    self.emit_directive(round_num, coord_num);
+                }
+
+                Response::AcceptEntry(result)
             }
             Request::AcceptEntries { coord_num, entries } => {
                 self.observe_coord_num(coord_num);
 
-                Response::AcceptEntries(self.accept_entries(coord_num, entries))
+                // No need to emit multiple events. If there are entries for whose round an
+                // event would be emitted, then this round is among them.
+                let round_num = entries
+                    .iter()
+                    .map(|(r, _)| *r)
+                    .find(|r| *r > self.state_round);
+
+                let result = self.accept_entries(coord_num, entries);
+
+                if let Some(round_num) = round_num {
+                    if result.is_ok() {
+                        self.emit_directive(round_num, coord_num);
+                    }
+                }
+
+                Response::AcceptEntries(result)
             }
 
             Request::CommitEntry {
@@ -515,7 +535,13 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             } => {
                 self.observe_coord_num(coord_num);
 
-                Response::CommitEntry(self.commit_entry(round_num, coord_num, entry))
+                let result = self.commit_entry(round_num, coord_num, entry);
+
+                if result.is_ok() {
+                    self.emit_directive(round_num, coord_num);
+                }
+
+                Response::CommitEntry(result)
             }
 
             Request::CommitEntryById {
@@ -530,7 +556,13 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 // That means we can just look the entry up by the round number.
                 match self.accepted_entries.get(&round_num).cloned() {
                     Some((_, e)) if e.id() == entry_id => {
-                        Response::CommitEntryById(self.commit_entry(round_num, coord_num, e))
+                        let result = self.commit_entry(round_num, coord_num, e);
+
+                        if result.is_ok() {
+                            self.emit_directive(round_num, coord_num);
+                        }
+
+                        Response::CommitEntryById(result)
                     }
                     _ => Response::CommitEntryById(Err(CommitError::InvalidEntryId(entry_id))),
                 }
@@ -584,6 +616,42 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 new_status
             })
         );
+    }
+
+    fn emit_directive(&mut self, round_num: R, coord_num: C) {
+        if let Some(state) = &self.state {
+            if round_num > self.state_round
+                && round_num <= self.state_round + into_round_num(state.concurrency())
+            {
+                // FIXME lots of duplication with NodeInner::determine_coord_num
+                let round_offset = crate::util::usize_delta(round_num, self.state_round);
+                let round_offset = std::num::NonZeroUsize::new(round_offset)
+                    .expect("Zero was ruled out via equality check");
+
+                let cluster = state.cluster_at(round_offset);
+                let cluster_size = C::try_from(cluster.len()).unwrap_or_else(|_| {
+                    panic!(
+                        "Cannot convert cluster size `{}` into a coordination number.",
+                        cluster.len()
+                    )
+                });
+                let leader_ix = std::convert::TryInto::<usize>::try_into(coord_num % cluster_size)
+                    .unwrap_or_else(|_| {
+                        panic!("Out of usize range: {}", coord_num % cluster_size);
+                    });
+
+                let leader = cluster[leader_ix].clone();
+
+                crate::emit!(
+                    self,
+                    ShutdownEvent::Regular(Event::Directive {
+                        leader,
+                        round_num,
+                        coord_num
+                    })
+                );
+            }
+        }
     }
 
     fn observe_coord_num(&mut self, coord_num: C) {
@@ -1055,6 +1123,13 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             self.awaiters.remove(&k);
         }
     }
+}
+
+fn into_round_num<R: RoundNum>(concurrency: std::num::NonZeroUsize) -> R {
+    let num = usize::from(concurrency);
+
+    R::try_from(num)
+        .unwrap_or_else(|_| panic!("Cannot convert concurrency `{}` into a round number.", num))
 }
 
 fn overridable_lookup<R: RoundNum, C: CoordNum>(

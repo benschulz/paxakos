@@ -16,7 +16,7 @@ use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
 use super::snapshot::{Snapshot, SnapshotFor};
 use super::state_keeper::{EventStream, ProofOfLife, StateKeeper, StateKeeperHandle};
-use super::{Node, NodeHandle, NodeStatus, RequestHandler};
+use super::{EventFor, Node, NodeHandle, NodeStatus, RequestHandler};
 
 /// The default [`Node`][crate::Node] implementation.
 // TODO a better name may be needed…
@@ -54,10 +54,7 @@ where
     ///
     /// It is important to poll the node's event stream because it implicitly
     /// drives the actions that keep the node up to date.
-    fn poll_events(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Event<S, RoundNumOf<C>>> {
+    fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<EventFor<Self>> {
         self.poll_handle_reqs(cx);
 
         while let std::task::Poll::Ready(Some(())) = self.handle_appends.poll_next_unpin(cx) {

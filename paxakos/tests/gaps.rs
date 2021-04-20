@@ -5,8 +5,9 @@ mod calc_app;
 use futures::stream::StreamExt;
 use uuid::Uuid;
 
-use paxakos::communicator::{Communicator, RoundNumOf};
+use paxakos::communicator::Communicator;
 use paxakos::event::Gap;
+use paxakos::node::EventFor;
 use paxakos::prototyping::{DirectCommunicator, PrototypingNode};
 use paxakos::state::LogEntryOf;
 use paxakos::{CoordNum, Event, Node, NodeBuilder, NodeInfo};
@@ -130,7 +131,7 @@ fn commit<S: State, R: RoundNum, C: CoordNum>(
     let _ = futures::executor::block_on(req_handler.handle_commit(round_num, coord_num, log_entry));
 }
 
-fn next_gaps_event<N, S, C>(node: &mut N) -> Event<S, RoundNumOf<C>>
+fn next_gaps_event<N, S, C>(node: &mut N) -> EventFor<N>
 where
     N: Node<State = S, Communicator = C>,
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
@@ -145,14 +146,14 @@ where
     .unwrap()
 }
 
-fn gaps_of<S: State, R: RoundNum>(e: &Event<S, R>) -> Vec<Gap<R>> {
+fn gaps_of<S: State, R: RoundNum, C: CoordNum>(e: &Event<S, R, C>) -> Vec<Gap<R>> {
     match e {
         Event::Gaps(gs) => gs.clone(),
         _ => panic!("Expected Event::Gaps{{..}}, got {:?}.", e),
     }
 }
 
-fn ranges_of<S: State, R: RoundNum>(e: &Event<S, R>) -> Vec<std::ops::Range<R>> {
+fn ranges_of<S: State, R: RoundNum, C: CoordNum>(e: &Event<S, R, C>) -> Vec<std::ops::Range<R>> {
     match e {
         Event::Gaps(gs) => gs.iter().map(|g| g.rounds.clone()).collect(),
         _ => panic!("Expected Event::Gaps{{..}}, got {:?}.", e),

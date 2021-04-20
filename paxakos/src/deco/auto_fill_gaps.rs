@@ -8,7 +8,7 @@ use futures::stream::StreamExt;
 use crate::append::{AppendArgs, AppendError, DoNotRetry, Importance, Peeryness};
 use crate::communicator::{CoordNumOf, RoundNumOf};
 use crate::node::builder::NodeBuilderWithAll;
-use crate::node::{Commit, CommunicatorOf, NodeStatus, Snapshot, SnapshotFor, StateOf};
+use crate::node::{Commit, CommunicatorOf, EventFor, NodeStatus, Snapshot, SnapshotFor, StateOf};
 use crate::state::LogEntryOf;
 use crate::{Node, NodeBuilder, RoundNum};
 
@@ -339,10 +339,7 @@ where
         self.decorated.status()
     }
 
-    fn poll_events(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<crate::Event<Self::State, crate::communicator::RoundNumOf<Self::Communicator>>> {
+    fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> Poll<EventFor<Self>> {
         let e = self.decorated.poll_events(cx);
 
         match e {

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::communicator::{CoordNumOf, RoundNumOf};
 use crate::node::{NodeStatus, Shutdown, Snapshot};
-use crate::state::{EventOf, LogEntryOf, State};
+use crate::state::{EventOf, LogEntryOf, NodeOf, State};
 use crate::{CoordNum, RoundNum};
 
 pub type ShutdownEventFor<S> = ShutdownEvent<
@@ -14,7 +14,7 @@ pub type ShutdownEventFor<S> = ShutdownEvent<
 /// Emitted by `Node`'s [`poll_events`][crate::Node::poll_events] method.
 #[non_exhaustive]
 #[derive(Debug)]
-pub enum Event<S: State, R: RoundNum> {
+pub enum Event<S: State, R: RoundNum, C: CoordNum> {
     Init {
         status: NodeStatus,
         round: R,
@@ -54,6 +54,17 @@ pub enum Event<S: State, R: RoundNum> {
     /// case can arise when the leader tries to concurrently append multiple
     /// entries and abandons some of the earlier appends.
     Gaps(Vec<Gap<R>>),
+
+    /// This node received a (potentially indirect) directive for the given
+    /// round and from the given node. The node used the mandate obtained with
+    /// the given coordination number to issue the directive.
+    ///
+    /// This event is not emitted when this node is disoriented or lagging.
+    Directive {
+        leader: NodeOf<S>,
+        round_num: R,
+        coord_num: C,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -69,7 +80,7 @@ pub struct Gap<R: RoundNum> {
 /// method.
 #[derive(Debug)]
 pub enum ShutdownEvent<S: State, R: RoundNum, C: CoordNum> {
-    Regular(Event<S, R>),
+    Regular(Event<S, R, C>),
     #[non_exhaustive]
     Last {
         snapshot: Option<Snapshot<S, R, C>>,
