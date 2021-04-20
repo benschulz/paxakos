@@ -6,6 +6,7 @@ use futures::future::FutureExt;
 use futures::sink::SinkExt;
 
 use crate::append::{AppendArgs, AppendError};
+use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::state::{LogEntryOf, State};
 use crate::{CoordNum, RoundNum};
 
@@ -78,16 +79,20 @@ where
         self.state_keeper.try_read_stale()
     }
 
-    pub fn append<I: Into<Arc<LogEntryOf<S>>>>(
+    pub fn append<A: ApplicableTo<S>>(
         &self,
-        log_entry: I,
+        applicable: A,
         args: AppendArgs<R>,
-    ) -> impl Future<Output = Result<Commit<S, R>, AppendError>> {
+    ) -> impl Future<Output = Result<Commit<S, R, ProjectionOf<A, S>>, AppendError>> {
         dispatch_node_handle_req!(self, Append, {
-            log_entry: log_entry.into(),
+            log_entry: applicable.into_log_entry(),
             args,
         })
-        .map(|r| r.ok_or(AppendError::ShutDown).and_then(|r| r))
+        .map(|r| {
+            r.ok_or(AppendError::ShutDown)
+                .and_then(|r| r)
+                .map(Commit::projected)
+        })
     }
 }
 

@@ -6,6 +6,7 @@ use futures::channel::oneshot;
 use futures::future::{FutureExt, LocalBoxFuture};
 use futures::stream::{FuturesUnordered, StreamExt};
 
+use crate::applicable::{Identity, Projection};
 use crate::error::CommitError;
 use crate::state::{OutcomeOf, State};
 
@@ -81,9 +82,10 @@ impl std::fmt::Debug for Commits {
 /// there is a gap in the log. A `Commit` is a `Future` that represents such a
 /// log entry. Once the entry is applied, the future will become ready.
 #[derive(Debug)]
-pub struct Commit<S: State, R> {
+pub struct Commit<S: State, R, P = Identity> {
     round_num: R,
     receiver: oneshot::Receiver<(R, OutcomeOf<S>)>,
+    _projection: std::marker::PhantomData<P>,
 }
 
 impl<S: State, R: Copy> Commit<S, R> {
@@ -91,6 +93,7 @@ impl<S: State, R: Copy> Commit<S, R> {
         Self {
             round_num,
             receiver,
+            _projection: std::marker::PhantomData,
         }
     }
 
@@ -102,9 +105,20 @@ impl<S: State, R: Copy> Commit<S, R> {
         Self {
             round_num,
             receiver: recv,
+            _projection: std::marker::PhantomData,
         }
     }
 
+    pub fn projected<P: Projection<OutcomeOf<S>>>(self) -> Commit<S, R, P> {
+        Commit {
+            round_num: self.round_num,
+            receiver: self.receiver,
+            _projection: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<S: State, R: Copy, P> Commit<S, R, P> {
     /// The round this commit is slated for.
     ///
     /// This information is useful when, in a concurrent setting, another log
@@ -116,19 +130,20 @@ impl<S: State, R: Copy> Commit<S, R> {
 }
 
 // TODO ShutDown is the only reachable error variant
-impl<S, R> Future for Commit<S, R>
+impl<S, R, P> Future for Commit<S, R, P>
 where
     S: State,
     R: crate::RoundNum,
+    P: Projection<OutcomeOf<S>>,
 {
-    type Output = Result<OutcomeOf<S>, CommitError<S>>;
+    type Output = Result<<P as Projection<OutcomeOf<S>>>::Projected, CommitError<S>>;
 
     fn poll(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         self.receiver.poll_unpin(cx).map(|r| {
-            r.map(|(_, outcome)| outcome)
+            r.map(|(_, outcome)| P::project(outcome))
                 .map_err(|_| CommitError::ShutDown)
         })
     }

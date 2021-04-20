@@ -12,6 +12,7 @@ use num_traits::{One, Zero};
 use tracing::debug;
 
 use crate::append::{AppendArgs, AppendError, Importance, Peeryness, RetryPolicy};
+use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::communicator::{AcceptanceOrRejection, Communicator, CoordNumOf, ErrorOf};
 use crate::communicator::{PromiseOrRejection, RoundNumOf};
 use crate::error::PrepareError;
@@ -62,11 +63,12 @@ where
         }
     }
 
-    pub async fn append(
+    pub async fn append<A: ApplicableTo<S>>(
         self: Rc<Self>,
-        log_entry: Arc<LogEntryOf<S>>,
+        applicable: A,
         args: AppendArgs<RoundNumOf<C>>,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError> {
+        let log_entry = applicable.into_log_entry();
         let log_entry_id = log_entry.id();
 
         let passive = self
@@ -82,7 +84,9 @@ where
 
         let active = self.append_actively(log_entry, args.retry_policy);
 
-        crate::util::Race::between(active, passive).await
+        crate::util::Race::between(active, passive)
+            .await
+            .map(|commit| commit.projected())
     }
 
     async fn append_actively(

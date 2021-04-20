@@ -6,6 +6,7 @@ use futures::future::{FutureExt, LocalBoxFuture};
 use futures::stream::StreamExt;
 
 use crate::append::{AppendArgs, AppendError, DoNotRetry, Importance, Peeryness};
+use crate::applicable::ApplicableTo;
 use crate::communicator::{CoordNumOf, RoundNumOf};
 use crate::node::builder::NodeBuilderWithAll;
 use crate::node::{CommitFor, CommunicatorOf, EventFor, NodeStatus};
@@ -435,12 +436,12 @@ where
         self.decorated.read_stale()
     }
 
-    fn append(
+    fn append<A: ApplicableTo<Self::State> + 'static>(
         &self,
-        log_entry: impl Into<std::sync::Arc<crate::state::LogEntryOf<Self::State>>>,
-        args: AppendArgs<RoundNumOf<Self::Communicator>>,
-    ) -> futures::future::LocalBoxFuture<'static, Result<CommitFor<Self>, AppendError>> {
-        self.decorated.append(log_entry, args)
+        applicable: A,
+        args: AppendArgs<RoundNumOf<CommunicatorOf<Self>>>,
+    ) -> futures::future::LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>> {
+        self.decorated.append(applicable, args)
     }
 
     fn shut_down(self) -> Self::Shutdown {

@@ -346,6 +346,7 @@
 #![warn(clippy::wildcard_imports)]
 
 pub mod append;
+pub mod applicable;
 pub mod cluster;
 pub mod communicator;
 pub mod deco;

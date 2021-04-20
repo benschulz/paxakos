@@ -6,9 +6,10 @@ use futures::future::{FutureExt, LocalBoxFuture};
 use futures::stream::{FuturesUnordered, StreamExt};
 
 use crate::append::{AppendArgs, AppendError};
+use crate::applicable::ApplicableTo;
 use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::event::{Event, ShutdownEvent};
-use crate::state::{LogEntryOf, NodeIdOf, State};
+use crate::state::{NodeIdOf, State};
 
 use super::commits::Commits;
 use super::handle::{NodeHandleRequest, NodeHandleResponse};
@@ -106,13 +107,13 @@ where
         self.state_keeper.install_snapshot(snapshot).boxed_local()
     }
 
-    fn append(
+    fn append<A: ApplicableTo<Self::State> + 'static>(
         &self,
-        log_entry: impl Into<Arc<LogEntryOf<S>>>,
+        applicable: A,
         args: AppendArgs<RoundNumOf<C>>,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, AppendError>> {
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>> {
         Rc::clone(&self.inner)
-            .append(log_entry.into(), args)
+            .append(applicable, args)
             .boxed_local()
     }
 

@@ -15,6 +15,7 @@ use std::sync::Arc;
 use futures::future::{BoxFuture, LocalBoxFuture};
 
 use crate::append::{AppendArgs, AppendError};
+use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::communicator::Communicator;
 use crate::log::LogKeeping;
 use crate::state::ContextOf;
@@ -44,7 +45,7 @@ pub type NodeOf<N> = crate::state::NodeOf<StateOf<N>>;
 pub type NodeIdOf<N> = crate::state::NodeIdOf<StateOf<N>>;
 pub type EventOf<N> = EventFor<StateOf<N>>;
 
-pub type CommitFor<N> = Commit<StateOf<N>, RoundNumOf<N>>;
+pub type CommitFor<N, A> = Commit<StateOf<N>, RoundNumOf<N>, ProjectionOf<A, StateOf<N>>>;
 pub type EventFor<N> = Event<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 
 pub fn builder() -> builder::NodeBuilderBlank {
@@ -86,15 +87,11 @@ pub trait Node: Sized {
 
     fn read_stale(&self) -> LocalBoxFuture<'static, Result<Arc<Self::State>, ()>>;
 
-    // TODO introduce trait ApplicableTo<S: State> which defines
-    //  - `into_log_entry(self) -> Arc<<S as State>::LogEntry>`
-    //  - `project_output(output: <S as State>::Output) -> Self::Projected` (to
-    //    narrow the output type)
-    fn append(
+    fn append<A: ApplicableTo<Self::State> + 'static>(
         &self,
-        log_entry: impl Into<Arc<LogEntryOf<Self>>>,
+        applicable: A,
         args: AppendArgs<RoundNumOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, AppendError>>;
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>>;
 
     fn shut_down(self) -> Self::Shutdown;
 }
