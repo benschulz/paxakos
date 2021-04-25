@@ -308,23 +308,32 @@ where
                 if peeryness == Peeryness::Peery && !other_nodes.is_empty() {
                     let coord_num = self.campaigned_on.get();
 
-                    let pending_responses = self
+                    let mut pending_responses = self
                         .communicator
                         .borrow_mut()
                         .send_prepare(other_nodes, round_num, coord_num)
                         .into_iter()
-                        .map(|(_node, fut)| fut.map(|x| x));
+                        .map(|(_node, fut)| fut.map(|x| x))
+                        .into_iter()
+                        .collect::<FuturesUnordered<_>>();
 
-                    // TODO This aborts on first rejection. It may be worthwile to keep going
-                    //      until quorum
-                    let _ = self
-                        .await_promise_quorum_or_first_rejection(
-                            round_num,
-                            quorum_prime + 1,
-                            pending_responses,
-                            Promise::empty(),
-                        )
-                        .await;
+                    while let Some(response) = pending_responses.next().await {
+                        if let Ok(PromiseOrRejection::Rejection(rejection)) = response {
+                            self.state_keeper
+                                .observe_coord_num(rejection.coord_num())
+                                .await?;
+
+                            if let Rejection::Converged {
+                                log_entry: Some((coord_num, entry)),
+                                ..
+                            } = &rejection
+                            {
+                                self.state_keeper
+                                    .commit_entry(round_num, *coord_num, Arc::clone(entry))
+                                    .await?;
+                            }
+                        }
+                    }
                 }
 
                 Err(AppendError::Lost)
@@ -433,6 +442,8 @@ where
 
         let mut pending_responses: FuturesUnordered<_> = pending_responses.into_iter().collect();
 
+        assert!(quorum <= pending_responses.len());
+
         let mut pending_len = pending_responses.len();
         let mut promises = 0;
         let mut max_promise = own_promise;
@@ -479,7 +490,7 @@ where
             }
         }
 
-        panic!("await_accepted_quorum: insufficient pending_responses");
+        panic!("await_promise_quorum_or_first_rejection: insufficient pending_responses");
     }
 
     async fn propose_entry(
@@ -552,6 +563,8 @@ where
         }
 
         let mut pending_responses: FuturesUnordered<P> = pending_responses.into_iter().collect();
+
+        assert!(quorum <= pending_responses.len());
 
         let mut pending_len = pending_responses.len();
         let mut accepted = HashSet::new();
