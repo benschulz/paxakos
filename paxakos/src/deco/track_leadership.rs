@@ -17,6 +17,15 @@ use crate::RoundNum;
 use super::Decoration;
 
 pub trait LeadershipAwareNode<I>: Node {
+    /// Leadership as assumed by this node.
+    ///
+    /// Note: This information is unreliable. A node will assume itself or
+    /// another node to be leader when that node "owns" the highest coordination
+    /// number observed for that round. That means neither that the node managed
+    /// to achieve a quorum with that number, nor that no other node hasn't
+    /// achieved a quorum with an even higher number.
+    // TODO consider renaming to "lax_leadership" and introducing a strict version
+    //      which disregards prepare messages
     fn leadership(&self) -> &[Leadership<NodeIdOf<Self>, RoundNumOf<Self>, CoordNumOf<Self>>];
 }
 

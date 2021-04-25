@@ -12,18 +12,13 @@ use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, 
 use crate::{Node, NodeBuilder, RoundNum};
 
 use super::Decoration;
-use super::LeadershipAwareNode;
 
-pub trait EnsureLeadershipBuilderExt<I>: NodeBuilder
-where
-    I: 'static,
-{
+pub trait EnsureLeadershipBuilderExt: NodeBuilder {
     fn ensure_leadership<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P, I>>
+    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P>>
     where
-        Self::Node: LeadershipAwareNode<I>,
         C: FnOnce(
             EnsureLeadershipBuilderBlank<Self::Node>,
         ) -> EnsureLeadershipBuilder<Self::Node, P>,
@@ -38,16 +33,14 @@ pub struct EnsureLeadershipBuilder<N, P> {
     _node: std::marker::PhantomData<N>,
 }
 
-impl<B, I> EnsureLeadershipBuilderExt<I> for B
+impl<B> EnsureLeadershipBuilderExt for B
 where
     B: NodeBuilder,
-    <B as NodeBuilder>::Node: LeadershipAwareNode<I>,
-    I: 'static,
 {
     fn ensure_leadership<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P, I>>
+    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P>>
     where
         C: FnOnce(
             EnsureLeadershipBuilderBlank<Self::Node>,
@@ -121,7 +114,7 @@ pub struct EnsureLeadershipArgs<N, P> {
 }
 
 #[derive(Debug)]
-pub struct EnsureLeadership<N, P, I>
+pub struct EnsureLeadership<N, P>
 where
     N: Node,
     P: Fn() -> LogEntryOf<N> + 'static,
@@ -132,8 +125,6 @@ where
     timer: Option<futures_timer::Delay>,
 
     appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, ()>>,
-
-    _i: std::marker::PhantomData<I>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -157,22 +148,11 @@ impl<R: RoundNum> PartialOrd for QueuedGap<R> {
     }
 }
 
-impl<N, P, I> EnsureLeadership<N, P, I>
+impl<N, P> EnsureLeadership<N, P>
 where
-    N: Node + LeadershipAwareNode<I> + 'static,
+    N: Node + 'static,
     P: Fn() -> LogEntryOf<N> + 'static,
-    I: 'static,
 {
-    fn new_timer(&self) -> Option<futures_timer::Delay> {
-        let leadership = self.leadership();
-
-        if leadership.first().map(|l| l.leader) == Some(self.id()) {
-            None
-        } else {
-            Some(futures_timer::Delay::new(self.arguments.interval))
-        }
-    }
-
     fn ensure_leadership(&mut self) {
         let log_entry = (self.arguments.entry_producer)();
 
@@ -192,11 +172,10 @@ where
     }
 }
 
-impl<N, P, I> Decoration for EnsureLeadership<N, P, I>
+impl<N, P> Decoration for EnsureLeadership<N, P>
 where
-    N: Node + LeadershipAwareNode<I> + 'static,
+    N: Node + 'static,
     P: Fn() -> LogEntryOf<N> + 'static,
-    I: 'static,
 {
     type Arguments = EnsureLeadershipArgs<N, P>;
     type Decorated = N;
@@ -212,8 +191,6 @@ where
             timer: None,
 
             appends: futures::stream::FuturesUnordered::new(),
-
-            _i: std::marker::PhantomData,
         })
     }
 
@@ -226,11 +203,10 @@ where
     }
 }
 
-impl<N, F, I> Node for EnsureLeadership<N, F, I>
+impl<N, F> Node for EnsureLeadership<N, F>
 where
-    N: Node + LeadershipAwareNode<I> + 'static,
+    N: Node + 'static,
     F: Fn() -> LogEntryOf<N> + 'static,
-    I: 'static,
 {
     type State = StateOf<N>;
     type Communicator = CommunicatorOf<N>;
@@ -262,12 +238,12 @@ where
                 | crate::Event::StatusChange { new_status, .. } => {
                     self.timer = match new_status {
                         NodeStatus::Disoriented => None,
-                        _ => self.new_timer(),
+                        _ => Some(futures_timer::Delay::new(self.arguments.interval)),
                     };
                 }
 
                 crate::Event::Install { .. } | crate::Event::Apply { .. } => {
-                    self.timer = self.new_timer();
+                    self.timer = Some(futures_timer::Delay::new(self.arguments.interval));
                 }
 
                 _ => {}
@@ -281,7 +257,7 @@ where
 
             self.ensure_leadership();
 
-            self.timer = self.new_timer();
+            self.timer = Some(futures_timer::Delay::new(self.arguments.interval));
         }
 
         let _ = self.appends.poll_next_unpin(cx);
