@@ -10,7 +10,7 @@ use crate::append::{AppendArgs, AppendError};
 use crate::applicable::ApplicableTo;
 use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::event::{Event, ShutdownEvent};
-use crate::state::{NodeIdOf, State};
+use crate::state::{LogEntryOf, NodeIdOf, State};
 
 use super::commits::Commits;
 use super::handle::{NodeHandleRequest, NodeHandleResponse};
@@ -24,7 +24,7 @@ use super::{CommitFor, EventFor, Node, NodeHandle, NodeStatus, Participation, Re
 // TODO a better name may be needed…
 pub struct NodeKernel<S, C>
 where
-    S: State,
+    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     C: Communicator,
 {
     inner: Rc<NodeInner<S, C>>,
@@ -36,7 +36,7 @@ where
     participation: Participation<RoundNumOf<C>>,
     handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<S, RoundNumOf<C>>>,
     handle_recv: mpsc::Receiver<super::handle::RequestAndResponseSender<S, RoundNumOf<C>>>,
-    handle_appends: FuturesUnordered<LocalBoxFuture<'static, ()>>,
+    handle_appends: FuturesUnordered<HandleAppend<S, C>>,
 }
 
 impl<S, C> Node for NodeKernel<S, C>
@@ -220,13 +220,44 @@ where
             NodeHandleRequest::Status => {
                 let _ = send.send(NodeHandleResponse::Status(self.status()));
             }
-            NodeHandleRequest::Append { log_entry, args } => self.handle_appends.push(
-                self.append(log_entry, args)
-                    .map(|r| {
-                        let _ = send.send(NodeHandleResponse::Append(r));
-                    })
-                    .boxed_local(),
-            ),
+            NodeHandleRequest::Append { log_entry, args } => {
+                self.handle_appends.push(HandleAppend {
+                    append: self.append(log_entry, args),
+                    send: Some(send),
+                })
+            }
         }
+    }
+}
+
+struct HandleAppend<S, C>
+where
+    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    C: Communicator,
+{
+    append:
+        LocalBoxFuture<'static, Result<CommitFor<NodeKernel<S, C>, LogEntryOf<S>>, AppendError>>,
+    send: Option<oneshot::Sender<NodeHandleResponse<S, RoundNumOf<C>>>>,
+}
+
+impl<S, C> std::future::Future for HandleAppend<S, C>
+where
+    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    C: Communicator,
+{
+    type Output = ();
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        if self.send.as_ref().unwrap().is_canceled() {
+            return std::task::Poll::Ready(());
+        }
+
+        self.append.poll_unpin(cx).map(|r| {
+            let send = self.send.take().unwrap();
+            let _ = send.send(NodeHandleResponse::Append(r));
+        })
     }
 }
