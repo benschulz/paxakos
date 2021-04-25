@@ -306,23 +306,10 @@
 //! The core algorithm of paxakos is well-tested and has been exercised a lot.
 //! There is reason to be confident in its correctness.
 //!
-//! ### 🌧️ Passive Mode 🌧️
+//! ### ⛅ Passive Mode ⛅
 //!
-//! When a node shuts down, it returns a final snapshot. This snapshot can be
-//! used to restart the node. When restarted in such a fashion, the node is
-//! aware of any and all commitments it made previously.
-//!
-//! Conversely, when a node crashes and restarts off some other snapshot, it is
-//! unaware of any commitments it made prior to crashing. To prevent the node
-//! from inadvertantly breaking any such commitments and introducing
-//! inconsistencies, it is started in passive mode.
-//!
-//! While in passive mode, a node does not vote and does not accept any entries.
-//! It remains in this mode until all rounds it may have participated in before
-//! have been settled.
-//!
-//! The APIs and a crude implementation exist, but the implementation is
-//! **broken and untested**.
+//! [Passive mode][crate::node::Participation] is implemented and superficially
+//! tested. Thorough testing is still needed.
 //!
 //! ### 🌧️ Serialization 🌧️
 //!

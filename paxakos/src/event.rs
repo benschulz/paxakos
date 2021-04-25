@@ -26,6 +26,10 @@ pub enum Event<S: State, R: RoundNum, C: CoordNum> {
         new_status: NodeStatus,
     },
 
+    /// The node is transitioning to [partially active
+    /// participation][crate::node::Participation].
+    Activate(R),
+
     /// A snapshot was installed.
     Install { round: R, state: Arc<S> },
 

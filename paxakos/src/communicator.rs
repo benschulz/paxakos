@@ -15,6 +15,22 @@ pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
 pub type AcceptanceOrRejectionFor<C> = AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<C>>;
 pub type PromiseOrRejectionFor<C> = PromiseOrRejection<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>;
 
+/// Defines how [`Node`][crate::Node]s call others'
+/// [`RequestHandler`][crate::RequestHandler]s.
+///
+/// The [simplest possible
+/// implementation][crate::prototyping::DirectCommunicator] directly calls
+/// `RequestHandler` methods, requiring that all nodes live in the same process.
+/// This is useful for prototyping and testing. Most other use cases require a
+/// different, custom implementation.
+///
+/// # Soundness
+///
+/// Implementations must be secure, i.e. prevent forgery and replay attacks.
+/// This implicitly means that a restarted node will not see messages intended
+/// for its previous run, i.e. delayed messages sent over a connectionless
+/// protocol. Failure to shield a node from such messages may cause it to come
+/// out of passive participation mode early and lead to inconsistency.
 pub trait Communicator: 'static {
     type Node: NodeInfo;
 

@@ -65,6 +65,8 @@ pub trait Node: Sized {
 
     fn status(&self) -> NodeStatus;
 
+    fn participation(&self) -> Participation<RoundNumOf<Self>>;
+
     /// Polls the node's event stream.
     ///
     /// It is important to poll the node's event stream because it implicitly
@@ -137,14 +139,41 @@ pub struct SpawnArgs<S: State, R: RoundNum, C: CoordNum> {
     pub context: ContextOf<S>,
     pub working_dir: Option<std::path::PathBuf>,
     pub snapshot: Option<Snapshot<S, R, C>>,
-    pub participation: Participaction,
+    pub participation: Participation<R>,
     pub log_keeping: LogKeeping,
     #[cfg(feature = "tracer")]
     pub tracer: Option<Box<dyn Tracer<R, C, crate::state::LogEntryIdOf<S>>>>,
 }
 
-// TODO expose current mode in Node/NodeHandle
-pub enum Participaction {
+/// Reflects a [`Node`]'s possible modes of participation.
+///
+/// When a node shuts down, it returns a final snapshot. This snapshot can be
+/// used to restart the node. When restarted in such a fashion, the node is
+/// aware of any and all commitments it made previously.
+///
+/// Conversely, when a node crashes and restarts off some other snapshot, it is
+/// unaware of any commitments it made prior to crashing. To prevent the node
+/// from inadvertantly breaking any such commitments and introducing
+/// inconsistencies, it is started in passive mode.
+///
+/// While in passive mode, a node does not vote and does not accept any entries.
+/// It remains in this mode until all rounds it may have participated in before
+/// have been settled.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Participation<R> {
+    /// The node will actively participate in any round.
     Active,
+    /// The node will only participate actively in the given or later rounds.
+    ///
+    /// When the given round becomes the next round, i.e. an entry was applied
+    /// for its preceding round, the node will transition into `Active`
+    /// participation.
+    PartiallyActive(R),
+    /// The node is fully passive and won't participate in any round.
+    ///
+    /// The node will observe communications and determine a lower bound for the
+    /// rounds in which it can participate without causing inconsistencies. Once
+    /// the lower bound is found, an [`Event::Activate`] event will be emitted
+    /// and the node transitions into `PartiallyActive` participation.
     Passive,
 }

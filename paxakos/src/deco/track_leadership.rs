@@ -9,8 +9,8 @@ use crate::append::{AppendArgs, AppendError};
 use crate::applicable::ApplicableTo;
 use crate::communicator::Communicator;
 use crate::node::builder::{NodeBuilder, NodeBuilderWithAll};
-use crate::node::{CommitFor, CommunicatorOf, CoordNumOf, Node, NodeIdOf, NodeInfo};
-use crate::node::{NodeKernel, NodeStatus, RoundNumOf, Snapshot, SnapshotFor, StateOf};
+use crate::node::{CommitFor, CommunicatorOf, CoordNumOf, Node, NodeIdOf, NodeInfo, NodeKernel};
+use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
 use crate::state::State;
 use crate::RoundNum;
 
@@ -102,6 +102,10 @@ where
 
     fn status(&self) -> crate::NodeStatus {
         self.decorated.status()
+    }
+
+    fn participation(&self) -> Participation<RoundNumOf<Self>> {
+        self.decorated.participation()
     }
 
     fn poll_events(

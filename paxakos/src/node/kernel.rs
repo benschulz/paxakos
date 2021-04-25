@@ -4,6 +4,7 @@ use std::sync::Arc;
 use futures::channel::{mpsc, oneshot};
 use futures::future::{FutureExt, LocalBoxFuture};
 use futures::stream::{FuturesUnordered, StreamExt};
+use num_traits::One;
 
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::ApplicableTo;
@@ -17,7 +18,7 @@ use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
 use super::snapshot::{Snapshot, SnapshotFor};
 use super::state_keeper::{EventStream, ProofOfLife, StateKeeper, StateKeeperHandle};
-use super::{CommitFor, EventFor, Node, NodeHandle, NodeStatus, RequestHandler};
+use super::{CommitFor, EventFor, Node, NodeHandle, NodeStatus, Participation, RequestHandler};
 
 /// The default [`Node`][crate::Node] implementation.
 // TODO a better name may be needed…
@@ -32,6 +33,7 @@ where
     commits: Commits,
     events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
     status: NodeStatus,
+    participation: Participation<RoundNumOf<C>>,
     handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<S, RoundNumOf<C>>>,
     handle_recv: mpsc::Receiver<super::handle::RequestAndResponseSender<S, RoundNumOf<C>>>,
     handle_appends: FuturesUnordered<LocalBoxFuture<'static, ()>>,
@@ -53,6 +55,10 @@ where
 
     fn status(&self) -> NodeStatus {
         self.status
+    }
+
+    fn participation(&self) -> Participation<RoundNumOf<C>> {
+        self.participation
     }
 
     /// Polls the node's status, yielding `Ready` on every change.
@@ -81,6 +87,22 @@ where
 
         if let std::task::Poll::Ready(Event::StatusChange { new_status, .. }) = result {
             self.status = new_status;
+        }
+
+        if let std::task::Poll::Ready(Event::Install { .. }) = result {
+            self.participation = Participation::Passive;
+        }
+
+        if let std::task::Poll::Ready(Event::Activate(r)) = result {
+            self.participation = Participation::PartiallyActive(r);
+        }
+
+        if let Participation::PartiallyActive(r) = self.participation {
+            if let std::task::Poll::Ready(Event::Apply { round, .. }) = result {
+                if round + One::one() >= r {
+                    self.participation = Participation::Active;
+                }
+            }
         }
 
         result
@@ -155,7 +177,7 @@ where
         ),
         crate::error::SpawnError,
     > {
-        let (initial_status, events, state_keeper, proof_of_life) =
+        let (initial_status, initial_participation, events, state_keeper, proof_of_life) =
             StateKeeper::spawn(args).await?;
 
         let req_handler = RequestHandler::new(state_keeper.clone());
@@ -174,6 +196,7 @@ where
             commits,
             events,
             status: initial_status,
+            participation: initial_participation,
             handle_send,
             handle_recv,
             handle_appends: FuturesUnordered::new(),

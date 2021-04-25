@@ -6,7 +6,7 @@ use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::deco::Decoration;
 use crate::error::SpawnError;
 use crate::log::LogKeeping;
-use crate::node::{Participaction, RequestHandlerFor};
+use crate::node::{self, Participation, RequestHandlerFor};
 #[cfg(feature = "tracer")]
 use crate::state::LogEntryIdOf;
 use crate::state::{ContextOf, NodeIdOf};
@@ -116,7 +116,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(None, Participaction::Passive)
+        self.with_snapshot_and_participation(None, Participation::Passive)
     }
 
     /// Starts a new cluster with the given initial state.
@@ -131,7 +131,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     {
         self.with_snapshot_and_participation(
             initial_state.into().map(Snapshot::initial),
-            Participaction::Active,
+            Participation::Active,
         )
     }
 
@@ -156,7 +156,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(snapshot.into(), Participaction::Active)
+        self.with_snapshot_and_participation(snapshot.into(), Participation::Active)
     }
 
     /// Resume operation from the given snapshot.
@@ -170,7 +170,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(snapshot.into(), Participaction::Passive)
+        self.with_snapshot_and_participation(snapshot.into(), Participation::Passive)
     }
 
     /// Resume operation without a snapshot.
@@ -181,7 +181,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(None, Participaction::Passive)
+        self.with_snapshot_and_participation(None, Participation::Passive)
     }
 
     /// Commence operation from the given snapshot.
@@ -205,7 +205,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(snapshot.into(), Participaction::Active)
+        self.with_snapshot_and_participation(snapshot.into(), Participation::Active)
     }
 
     /// Commence operation without a snapshot.
@@ -226,13 +226,13 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(None, Participaction::Active)
+        self.with_snapshot_and_participation(None, Participation::Active)
     }
 
     fn with_snapshot_and_participation<S>(
         self,
         snapshot: Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>,
-        participation: Participaction,
+        participation: Participation<RoundNumOf<C>>,
     ) -> NodeBuilderWithAll<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
@@ -259,7 +259,7 @@ pub struct NodeBuilderWithAll<N: Node> {
     node_id: NodeIdOf<StateOf<N>>,
     communicator: CommunicatorOf<N>,
     snapshot: Option<SnapshotFor<N>>,
-    participation: Participaction,
+    participation: Participation<node::RoundNumOf<N>>,
     log_keeping: LogKeeping,
     finisher: Box<Finisher<N>>,
 

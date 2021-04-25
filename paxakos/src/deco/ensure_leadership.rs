@@ -8,7 +8,7 @@ use crate::append::{AppendArgs, AppendError, DoNotRetry};
 use crate::applicable::ApplicableTo;
 use crate::node::builder::NodeBuilderWithAll;
 use crate::node::{CommitFor, CommunicatorOf, CoordNumOf, LogEntryOf, NodeIdOf};
-use crate::node::{NodeStatus, RoundNumOf, Snapshot, SnapshotFor, StateOf};
+use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
 use crate::{Node, NodeBuilder, RoundNum};
 
 use super::Decoration;
@@ -242,6 +242,10 @@ where
 
     fn status(&self) -> crate::NodeStatus {
         self.decorated.status()
+    }
+
+    fn participation(&self) -> Participation<RoundNumOf<Self>> {
+        self.decorated.participation()
     }
 
     fn poll_events(

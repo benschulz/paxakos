@@ -41,30 +41,26 @@ type ResponseSender<S, R, C> = oneshot::Sender<Response<S, R, C>>;
 type Awaiter<S, R> = oneshot::Sender<(R, OutcomeOf<S>)>;
 
 #[derive(Debug)]
-enum Participaction<R: RoundNum> {
+enum Participation<R, C> {
     Active,
-    Passive {
-        first_observed_round: R,
-        first_observed_concurrency: Option<std::num::NonZeroUsize>,
-        highest_observed_concurrency: Option<std::num::NonZeroUsize>,
-    },
+    PartiallyActive(R),
+    Passive { observed_proposals: HashSet<(R, C)> },
 }
 
-impl<R: RoundNum> Participaction<R> {
+impl<R, C> Participation<R, C> {
     pub fn passive() -> Self {
         Self::Passive {
-            first_observed_round: R::max_value(),
-            first_observed_concurrency: None,
-            highest_observed_concurrency: None,
+            observed_proposals: HashSet::new(),
         }
     }
 }
 
-impl<R: RoundNum> From<super::Participaction> for Participaction<R> {
-    fn from(p: super::Participaction) -> Self {
+impl<R, C> From<super::Participation<R>> for Participation<R, C> {
+    fn from(p: super::Participation<R>) -> Self {
         match p {
-            super::Participaction::Active => Self::Active,
-            super::Participaction::Passive => Self::passive(),
+            super::Participation::Active => Self::Active,
+            super::Participation::Passive => Self::passive(),
+            super::Participation::PartiallyActive(_) => unreachable!(),
         }
     }
 }
@@ -135,7 +131,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     pending_commits: BTreeMap<R, (std::time::Instant, C, Arc<LogEntryOf<S>>)>,
     awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S, R>>>,
 
-    participaction: Participaction<R>,
+    participation: Participation<R, C>,
     /// last status that was observable from the outside
     status: NodeStatus,
     event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
@@ -152,6 +148,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     ) -> Result<
         (
             NodeStatus,
+            super::Participation<R>,
             EventStream<S, R, C>,
             StateKeeperHandle<S, R, C>,
             ProofOfLife,
@@ -170,9 +167,10 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
         let start_result = recv.await.expect("StateKeeper failed to start");
 
-        start_result.map(move |initial_status| {
+        start_result.map(move |(initial_status, initial_participation)| {
             (
                 initial_status,
+                initial_participation,
                 EventStream { delegate: evt_recv },
                 StateKeeperHandle::new(req_send),
                 proof_of_life,
@@ -182,7 +180,9 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
     fn start_and_run_new(
         spawn_args: SpawnArgs<S, R, C>,
-        start_result_sender: oneshot::Sender<Result<NodeStatus, SpawnError>>,
+        start_result_sender: oneshot::Sender<
+            Result<(NodeStatus, super::Participation<R>), SpawnError>,
+        >,
         receiver: mpsc::Receiver<RequestAndResponseSender<S, R, C>>,
         event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
     ) {
@@ -243,7 +243,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             };
 
             let failed = start_result.is_err();
-            let _ = start_result_sender.send(start_result.map(|_| initial_status));
+            let _ = start_result_sender.send(start_result.map(|_| (initial_status, participation)));
 
             if failed {
                 return;
@@ -276,7 +276,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                 pending_commits: BTreeMap::new(),
                 awaiters: HashMap::new(),
 
-                participaction: participation.into(),
+                participation: participation.into(),
                 status: initial_status,
                 event_emitter,
 
@@ -614,10 +614,10 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
             }
 
             Request::ForceActive => Response::ForceActive({
-                if let Participaction::Passive { .. } = self.participaction {
+                if let Participation::Passive { .. } = self.participation {
                     info!("Node forced into active participation mode.");
 
-                    self.participaction = Participaction::Active;
+                    self.participation = Participation::Active;
 
                     Ok(true)
                 } else {
@@ -632,21 +632,14 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     }
 
     fn become_passive(&mut self) {
-        self.participaction = Participaction::passive();
+        self.participation = Participation::passive();
     }
 
     fn passive_for(&self, round_num: R) -> bool {
-        match self.participaction {
-            Participaction::Active => false,
-            Participaction::Passive {
-                first_observed_round: fr,
-                first_observed_concurrency: Some(fc),
-                highest_observed_concurrency: Some(hc),
-            } => match crate::util::try_usize_sub(round_num, usize::from(fc) + usize::from(hc)) {
-                Some(cmp) => cmp < fr,
-                None => true,
-            },
-            Participaction::Passive { .. } => true,
+        match self.participation {
+            Participation::Active => false,
+            Participation::PartiallyActive(r) => round_num < r,
+            Participation::Passive { .. } => true,
         }
     }
 
@@ -934,18 +927,19 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     ) -> Result<usize, AcceptError<S, C>> {
         let first_round = entries[0].0;
 
+        if let Participation::Passive {
+            observed_proposals, ..
+        } = &mut self.participation
+        {
+            for r in entries.iter().map(|(r, _)| *r) {
+                println!("Adding {:?}", (r, coord_num));
+                observed_proposals.insert((r, coord_num));
+            }
+        }
+
         if self.passive_for(first_round) {
             debug!("In passive mode, rejecting accept request.");
             return Err(AcceptError::Passive);
-        }
-
-        // TODO write a test for passive mode, this cannot be the right place
-        if let Participaction::Passive {
-            first_observed_round: ref mut fr,
-            ..
-        } = self.participaction
-        {
-            *fr = std::cmp::min(*fr, first_round);
         }
 
         let mut accepted = 0;
@@ -1071,24 +1065,41 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         while let Some((_, coord_num, entry)) = self.pending_commits.remove(&(round + One::one())) {
             round = round + One::one();
 
-            let awaiters = self.awaiters.remove(&entry.id()).unwrap_or_default();
-
-            if let Participaction::Passive {
-                first_observed_round: fr,
-                first_observed_concurrency: ref mut fc,
-                highest_observed_concurrency: ref mut hc,
-            } = self.participaction
+            if let Participation::Passive {
+                observed_proposals, ..
+            } = &mut self.participation
             {
-                if fc.is_none() && round == fr {
-                    *fc = Some(state.concurrency());
-                }
+                // To get out of passivity, we must fully observe `c` rounds, where `c` is the
+                // level of concurrency that was applicable to the first fully observed round.
+                //
+                // (Applicable to a round means right before an entry is applied. If, for
+                // instance, we fully observe round `r` with an applicable concurrency of `1`,
+                // then we may immediately come out of passivity. Even if the entry applied in
+                // `r` increases concurrency.)
+                //
+                // It is important to remember that our criteria for a "fully observed round"
+                // are that the same round and coordination number are observed in an accept and
+                // a commit. This allows us to deduce that the first fully observed round `r`
+                // had not been committed before. This in turn allows us to become active in
+                // round `r + c`, regardless of any potential concurrency increases between now
+                // (`r`) and then (`r + c`) because no node could have seen them before (`r` was
+                // not settled).
+                println!("Checking for {:?}", (round, coord_num));
+                if observed_proposals.contains(&(round, coord_num)) {
+                    let first_active_round = round + into_round_num(state.concurrency());
+                    self.participation = Participation::PartiallyActive(first_active_round);
 
-                if let Some(ref mut hc) = hc {
-                    *hc = std::cmp::max(*hc, state.concurrency());
+                    println!("{:?}", Event::<S, R, C>::Activate(first_active_round));
+                    crate::emit!(
+                        self,
+                        ShutdownEvent::Regular(Event::Activate(first_active_round))
+                    );
                 }
             }
 
             debug!("Applying entry {:?} at round {}.", entry, round);
+
+            let awaiters = self.awaiters.remove(&entry.id()).unwrap_or_default();
 
             let event = if awaiters.is_empty() {
                 state.apply_unobserved(&*entry, &mut self.context)
