@@ -14,13 +14,13 @@ use uuid::Uuid;
 use paxakos::append::AppendArgs;
 use paxakos::deco::{EnsureLeadershipBuilderExt, FillGapsBuilderExt};
 use paxakos::deco::{SendHeartbeatsBuilderExt, TrackLeadershipBuilderExt};
-use paxakos::prototyping::{DirectCommunicator, PrototypingNode, RetryIndefinitely};
+use paxakos::prototyping::{DirectCommunicators, PrototypingNode, RetryIndefinitely};
 use paxakos::{Node, NodeBuilder, NodeInfo, Shutdown};
 
 use calc_app::{CalcOp, CalcState};
 use tracer::StabilityChecker;
 
-type CalcCommunicator = DirectCommunicator<CalcState, u64, u32>;
+type CalcCommunicators = DirectCommunicators<CalcState, u64, u32>;
 
 #[test]
 fn stress_test() {
@@ -29,8 +29,8 @@ fn stress_test() {
         .init();
 
     let mut consistency_checker = StabilityChecker::new();
-    let communicator =
-        DirectCommunicator::with_characteristics(0.1, rand_distr::Normal::new(5.0, 3.0).unwrap());
+    let communicators =
+        DirectCommunicators::with_characteristics(0.1, rand_distr::Normal::new(5.0, 3.0).unwrap());
 
     let node_count = 5;
     let ops_per_node = 70;
@@ -56,7 +56,7 @@ fn stress_test() {
         join_handles.push(spawn_node(
             n,
             nodes.clone(),
-            communicator.clone(),
+            communicators.clone(),
             (1..=ops_per_node).map(|i| CalcOp::Add(f64::from(i), Uuid::new_v4())),
             target,
             &mut consistency_checker,
@@ -89,7 +89,7 @@ fn stress_test() {
 fn spawn_node(
     node_info: PrototypingNode,
     all_nodes: Vec<PrototypingNode>,
-    communicator: CalcCommunicator,
+    communicators: CalcCommunicators,
     ops: impl std::iter::IntoIterator<Item = CalcOp> + Send + 'static,
     target: f64,
     consistency_checker: &mut StabilityChecker<usize, u64, u32, Uuid>,
@@ -105,7 +105,7 @@ fn spawn_node(
             paxakos::node_builder()
                 .for_node(node_info.id())
                 .working_ephemerally()
-                .communicating_via(communicator.clone())
+                .communicating_via(communicators.create_communicator_for(node_info.id()))
                 .with_initial_state(CalcState::new(all_nodes, 5))
                 .traced_by(tracer)
                 .fill_gaps(|c| {
@@ -128,7 +128,7 @@ fn spawn_node(
         )
         .unwrap();
 
-        communicator.register(node_info.id(), handler);
+        communicators.register(node_info.id(), handler);
 
         let mut queued_ops = ops.into_iter().collect::<Vec<_>>();
         queued_ops.shuffle(&mut rand::thread_rng());

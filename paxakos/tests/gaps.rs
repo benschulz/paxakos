@@ -8,7 +8,7 @@ use uuid::Uuid;
 use paxakos::communicator::Communicator;
 use paxakos::event::Gap;
 use paxakos::node::EventFor;
-use paxakos::prototyping::{DirectCommunicator, PrototypingNode};
+use paxakos::prototyping::{DirectCommunicator, DirectCommunicators, PrototypingNode};
 use paxakos::state::LogEntryOf;
 use paxakos::{CoordNum, Event, Node, NodeBuilder, NodeInfo};
 use paxakos::{NodeKernel, RequestHandler, RoundNum, State};
@@ -66,6 +66,7 @@ fn later_gap_is_younger() {
 #[test]
 fn auto_fill_gaps() {
     let node_info = PrototypingNode::new();
+    let communicators = DirectCommunicators::<CalcState, u64, u32>::new();
 
     use paxakos::deco::FillGapsBuilderExt;
 
@@ -73,7 +74,7 @@ fn auto_fill_gaps() {
         paxakos::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
-            .communicating_via(DirectCommunicator::<CalcState, u64, u32>::new())
+            .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 10))
             .fill_gaps(|b| {
                 b.with_entry(|| CalcOp::Add(0f64, Uuid::new_v4()))
@@ -107,13 +108,13 @@ fn auto_fill_gaps() {
 
 fn setup_node() -> (RequestHandler<CalcState, u64, u32>, CalcNode) {
     let node_info = PrototypingNode::new();
-    let communicator = DirectCommunicator::new();
+    let communicators = DirectCommunicators::<CalcState, u64, u32>::new();
 
     let (req_handler, node) = futures::executor::block_on(
         paxakos::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
-            .communicating_via(communicator)
+            .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 1))
             .spawn_in(()),
     )

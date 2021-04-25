@@ -6,11 +6,11 @@ use std::convert::Infallible;
 use async_trait::async_trait;
 use futures::io::AsyncRead;
 use paxakos::append::AppendArgs;
-use paxakos::prototyping::{DirectCommunicator, PrototypingNode, RetryIndefinitely};
+use paxakos::prototyping::{DirectCommunicators, PrototypingNode, RetryIndefinitely};
 use paxakos::{LogEntry, Node, NodeBuilder, NodeHandle, NodeInfo, RoundNum, State};
 use uuid::Uuid;
 
-type ChatCommunicator = DirectCommunicator<ChatState, u64, u32>;
+type ChatCommunicators = DirectCommunicators<ChatState, u64, u32>;
 
 fn main() {
     let node_a = PrototypingNode::new();
@@ -19,11 +19,11 @@ fn main() {
 
     let nodes = vec![node_a, node_b, node_c];
 
-    let communicator = ChatCommunicator::new();
+    let communicators = ChatCommunicators::new();
 
-    let node_a = spawn_node(node_a, nodes.clone(), communicator.clone());
-    let node_b = spawn_node(node_b, nodes.clone(), communicator.clone());
-    let node_c = spawn_node(node_c, nodes, communicator);
+    let node_a = spawn_node(node_a, nodes.clone(), communicators.clone());
+    let node_b = spawn_node(node_b, nodes.clone(), communicators.clone());
+    let node_c = spawn_node(node_c, nodes, communicators);
 
     futures::executor::block_on(async move {
         let _ = node_a
@@ -67,7 +67,7 @@ fn main() {
 fn spawn_node(
     node_info: PrototypingNode,
     all_nodes: Vec<PrototypingNode>,
-    communicator: ChatCommunicator,
+    communicators: ChatCommunicators,
 ) -> NodeHandle<ChatState, u64, u32> {
     let (send, recv) = futures::channel::oneshot::channel();
 
@@ -76,7 +76,7 @@ fn spawn_node(
             paxakos::node_builder()
                 .for_node(node_info.id())
                 .working_ephemerally()
-                .communicating_via(communicator.clone())
+                .communicating_via(communicators.create_communicator_for(node_info.id()))
                 .with_initial_state(ChatState::new(node_info.id(), all_nodes))
                 .spawn_in(()),
         )
@@ -84,7 +84,7 @@ fn spawn_node(
 
         send.send(node.handle()).unwrap();
 
-        communicator.register(node_info.id(), handler);
+        communicators.register(node_info.id(), handler);
 
         futures::executor::block_on(futures::future::poll_fn(|cx| {
             let _ = node.poll_events(cx);

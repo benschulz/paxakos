@@ -7,7 +7,8 @@ use futures::stream::StreamExt;
 use uuid::Uuid;
 
 use paxakos::append::AppendArgs;
-use paxakos::prototyping::{DirectCommunicator, PrototypingNode, RetryIndefinitely};
+use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
+use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
 use paxakos::{Event, Node, NodeBuilder, NodeInfo};
 
 use calc_app::{CalcOp, CalcState};
@@ -97,12 +98,13 @@ fn multiple_concurrent_appends() {
 
 fn setup_node() -> paxakos::NodeKernel<CalcState, DirectCommunicator<CalcState, u64, u32>> {
     let node_info = PrototypingNode::new();
+    let communicators = DirectCommunicators::<CalcState, u64, u32>::new();
 
     let (_, node) = futures::executor::block_on(
         paxakos::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
-            .communicating_via(DirectCommunicator::<CalcState, u64, u32>::new())
+            .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 1))
             .spawn_in(()),
     )
