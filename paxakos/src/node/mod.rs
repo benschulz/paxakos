@@ -126,9 +126,9 @@ pub trait Admin {
     ///
     /// # Soundness
     ///
-    /// Forcing a node out of passive mode may cause it to go back out of
-    /// obligations it took on previously. The only exception are nodes which
-    /// are (re-)joining a cluster (see [joining_with]).
+    /// Forcing a node out of passive mode may cause it to back out of
+    /// obligations it took on previously. The only exception are nodes
+    /// which are (re-)joining a cluster (see [joining_with]).
     ///
     /// [joining_with]:
     /// builder::NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::joining_with

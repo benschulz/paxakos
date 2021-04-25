@@ -72,9 +72,9 @@ impl std::fmt::Debug for Commits {
 /// Converged on log entry waiting to be applied.
 ///
 /// A log entry may not immediately be applied, even when it is already known to
-/// have been inserted at a specific place in the distributed. Usually because
-/// there is a gap in the log. A `Commit` is a `Future` that represents such a
-/// log entry. Once the entry is applied, the future will become ready.
+/// have been inserted at a specific place in the distributed log. Usually
+/// because there is a gap in the log. A `Commit` is a `Future` that represents
+/// such a log entry. Once the entry is applied, the future will become ready.
 #[derive(Debug)]
 pub struct Commit<S: State, R, P = Identity> {
     round_num: R,
