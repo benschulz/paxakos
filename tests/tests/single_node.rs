@@ -1,5 +1,3 @@
-#![cfg(all(feature = "prototyping", feature = "tracer"))]
-
 mod calc_app;
 
 use futures::future::FutureExt;

@@ -1,5 +1,3 @@
-#![cfg(all(feature = "prototyping", feature = "tracer"))]
-
 use std::collections::HashSet;
 use std::convert::Infallible;
 

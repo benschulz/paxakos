@@ -31,11 +31,5 @@ serde = { version = "1", features = [ "derive", "rc" ] }
 thiserror = "1"
 tracing = "0.1"
 
-[dev-dependencies]
-streamunordered = "0.5"
-tokio = { version = "1", features = [ "macros", "rt-multi-thread" ] }
-tracing-subscriber = "0.2"
-uuid = { version = "0.8", features = [ "serde", "v4" ] }
-
 [package.metadata.docs.rs]
 all-features = true

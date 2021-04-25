@@ -1,0 +1,21 @@
+[package]
+name = "paxakos-tests"
+version = "0.0.0"
+authors = ["Ben Schulz <benshu@benshu.de>"]
+edition = "2018"
+publish = false
+
+[dev-dependencies]
+async-trait = "0.1"
+bincode = "1"
+blake3 = "0.3.1"
+futures = "0.3"
+paxakos = { path = "../paxakos", features = [ "prototyping", "tracer" ] }
+rand = "0.8"
+rand_distr = "0.4"
+serde = { version = "1", features = [ "derive", "rc" ] }
+streamunordered = "0.5"
+tokio = { version = "1", features = [ "macros", "rt-multi-thread" ] }
+tracing = "0.1"
+tracing-subscriber = "0.2"
+uuid = { version = "0.8", features = [ "serde", "v4" ] }

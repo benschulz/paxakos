@@ -1,4 +1,3 @@
-#![cfg(all(feature = "prototyping", feature = "tracer"))]
 #![feature(assert_matches)]
 
 mod calc_app;

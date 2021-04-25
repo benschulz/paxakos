@@ -1,5 +1,3 @@
-#![cfg(all(feature = "prototyping", feature = "tracer"))]
-
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 
@@ -195,7 +193,6 @@ where
     sender: mpsc::UnboundedSender<Event<R, C, I>>,
 }
 
-#[cfg(feature = "tracer")]
 impl<R, C, I> paxakos::tracer::Tracer<R, C, I> for Tracer<R, C, I>
 where
     R: RoundNum,
