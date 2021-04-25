@@ -247,10 +247,10 @@
 //! 2. Promise or Rejection
 //!
 //!    When a node receives a prepare request, it checks that it hasn't accepted
-//!    a previous such request with a coordination number that's equal or higher
-//!    than the given one. If it hasn't, it sends back a _promise_ not to accept
-//!    any more _proposals_ with a coordination number that's less the given
-//!    one. Otherwise it sends back a rejection.
+//!    a previous such request with a coordination number that's higher than the
+//!    given one. If it hasn't, it sends back a _promise_ not to accept any more
+//!    _proposals_ with a coordination number that's less the given one.
+//!    Otherwise it sends back a rejection.
 //!
 //!    1. Promise `(Vec<(RoundNum, CoordNum, LogEntry)>)`
 //!
