@@ -427,15 +427,10 @@ where
         round_num: RoundNumOf<C>,
         quorum: usize,
         pending_responses: impl IntoIterator<
-            Item = impl Future<
-                Output = Result<
-                    PromiseOrRejection<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>,
-                    ErrorOf<C>,
-                >,
-            >,
+            Item = impl Future<Output = Result<PromiseOrRejection<C>, ErrorOf<C>>>,
         >,
-        own_promise: Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>,
-    ) -> Result<PromiseOrRejection<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, AppendError> {
+        own_promise: Promise<C>,
+    ) -> Result<PromiseOrRejection<C>, AppendError> {
         if quorum == 0 {
             return Ok(PromiseOrRejection::Promise(own_promise));
         }

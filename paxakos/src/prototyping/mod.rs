@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use crate::append::{AppendError, RetryPolicy};
 use crate::communicator::{AcceptanceOrRejection, AcceptanceOrRejectionFor, Committed};
-use crate::communicator::{Communicator, PromiseOrRejection, PromiseOrRejectionFor};
+use crate::communicator::{Communicator, PromiseOrRejection};
 use crate::error::BoxError;
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
 use crate::{CoordNum, LogEntry, NodeInfo};
@@ -293,7 +293,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
 
     type Error = DirectCommunicatorError;
 
-    type SendPrepare = LocalBoxFuture<'static, Result<PromiseOrRejectionFor<Self>, Self::Error>>;
+    type SendPrepare = LocalBoxFuture<'static, Result<PromiseOrRejection<Self>, Self::Error>>;
     type SendProposal =
         LocalBoxFuture<'static, Result<AcceptanceOrRejectionFor<Self>, Self::Error>>;
     type SendCommit = LocalBoxFuture<'static, Result<Committed, Self::Error>>;

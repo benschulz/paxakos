@@ -393,6 +393,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use communicator::{Communicator, CoordNumOf, LogEntryOf, RoundNumOf};
 // TODO move these three into the communicator module
 #[doc(inline)]
 pub use error::{AcceptError, CommitError, PrepareError};
@@ -478,14 +479,13 @@ impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifi
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Promise<R, C, E>(Vec<(R, C, Arc<E>)>);
+#[serde(bound(
+    serialize = "C::LogEntry: Serialize",
+    deserialize = "C::LogEntry: Deserialize<'de>"
+))]
+pub struct Promise<C: Communicator>(Vec<(RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)>);
 
-impl<R, C, E> Promise<R, C, E>
-where
-    R: RoundNum,
-    C: CoordNum,
-    E: LogEntry,
-{
+impl<C: Communicator> Promise<C> {
     pub(crate) fn empty() -> Self {
         Self(Vec::new())
     }
@@ -494,7 +494,7 @@ where
         self.0.is_empty()
     }
 
-    pub(crate) fn log_entry_for(&self, round_num: R) -> Option<Arc<E>> {
+    pub(crate) fn log_entry_for(&self, round_num: RoundNumOf<C>) -> Option<Arc<LogEntryOf<C>>> {
         self.0
             .iter()
             .find(|(r, _, _)| *r == round_num)
@@ -582,13 +582,8 @@ where
     }
 }
 
-impl<R, C, E> IntoIterator for Promise<R, C, E>
-where
-    R: RoundNum,
-    C: CoordNum,
-    E: LogEntry,
-{
-    type Item = (R, C, Arc<E>);
+impl<C: Communicator> IntoIterator for Promise<C> {
+    type Item = (RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>);
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {

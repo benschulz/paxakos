@@ -783,7 +783,7 @@ where
         &mut self,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
-    ) -> Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<C>> {
+    ) -> Result<Promise<C>, PrepareError<C>> {
         if self.passive_for(round_num) {
             debug!("In passive mode, rejecting prepare request.");
             return Err(PrepareError::Passive);

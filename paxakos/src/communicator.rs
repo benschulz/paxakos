@@ -14,7 +14,6 @@ pub type LogEntryIdOf<C> = <LogEntryOf<C> as LogEntry>::Id;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
 
 pub type AcceptanceOrRejectionFor<C> = AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<C>>;
-pub type PromiseOrRejectionFor<C> = PromiseOrRejection<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>;
 
 /// Defines how [`Node`][crate::Node]s call others'
 /// [`RequestHandler`][crate::RequestHandler]s.
@@ -32,7 +31,7 @@ pub type PromiseOrRejectionFor<C> = PromiseOrRejection<RoundNumOf<C>, CoordNumOf
 /// for its previous run, i.e. delayed messages sent over a connectionless
 /// protocol. Failure to shield a node from such messages may cause it to come
 /// out of passive participation mode early and lead to inconsistency.
-pub trait Communicator: 'static {
+pub trait Communicator: Sized + 'static {
     type Node: NodeInfo;
 
     type RoundNum: RoundNum;
@@ -42,7 +41,7 @@ pub trait Communicator: 'static {
 
     type Error: Send + Sync + 'static;
 
-    type SendPrepare: Future<Output = Result<PromiseOrRejectionFor<Self>, Self::Error>>;
+    type SendPrepare: Future<Output = Result<PromiseOrRejection<Self>, Self::Error>>;
     type SendProposal: Future<Output = Result<AcceptanceOrRejectionFor<Self>, Self::Error>>;
     type SendCommit: Future<Output = Result<Committed, Self::Error>>;
     type SendCommitById: Future<Output = Result<Committed, Self::Error>>;
@@ -80,20 +79,15 @@ pub trait Communicator: 'static {
 }
 
 #[derive(Clone, Debug)]
-pub enum PromiseOrRejection<R, C, E> {
-    Promise(Promise<R, C, E>),
-    Rejection(Rejection<C, E>),
+pub enum PromiseOrRejection<C: Communicator> {
+    Promise(Promise<C>),
+    Rejection(Rejection<CoordNumOf<C>, LogEntryOf<C>>),
 }
 
-impl<C: Communicator>
-    TryFrom<Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>, PrepareError<C>>>
-    for PromiseOrRejection<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>
-{
+impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for PromiseOrRejection<C> {
     type Error = PrepareError<C>;
 
-    fn try_from(
-        result: Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>, PrepareError<C>>,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(result: Result<Promise<C>, PrepareError<C>>) -> Result<Self, Self::Error> {
         result
             .map(PromiseOrRejection::Promise)
             .or_else(|err| err.try_into().map(PromiseOrRejection::Rejection))
@@ -115,8 +109,10 @@ impl<C: Communicator> TryFrom<PrepareError<C>> for Rejection<CoordNumOf<C>, LogE
     }
 }
 
-impl<R, C, E> From<Result<Promise<R, C, E>, Rejection<C, E>>> for PromiseOrRejection<R, C, E> {
-    fn from(result: Result<Promise<R, C, E>, Rejection<C, E>>) -> Self {
+impl<C: Communicator> From<Result<Promise<C>, Rejection<CoordNumOf<C>, LogEntryOf<C>>>>
+    for PromiseOrRejection<C>
+{
+    fn from(result: Result<Promise<C>, Rejection<CoordNumOf<C>, LogEntryOf<C>>>) -> Self {
         match result {
             Ok(promise) => PromiseOrRejection::Promise(promise),
             Err(rejection) => PromiseOrRejection::Rejection(rejection),

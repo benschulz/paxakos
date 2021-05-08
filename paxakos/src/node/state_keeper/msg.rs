@@ -102,7 +102,7 @@ pub enum Response<S: State, C: Communicator> {
     ObservedCoordNum(Result<(), !>),
     HighestObservedCoordNum(Result<CoordNumOf<C>, !>),
 
-    PrepareEntry(Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<C>>),
+    PrepareEntry(Result<Promise<C>, PrepareError<C>>),
 
     AcceptEntry(Result<(), AcceptError<C>>),
     AcceptEntries(Result<usize, AcceptError<C>>),
