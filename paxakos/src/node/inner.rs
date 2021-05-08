@@ -500,12 +500,7 @@ where
             HashSet<NodeIdOf<S>>,
             HashSet<NodeIdOf<S>>,
             FuturesUnordered<
-                impl Future<
-                    Output = (
-                        NodeIdOf<S>,
-                        Result<AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<S>>, ErrorOf<C>>,
-                    ),
-                >,
+                impl Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
             >,
         ),
         AppendError,
@@ -542,12 +537,7 @@ where
         AppendError,
     >
     where
-        P: Future<
-            Output = (
-                NodeIdOf<S>,
-                Result<AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<S>>, ErrorOf<C>>,
-            ),
-        >,
+        P: Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
     {
         if quorum == 0 {
             return Ok((
@@ -623,13 +613,7 @@ where
         accepted: HashSet<NodeIdOf<S>>,
         rejected_or_failed: HashSet<NodeIdOf<S>>,
         mut pending_acceptances: FuturesUnordered<
-            impl 'static
-                + Future<
-                    Output = (
-                        NodeIdOf<S>,
-                        Result<AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<S>>, ErrorOf<C>>,
-                    ),
-                >,
+            impl 'static + Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
         >,
     ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
         let accepted = other_nodes

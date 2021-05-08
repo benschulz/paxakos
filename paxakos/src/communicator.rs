@@ -13,8 +13,6 @@ pub type LogEntryOf<C> = <C as Communicator>::LogEntry;
 pub type LogEntryIdOf<C> = <LogEntryOf<C> as LogEntry>::Id;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
 
-pub type AcceptanceOrRejectionFor<C> = AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<C>>;
-
 /// Defines how [`Node`][crate::Node]s call others'
 /// [`RequestHandler`][crate::RequestHandler]s.
 ///
@@ -42,7 +40,7 @@ pub trait Communicator: Sized + 'static {
     type Error: Send + Sync + 'static;
 
     type SendPrepare: Future<Output = Result<PromiseOrRejection<Self>, Self::Error>>;
-    type SendProposal: Future<Output = Result<AcceptanceOrRejectionFor<Self>, Self::Error>>;
+    type SendProposal: Future<Output = Result<AcceptanceOrRejection<Self>, Self::Error>>;
     type SendCommit: Future<Output = Result<Committed, Self::Error>>;
     type SendCommitById: Future<Output = Result<Committed, Self::Error>>;
 
@@ -81,7 +79,7 @@ pub trait Communicator: Sized + 'static {
 #[derive(Clone, Debug)]
 pub enum PromiseOrRejection<C: Communicator> {
     Promise(Promise<C>),
-    Rejection(Rejection<CoordNumOf<C>, LogEntryOf<C>>),
+    Rejection(Rejection<C>),
 }
 
 impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for PromiseOrRejection<C> {
@@ -94,7 +92,7 @@ impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for PromiseOr
     }
 }
 
-impl<C: Communicator> TryFrom<PrepareError<C>> for Rejection<CoordNumOf<C>, LogEntryOf<C>> {
+impl<C: Communicator> TryFrom<PrepareError<C>> for Rejection<C> {
     type Error = PrepareError<C>;
 
     fn try_from(error: PrepareError<C>) -> Result<Self, Self::Error> {
@@ -109,10 +107,8 @@ impl<C: Communicator> TryFrom<PrepareError<C>> for Rejection<CoordNumOf<C>, LogE
     }
 }
 
-impl<C: Communicator> From<Result<Promise<C>, Rejection<CoordNumOf<C>, LogEntryOf<C>>>>
-    for PromiseOrRejection<C>
-{
-    fn from(result: Result<Promise<C>, Rejection<CoordNumOf<C>, LogEntryOf<C>>>) -> Self {
+impl<C: Communicator> From<Result<Promise<C>, Rejection<C>>> for PromiseOrRejection<C> {
+    fn from(result: Result<Promise<C>, Rejection<C>>) -> Self {
         match result {
             Ok(promise) => PromiseOrRejection::Promise(promise),
             Err(rejection) => PromiseOrRejection::Rejection(rejection),
@@ -121,14 +117,12 @@ impl<C: Communicator> From<Result<Promise<C>, Rejection<CoordNumOf<C>, LogEntryO
 }
 
 #[derive(Clone, Debug)]
-pub enum AcceptanceOrRejection<C, E> {
+pub enum AcceptanceOrRejection<C: Communicator> {
     Acceptance,
-    Rejection(Rejection<C, E>),
+    Rejection(Rejection<C>),
 }
 
-impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>>
-    for AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<C>>
-{
+impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>> for AcceptanceOrRejection<C> {
     type Error = AcceptError<C>;
 
     fn try_from(result: Result<(), AcceptError<C>>) -> Result<Self, Self::Error> {
@@ -138,7 +132,7 @@ impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>>
     }
 }
 
-impl<C: Communicator> TryFrom<AcceptError<C>> for Rejection<CoordNumOf<C>, LogEntryOf<C>> {
+impl<C: Communicator> TryFrom<AcceptError<C>> for Rejection<C> {
     type Error = AcceptError<C>;
 
     fn try_from(error: AcceptError<C>) -> Result<Self, Self::Error> {
@@ -153,8 +147,8 @@ impl<C: Communicator> TryFrom<AcceptError<C>> for Rejection<CoordNumOf<C>, LogEn
     }
 }
 
-impl<C, E> From<Result<(), Rejection<C, E>>> for AcceptanceOrRejection<C, E> {
-    fn from(result: Result<(), Rejection<C, E>>) -> Self {
+impl<C: Communicator> From<Result<(), Rejection<C>>> for AcceptanceOrRejection<C> {
+    fn from(result: Result<(), Rejection<C>>) -> Self {
         match result {
             Ok(_) => AcceptanceOrRejection::Acceptance,
             Err(rejection) => AcceptanceOrRejection::Rejection(rejection),

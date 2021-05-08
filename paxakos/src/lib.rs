@@ -559,22 +559,22 @@ impl<C: Communicator> Promise<C> {
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum Rejection<C, E> {
+#[serde(bound(
+    serialize = "C::LogEntry: Serialize",
+    deserialize = "C::LogEntry: Deserialize<'de>"
+))]
+pub enum Rejection<C: Communicator> {
     Conflict {
-        coord_num: C,
+        coord_num: CoordNumOf<C>,
     },
     Converged {
-        coord_num: C,
-        log_entry: Option<(C, Arc<E>)>,
+        coord_num: CoordNumOf<C>,
+        log_entry: Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>,
     },
 }
 
-impl<C, E> Rejection<C, E>
-where
-    C: CoordNum,
-    E: LogEntry,
-{
-    pub(crate) fn coord_num(&self) -> C {
+impl<C: Communicator> Rejection<C> {
+    pub(crate) fn coord_num(&self) -> CoordNumOf<C> {
         match *self {
             Rejection::Conflict { coord_num } => coord_num,
             Rejection::Converged { coord_num, .. } => coord_num,
