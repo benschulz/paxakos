@@ -3,7 +3,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use crate::log::LogEntry;
-use crate::state::{self, State};
+use crate::state::State;
 use crate::{AcceptError, CommitError, CoordNum, NodeInfo};
 use crate::{PrepareError, Promise, Rejection, RoundNum};
 
@@ -130,22 +130,22 @@ pub enum AcceptanceOrRejection<C, E> {
     Rejection(Rejection<C, E>),
 }
 
-impl<S: State, C: CoordNum> TryFrom<Result<(), AcceptError<S, C>>>
-    for AcceptanceOrRejection<C, state::LogEntryOf<S>>
+impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>>
+    for AcceptanceOrRejection<CoordNumOf<C>, LogEntryOf<C>>
 {
-    type Error = AcceptError<S, C>;
+    type Error = AcceptError<C>;
 
-    fn try_from(result: Result<(), AcceptError<S, C>>) -> Result<Self, Self::Error> {
+    fn try_from(result: Result<(), AcceptError<C>>) -> Result<Self, Self::Error> {
         result
             .map(|_| AcceptanceOrRejection::Acceptance)
             .or_else(|err| err.try_into().map(AcceptanceOrRejection::Rejection))
     }
 }
 
-impl<S: State, C: CoordNum> TryFrom<AcceptError<S, C>> for Rejection<C, state::LogEntryOf<S>> {
-    type Error = AcceptError<S, C>;
+impl<C: Communicator> TryFrom<AcceptError<C>> for Rejection<CoordNumOf<C>, LogEntryOf<C>> {
+    type Error = AcceptError<C>;
 
-    fn try_from(error: AcceptError<S, C>) -> Result<Self, Self::Error> {
+    fn try_from(error: AcceptError<C>) -> Result<Self, Self::Error> {
         match error {
             AcceptError::Conflict(coord_num) => Ok(Rejection::Conflict { coord_num }),
             AcceptError::Converged(coord_num, log_entry) => Ok(Rejection::Converged {

@@ -908,7 +908,7 @@ where
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<S>>,
-    ) -> Result<(), AcceptError<S, CoordNumOf<C>>> {
+    ) -> Result<(), AcceptError<C>> {
         if round_num <= self.state_round {
             Err(AcceptError::Converged(
                 self.highest_observed_coord_num,
@@ -939,7 +939,7 @@ where
         &mut self,
         coord_num: CoordNumOf<C>,
         entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
-    ) -> Result<usize, AcceptError<S, CoordNumOf<C>>> {
+    ) -> Result<usize, AcceptError<C>> {
         let first_round = entries[0].0;
 
         if let Participation::Passive {

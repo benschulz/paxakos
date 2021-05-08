@@ -4,8 +4,7 @@ use thiserror::Error;
 
 use crate::append::AppendError;
 use crate::communicator::{Communicator, CoordNumOf, LogEntryOf};
-use crate::state::{self, LogEntryIdOf, State};
-use crate::CoordNum;
+use crate::state::{LogEntryIdOf, State};
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -132,13 +131,13 @@ impl<C: Communicator> From<PrepareError<C>> for AppendError {
 }
 
 /// A proposal could not be accepted.
-#[derive(Debug, Error)]
-pub enum AcceptError<S: State, C: CoordNum> {
+#[derive(Error)]
+pub enum AcceptError<C: Communicator> {
     #[error("conflicting promise")]
-    Conflict(C),
+    Conflict(CoordNumOf<C>),
 
     #[error("round already converged")]
-    Converged(C, Option<(C, Arc<state::LogEntryOf<S>>)>),
+    Converged(CoordNumOf<C>, Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>),
 
     #[error("node is passive")]
     Passive,
@@ -147,8 +146,26 @@ pub enum AcceptError<S: State, C: CoordNum> {
     ShutDown,
 }
 
-impl<S: State, C: CoordNum> From<AcceptError<S, C>> for AppendError {
-    fn from(e: AcceptError<S, C>) -> Self {
+impl<C: Communicator> std::fmt::Debug for AcceptError<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AcceptError::Conflict(coord_num) => f
+                .debug_tuple("AcceptError::Conflict")
+                .field(coord_num)
+                .finish(),
+            AcceptError::Converged(coord_num, converged) => f
+                .debug_tuple("AcceptError::Converged")
+                .field(coord_num)
+                .field(converged)
+                .finish(),
+            AcceptError::Passive => f.debug_tuple("AcceptError::Passive").finish(),
+            AcceptError::ShutDown => f.debug_tuple("AcceptError::ShutDown").finish(),
+        }
+    }
+}
+
+impl<C: Communicator> From<AcceptError<C>> for AppendError {
+    fn from(e: AcceptError<C>) -> Self {
         match e {
             AcceptError::Conflict(_) => AppendError::Lost,
             AcceptError::Converged(_, _) => AppendError::Converged,

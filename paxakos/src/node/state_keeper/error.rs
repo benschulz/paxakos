@@ -5,7 +5,7 @@ use crate::communicator::Communicator;
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
 use crate::state::State;
-use crate::{CoordNum, RoundNum};
+use crate::RoundNum;
 
 pub use crate::error::ShutDown;
 
@@ -33,7 +33,7 @@ impl<C: Communicator> From<ShutDown> for PrepareError<C> {
     }
 }
 
-impl<S: State, C: CoordNum> From<ShutDown> for AcceptError<S, C> {
+impl<C: Communicator> From<ShutDown> for AcceptError<C> {
     fn from(_: ShutDown) -> Self {
         Self::ShutDown
     }

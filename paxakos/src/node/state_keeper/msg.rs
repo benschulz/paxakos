@@ -104,8 +104,8 @@ pub enum Response<S: State, C: Communicator> {
 
     PrepareEntry(Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<C>>),
 
-    AcceptEntry(Result<(), AcceptError<S, CoordNumOf<C>>>),
-    AcceptEntries(Result<usize, AcceptError<S, CoordNumOf<C>>>),
+    AcceptEntry(Result<(), AcceptError<C>>),
+    AcceptEntries(Result<usize, AcceptError<C>>),
 
     CommitEntry(Result<(), CommitError<S>>),
 

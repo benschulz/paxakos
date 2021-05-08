@@ -153,7 +153,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<S>>,
-    ) -> impl Future<Output = Result<(), AcceptError<S, CoordNumOf<C>>>> {
+    ) -> impl Future<Output = Result<(), AcceptError<C>>> {
         crate::dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
     }
 
@@ -162,7 +162,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         entry: impl Into<Arc<LogEntryOf<S>>>,
-    ) -> impl Future<Output = Result<(), AcceptError<S, CoordNumOf<C>>>> {
+    ) -> impl Future<Output = Result<(), AcceptError<C>>> {
         let entry = entry.into();
         crate::dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
     }
@@ -171,7 +171,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         &self,
         coord_num: CoordNumOf<C>,
         entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
-    ) -> impl Future<Output = Result<usize, AcceptError<S, CoordNumOf<C>>>> {
+    ) -> impl Future<Output = Result<usize, AcceptError<C>>> {
         crate::dispatch_state_keeper_req!(self, AcceptEntries, { coord_num, entries })
     }
 

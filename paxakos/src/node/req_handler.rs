@@ -39,7 +39,7 @@ impl<S: State, C: Communicator> RequestHandler<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         entry: I,
-    ) -> impl Future<Output = Result<(), AcceptError<S, CoordNumOf<C>>>> {
+    ) -> impl Future<Output = Result<(), AcceptError<C>>> {
         let handle = self.0.clone();
         async move { handle.handle_proposal(round_num, coord_num, entry).await }
     }
