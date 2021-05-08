@@ -249,7 +249,7 @@ where
         event
     }
 
-    fn handle(&self) -> crate::node::NodeHandle<Self::State, RoundNumOf<Self>, CoordNumOf<Self>> {
+    fn handle(&self) -> crate::node::HandleFor<Self> {
         self.decorated.handle()
     }
 

@@ -7,9 +7,9 @@ use futures::sink::SinkExt;
 
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::{ApplicableTo, ProjectionOf};
+use crate::communicator::{Communicator, CoordNumOf, LogEntryOf, RoundNumOf};
 use crate::error::ShutDown;
-use crate::state::{LogEntryOf, State};
-use crate::{CoordNum, RoundNum};
+use crate::state::State;
 
 use super::commits::Commit;
 use super::snapshot::Snapshot;
@@ -19,32 +19,30 @@ use super::{Admin, NodeStatus};
 // macros
 use crate::dispatch_node_handle_req;
 
-pub type RequestAndResponseSender<S, R> = (
-    NodeHandleRequest<S, R>,
-    oneshot::Sender<NodeHandleResponse<S, R>>,
+pub type RequestAndResponseSender<S, C> = (
+    NodeHandleRequest<C>,
+    oneshot::Sender<NodeHandleResponse<S, C>>,
 );
 
 /// A remote handle for a paxakos [`Node`][crate::Node].
 #[derive(Clone)]
-pub struct NodeHandle<S, R, C>
+pub struct NodeHandle<S, C>
 where
     S: State,
-    R: RoundNum,
-    C: CoordNum,
+    C: Communicator,
 {
-    sender: mpsc::Sender<RequestAndResponseSender<S, R>>,
-    state_keeper: StateKeeperHandle<S, R, C>,
+    sender: mpsc::Sender<RequestAndResponseSender<S, C>>,
+    state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
 }
 
-impl<S, R, C> NodeHandle<S, R, C>
+impl<S, C> NodeHandle<S, C>
 where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
+    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    C: Communicator,
 {
     pub(crate) fn new(
-        sender: mpsc::Sender<RequestAndResponseSender<S, R>>,
-        state_keeper: StateKeeperHandle<S, R, C>,
+        sender: mpsc::Sender<RequestAndResponseSender<S, C>>,
+        state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> Self {
         Self {
             sender,
@@ -58,20 +56,25 @@ where
 
     pub fn prepare_snapshot(
         &self,
-    ) -> impl Future<Output = Result<Snapshot<S, R, C>, crate::error::PrepareSnapshotError>> {
+    ) -> impl Future<
+        Output = Result<
+            Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
+            crate::error::PrepareSnapshotError,
+        >,
+    > {
         self.state_keeper.prepare_snapshot()
     }
 
     pub fn affirm_snapshot(
         &self,
-        snapshot: Snapshot<S, R, C>,
+        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> impl Future<Output = Result<(), crate::error::AffirmSnapshotError>> {
         self.state_keeper.affirm_snapshot(snapshot)
     }
 
     pub fn install_snapshot(
         &self,
-        snapshot: Snapshot<S, R, C>,
+        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> impl Future<Output = Result<(), crate::error::InstallSnapshotError>> {
         self.state_keeper.install_snapshot(snapshot)
     }
@@ -83,8 +86,9 @@ where
     pub fn append<A: ApplicableTo<S>>(
         &self,
         applicable: A,
-        args: AppendArgs<R>,
-    ) -> impl Future<Output = Result<Commit<S, R, ProjectionOf<A, S>>, AppendError>> {
+        args: AppendArgs<RoundNumOf<C>>,
+    ) -> impl Future<Output = Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError>>
+    {
         dispatch_node_handle_req!(self, Append, {
             log_entry: applicable.into_log_entry(),
             args,
@@ -97,22 +101,20 @@ where
     }
 }
 
-impl<S, R, C> Admin for NodeHandle<S, R, C>
+impl<S, C> Admin for NodeHandle<S, C>
 where
     S: State,
-    R: RoundNum,
-    C: CoordNum,
+    C: Communicator,
 {
     fn force_active(&self) -> futures::future::BoxFuture<'static, Result<bool, ShutDown>> {
         self.state_keeper.force_active().boxed()
     }
 }
 
-impl<S, R, C> std::fmt::Debug for NodeHandle<S, R, C>
+impl<S, C> std::fmt::Debug for NodeHandle<S, C>
 where
     S: State,
-    R: RoundNum,
-    C: CoordNum,
+    C: Communicator,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "paxakos::NodeHandle")
@@ -120,20 +122,20 @@ where
 }
 
 #[derive(Debug)]
-pub enum NodeHandleRequest<S: State, R: RoundNum> {
+pub enum NodeHandleRequest<C: Communicator> {
     Status,
 
     Append {
-        log_entry: Arc<LogEntryOf<S>>,
-        args: AppendArgs<R>,
+        log_entry: Arc<LogEntryOf<C>>,
+        args: AppendArgs<RoundNumOf<C>>,
     },
 }
 
 #[derive(Debug)]
-pub enum NodeHandleResponse<S: State, R> {
+pub enum NodeHandleResponse<S: State, C: Communicator> {
     Status(NodeStatus),
 
-    Append(Result<Commit<S, R>, AppendError>),
+    Append(Result<Commit<S, RoundNumOf<C>>, AppendError>),
 }
 
 mod macros {

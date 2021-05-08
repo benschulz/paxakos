@@ -6,10 +6,12 @@ use std::convert::Infallible;
 use async_trait::async_trait;
 use futures::io::AsyncRead;
 use paxakos::append::AppendArgs;
-use paxakos::prototyping::{DirectCommunicators, PrototypingNode, RetryIndefinitely};
+use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
+use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
 use paxakos::{LogEntry, Node, NodeBuilder, NodeHandle, NodeInfo, RoundNum, State};
 use uuid::Uuid;
 
+type ChatCommunicator = DirectCommunicator<ChatState, u64, u32>;
 type ChatCommunicators = DirectCommunicators<ChatState, u64, u32>;
 
 fn main() {
@@ -68,7 +70,7 @@ fn spawn_node(
     node_info: PrototypingNode,
     all_nodes: Vec<PrototypingNode>,
     communicators: ChatCommunicators,
-) -> NodeHandle<ChatState, u64, u32> {
+) -> NodeHandle<ChatState, ChatCommunicator> {
     let (send, recv) = futures::channel::oneshot::channel();
 
     std::thread::spawn(move || {

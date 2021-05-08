@@ -35,8 +35,8 @@ where
     events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
     status: NodeStatus,
     participation: Participation<RoundNumOf<C>>,
-    handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<S, RoundNumOf<C>>>,
-    handle_recv: mpsc::Receiver<super::handle::RequestAndResponseSender<S, RoundNumOf<C>>>,
+    handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<S, C>>,
+    handle_recv: mpsc::Receiver<super::handle::RequestAndResponseSender<S, C>>,
     handle_appends: FuturesUnordered<HandleAppend<S, C>>,
 }
 
@@ -109,7 +109,7 @@ where
         result
     }
 
-    fn handle(&self) -> NodeHandle<S, RoundNumOf<C>, CoordNumOf<C>> {
+    fn handle(&self) -> NodeHandle<S, C> {
         NodeHandle::new(self.handle_send.clone(), self.state_keeper.clone())
     }
 
@@ -214,8 +214,8 @@ where
 
     fn process_handle_req(
         &mut self,
-        req: NodeHandleRequest<S, RoundNumOf<C>>,
-        send: oneshot::Sender<NodeHandleResponse<S, RoundNumOf<C>>>,
+        req: NodeHandleRequest<C>,
+        send: oneshot::Sender<NodeHandleResponse<S, C>>,
     ) {
         match req {
             NodeHandleRequest::Status => {
@@ -238,7 +238,7 @@ where
 {
     append:
         LocalBoxFuture<'static, Result<CommitFor<NodeKernel<S, C>, LogEntryOf<S>>, AppendError>>,
-    send: Option<oneshot::Sender<NodeHandleResponse<S, RoundNumOf<C>>>>,
+    send: Option<oneshot::Sender<NodeHandleResponse<S, C>>>,
 }
 
 impl<S, C> std::future::Future for HandleAppend<S, C>

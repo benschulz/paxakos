@@ -48,6 +48,7 @@ pub type EventOf<N> = EventFor<StateOf<N>>;
 
 pub type CommitFor<N, A> = Commit<StateOf<N>, RoundNumOf<N>, ProjectionOf<A, StateOf<N>>>;
 pub type EventFor<N> = Event<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
+pub type HandleFor<N> = NodeHandle<StateOf<N>, CommunicatorOf<N>>;
 
 pub fn builder() -> builder::NodeBuilderBlank {
     builder::NodeBuilderBlank::new()
@@ -78,7 +79,7 @@ pub trait Node: Sized {
         NextEvent(self)
     }
 
-    fn handle(&self) -> NodeHandle<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>;
+    fn handle(&self) -> NodeHandle<Self::State, Self::Communicator>;
 
     fn prepare_snapshot(
         &self,
