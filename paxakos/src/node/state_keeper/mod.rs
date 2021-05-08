@@ -27,7 +27,7 @@ use crate::log::LogEntry;
 use crate::state::{ContextOf, LogEntryIdOf, LogEntryOf, OutcomeOf, State};
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
-use crate::{CoordNum, Promise, RoundNum};
+use crate::{Condition, CoordNum, Promise, RoundNum};
 
 use super::snapshot::{DeconstructedSnapshot, Snapshot};
 use super::status::NodeStatus;
@@ -868,8 +868,8 @@ where
             let promise = self
                 .accepted_entries
                 .range(round_num..)
-                .map(|(r, (c, e))| (*r, *c, Arc::clone(e)))
-                .collect::<Vec<_>>();
+                .map(|(r, (c, e))| Condition::from((*r, *c, Arc::clone(e))))
+                .collect::<Vec<Condition<C>>>();
 
             #[cfg(feature = "tracer")]
             {
@@ -877,7 +877,10 @@ where
                     tracer.record_promise(
                         round_num,
                         coord_num,
-                        promise.iter().map(|(r, c, e)| (*r, *c, e.id())).collect(),
+                        promise
+                            .iter()
+                            .map(|c| (c.round_num, c.coord_num, c.log_entry.id()))
+                            .collect(),
                     );
                 }
             }

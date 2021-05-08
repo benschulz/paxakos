@@ -475,6 +475,36 @@ pub trait Identifier: 'static + Copy + Debug + Eq + Hash + Send + Sync + Unpin {
 
 impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifier for T {}
 
+/// A condition for a [Promise].
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::LogEntry: Serialize",
+    deserialize = "C::LogEntry: Deserialize<'de>"
+))]
+pub struct Condition<C: Communicator> {
+    pub round_num: RoundNumOf<C>,
+    pub coord_num: CoordNumOf<C>,
+    pub log_entry: Arc<LogEntryOf<C>>,
+}
+
+impl<C: Communicator> Into<(RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)> for Condition<C> {
+    fn into(self) -> (RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>) {
+        (self.round_num, self.coord_num, self.log_entry)
+    }
+}
+
+impl<C: Communicator> From<(RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)> for Condition<C> {
+    fn from(condition: (RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)) -> Self {
+        let (round_num, coord_num, log_entry) = condition;
+
+        Self {
+            round_num,
+            coord_num,
+            log_entry,
+        }
+    }
+}
+
 /// A promise not to accept certain proposals anymore.
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
@@ -483,9 +513,40 @@ impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifi
     serialize = "C::LogEntry: Serialize",
     deserialize = "C::LogEntry: Deserialize<'de>"
 ))]
-pub struct Promise<C: Communicator>(Vec<(RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)>);
+pub struct Promise<C: Communicator>(Vec<Condition<C>>);
+
+impl<C: Communicator> From<Vec<Condition<C>>> for Promise<C> {
+    fn from(mut conditions: Vec<Condition<C>>) -> Self {
+        conditions.sort_by_key(|c| c.round_num);
+
+        Self(conditions)
+    }
+}
+
+impl<C: Communicator> Into<Vec<Condition<C>>> for Promise<C> {
+    fn into(self) -> Vec<Condition<C>> {
+        self.0
+    }
+}
+
+impl<C> IntoIterator for Promise<C>
+where
+    C: Communicator,
+{
+    type Item = Condition<C>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 impl<C: Communicator> Promise<C> {
+    /// The conditions this promise is predicated on.
+    pub fn conditions(&self) -> &[Condition<C>] {
+        &self.0
+    }
+
     pub(crate) fn empty() -> Self {
         Self(Vec::new())
     }
@@ -495,10 +556,11 @@ impl<C: Communicator> Promise<C> {
     }
 
     pub(crate) fn log_entry_for(&self, round_num: RoundNumOf<C>) -> Option<Arc<LogEntryOf<C>>> {
+        // TODO exploit order
         self.0
             .iter()
-            .find(|(r, _, _)| *r == round_num)
-            .map(|(_, _, e)| Arc::clone(e))
+            .find(|c| c.round_num == round_num)
+            .map(|c| Arc::clone(&c.log_entry))
     }
 
     pub(crate) fn merge_with(self, other: Self) -> Self {
@@ -510,40 +572,40 @@ impl<C: Communicator> Promise<C> {
         let mut a = a.into_iter();
         let mut b = b.into_iter();
 
-        let mut a_next = a.next();
-        let mut b_next = b.next();
+        let mut a_next = a.next().map(Into::into);
+        let mut b_next = b.next().map(Into::into);
 
         loop {
             match (a_next, b_next) {
                 (Some((ra, ca, ea)), Some((rb, cb, eb))) => match ra.cmp(&rb) {
                     std::cmp::Ordering::Equal => {
                         if ca > cb {
-                            max.push((ra, ca, ea));
+                            max.push(Condition::from((ra, ca, ea)));
                         } else {
-                            max.push((rb, cb, eb));
+                            max.push(Condition::from((rb, cb, eb)));
                         }
 
-                        a_next = a.next();
-                        b_next = b.next();
+                        a_next = a.next().map(Into::into);
+                        b_next = b.next().map(Into::into);
                     }
                     std::cmp::Ordering::Less => {
-                        max.push((ra, ca, ea));
-                        a_next = a.next();
+                        max.push(Condition::from((ra, ca, ea)));
+                        a_next = a.next().map(Into::into);
                         b_next = Some((rb, cb, eb));
                     }
                     std::cmp::Ordering::Greater => {
-                        max.push((rb, cb, eb));
-                        b_next = b.next();
+                        max.push(Condition::from((rb, cb, eb)));
+                        b_next = b.next().map(Into::into);
                         a_next = Some((ra, ca, ea));
                     }
                 },
                 (Some((ra, ca, ea)), None) => {
-                    max.push((ra, ca, ea));
+                    max.push(Condition::from((ra, ca, ea)));
                     max.extend(a);
                     return Promise(max);
                 }
                 (None, Some((rb, cb, eb))) => {
-                    max.push((rb, cb, eb));
+                    max.push(Condition::from((rb, cb, eb)));
                     max.extend(b);
                     return Promise(max);
                 }
@@ -579,14 +641,5 @@ impl<C: Communicator> Rejection<C> {
             Rejection::Conflict { coord_num } => coord_num,
             Rejection::Converged { coord_num, .. } => coord_num,
         }
-    }
-}
-
-impl<C: Communicator> IntoIterator for Promise<C> {
-    type Item = (RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
     }
 }

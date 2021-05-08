@@ -383,7 +383,10 @@ where
                     self.state_keeper
                         .accept_entries(
                             coord_num,
-                            promise.into_iter().map(|(r, _, e)| (r, e)).collect(),
+                            promise
+                                .into_iter()
+                                .map(|c| (c.round_num, c.log_entry))
+                                .collect(),
                         )
                         .await?;
 
