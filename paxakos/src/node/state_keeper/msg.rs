@@ -3,23 +3,24 @@ use std::sync::Arc;
 
 use futures::channel::oneshot;
 
+use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
 use crate::node::Snapshot;
 use crate::state::{LogEntryIdOf, LogEntryOf, NodeOf, OutcomeOf, State};
-use crate::{CoordNum, Promise, RoundNum};
+use crate::{Promise, RoundNum};
 
 use super::error::{AcquireRoundNumError, ClusterError};
 use super::RoundNumReservation;
 
 #[derive(Debug)]
-pub enum Request<S: State, R: RoundNum, C: CoordNum> {
+pub enum Request<S: State, C: Communicator> {
     PrepareSnapshot,
     AffirmSnapshot {
-        snapshot: Snapshot<S, R, C>,
+        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
     },
     InstallSnapshot {
-        snapshot: Snapshot<S, R, C>,
+        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
     },
 
     ReadStale,
@@ -29,52 +30,52 @@ pub enum Request<S: State, R: RoundNum, C: CoordNum> {
     },
 
     AcquireRoundNum {
-        range: RangeInclusive<R>,
+        range: RangeInclusive<RoundNumOf<C>>,
     },
 
     AcceptedEntryOf {
-        round_num: R,
+        round_num: RoundNumOf<C>,
     },
 
     Cluster {
-        round_num: R,
+        round_num: RoundNumOf<C>,
     },
 
     ObservedCoordNum {
-        coord_num: C,
+        coord_num: CoordNumOf<C>,
     },
     HighestObservedCoordNum,
 
     PrepareEntry {
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
     },
 
     AcceptEntry {
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<S>>,
     },
     AcceptEntries {
-        coord_num: C,
-        entries: Vec<(R, Arc<LogEntryOf<S>>)>,
+        coord_num: CoordNumOf<C>,
+        entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
     },
 
     CommitEntry {
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<S>>,
     },
 
     CommitEntryById {
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
         entry_id: LogEntryIdOf<S>,
     },
 
     AssumeLeadership {
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
     },
 
     ForceActive,
@@ -83,28 +84,33 @@ pub enum Request<S: State, R: RoundNum, C: CoordNum> {
 }
 
 #[derive(Debug)]
-pub enum Response<S: State, R: RoundNum, C: CoordNum> {
-    PrepareSnapshot(Result<Snapshot<S, R, C>, PrepareSnapshotError>),
+pub enum Response<S: State, C: Communicator> {
+    PrepareSnapshot(Result<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>, PrepareSnapshotError>),
     AffirmSnapshot(Result<(), AffirmSnapshotError>),
     InstallSnapshot(Result<(), InstallSnapshotError>),
 
     ReadStale(Result<Arc<S>, ReadStaleError>),
 
-    AwaitCommitOf(Result<oneshot::Receiver<(R, OutcomeOf<S>)>, !>),
+    AwaitCommitOf(Result<oneshot::Receiver<(RoundNumOf<C>, OutcomeOf<S>)>, !>),
 
-    AcquireRoundNum(Result<RoundNumReservation<R>, AcquireRoundNumError>),
+    AcquireRoundNum(Result<RoundNumReservation<RoundNumOf<C>>, AcquireRoundNumError>),
 
     AcceptedEntryOf(Result<Option<Arc<LogEntryOf<S>>>, !>),
 
-    Cluster(Result<Vec<NodeOf<S>>, ClusterError<R>>),
+    Cluster(Result<Vec<NodeOf<S>>, ClusterError<RoundNumOf<C>>>),
 
     ObservedCoordNum(Result<(), !>),
-    HighestObservedCoordNum(Result<C, !>),
+    HighestObservedCoordNum(Result<CoordNumOf<C>, !>),
 
-    PrepareEntry(Result<Promise<R, C, LogEntryOf<S>>, PrepareError<S, C>>),
+    PrepareEntry(
+        Result<
+            Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>,
+            PrepareError<S, CoordNumOf<C>>,
+        >,
+    ),
 
-    AcceptEntry(Result<(), AcceptError<S, C>>),
-    AcceptEntries(Result<usize, AcceptError<S, C>>),
+    AcceptEntry(Result<(), AcceptError<S, CoordNumOf<C>>>),
+    AcceptEntries(Result<usize, AcceptError<S, CoordNumOf<C>>>),
 
     CommitEntry(Result<(), CommitError<S>>),
 

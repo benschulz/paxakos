@@ -7,6 +7,7 @@ mod working_dir;
 
 use std::collections::btree_map;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ use num_traits::{Bounded, One, Zero};
 use pin_project::pin_project;
 use tracing::{debug, info};
 
+use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError, SpawnError};
 use crate::event::{Event, ShutdownEvent};
@@ -36,8 +38,8 @@ pub use handle::StateKeeperHandle;
 use msg::{Release, Request, Response};
 use working_dir::WorkingDir;
 
-type RequestAndResponseSender<S, R, C> = (Request<S, R, C>, ResponseSender<S, R, C>);
-type ResponseSender<S, R, C> = oneshot::Sender<Response<S, R, C>>;
+type RequestAndResponseSender<S, C> = (Request<S, C>, ResponseSender<S, C>);
+type ResponseSender<S, C> = oneshot::Sender<Response<S, C>>;
 type Awaiter<S, R> = oneshot::Sender<(R, OutcomeOf<S>)>;
 
 #[derive(Debug)]
@@ -66,17 +68,17 @@ impl<R, C> From<super::Participation<R>> for Participation<R, C> {
 }
 
 #[derive(Debug)]
-pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
+pub struct StateKeeper<S: State, C: Communicator> {
     context: ContextOf<S>,
-    working_dir: Option<WorkingDir<R>>,
+    working_dir: Option<WorkingDir<RoundNumOf<C>>>,
 
-    receiver: mpsc::Receiver<RequestAndResponseSender<S, R, C>>,
+    receiver: mpsc::Receiver<RequestAndResponseSender<S, C>>,
 
-    release_sender: mpsc::UnboundedSender<Release<R>>,
-    release_receiver: mpsc::UnboundedReceiver<Release<R>>,
+    release_sender: mpsc::UnboundedSender<Release<RoundNumOf<C>>>,
+    release_receiver: mpsc::UnboundedReceiver<Release<RoundNumOf<C>>>,
 
     // TODO persist in snapshots
-    highest_observed_round_num: Option<R>,
+    highest_observed_round_num: Option<RoundNumOf<C>>,
 
     /// The highest coordination _observed_ number so far.
     ///
@@ -86,7 +88,7 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     /// bid for leader. This coordination number will then be compared against
     /// the _strongest_ promise (see prepare_entry). Therefore it makes no sense
     /// to track observations by round number.
-    highest_observed_coord_num: C,
+    highest_observed_coord_num: CoordNumOf<C>,
 
     /// If promises were made, promises will be kept.
     ///
@@ -116,41 +118,42 @@ pub struct StateKeeper<S: State, R: RoundNum, C: CoordNum> {
     /// enforcing the invariant above.
     ///
     /// [concurrency]: crate::state::State::concurrency
-    promises: BTreeMap<R, C>,
-    accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
-    leadership: (R, C),
+    promises: BTreeMap<RoundNumOf<C>, CoordNumOf<C>>,
+    accepted_entries: BTreeMap<RoundNumOf<C>, (CoordNumOf<C>, Arc<LogEntryOf<S>>)>,
+    leadership: (RoundNumOf<C>, CoordNumOf<C>),
 
     /// Round number of the last applied log entry, initially `Zero::zero()`.
-    state_round: R,
+    state_round: RoundNumOf<C>,
     /// Current state or `None` iff the node is `Disoriented`.
     state: Option<Arc<S>>,
 
-    round_num_requests: VecDeque<(RangeInclusive<R>, ResponseSender<S, R, C>)>,
-    acquired_round_nums: HashSet<R>,
+    round_num_requests: VecDeque<(RangeInclusive<RoundNumOf<C>>, ResponseSender<S, C>)>,
+    acquired_round_nums: HashSet<RoundNumOf<C>>,
 
-    pending_commits: BTreeMap<R, (std::time::Instant, C, Arc<LogEntryOf<S>>)>,
-    awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S, R>>>,
+    pending_commits:
+        BTreeMap<RoundNumOf<C>, (std::time::Instant, CoordNumOf<C>, Arc<LogEntryOf<S>>)>,
+    awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S, RoundNumOf<C>>>>,
 
-    participation: Participation<R, C>,
+    participation: Participation<RoundNumOf<C>, CoordNumOf<C>>,
     /// last status that was observable from the outside
     status: NodeStatus,
-    event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
+    event_emitter: mpsc::Sender<ShutdownEvent<S, RoundNumOf<C>, CoordNumOf<C>>>,
 
-    applied_entry_buffer: VecDeque<(C, Arc<LogEntryOf<S>>)>,
+    applied_entry_buffer: VecDeque<(CoordNumOf<C>, Arc<LogEntryOf<S>>)>,
 
     #[cfg(feature = "tracer")]
-    tracer: Option<Box<dyn Tracer<R, C, LogEntryIdOf<S>>>>,
+    tracer: Option<Box<dyn Tracer<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<S>>>>,
 }
 
-impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
+impl<S: State, C: Communicator> StateKeeper<S, C> {
     pub async fn spawn(
-        args: SpawnArgs<S, R, C>,
+        args: SpawnArgs<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> Result<
         (
             NodeStatus,
-            super::Participation<R>,
-            EventStream<S, R, C>,
-            StateKeeperHandle<S, R, C>,
+            super::Participation<RoundNumOf<C>>,
+            EventStream<S, C>,
+            StateKeeperHandle<S, C>,
             ProofOfLife,
         ),
         SpawnError,
@@ -179,12 +182,12 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     }
 
     fn start_and_run_new(
-        spawn_args: SpawnArgs<S, R, C>,
+        spawn_args: SpawnArgs<S, RoundNumOf<C>, CoordNumOf<C>>,
         start_result_sender: oneshot::Sender<
-            Result<(NodeStatus, super::Participation<R>), SpawnError>,
+            Result<(NodeStatus, super::Participation<RoundNumOf<C>>), SpawnError>,
         >,
-        receiver: mpsc::Receiver<RequestAndResponseSender<S, R, C>>,
-        event_emitter: mpsc::Sender<ShutdownEvent<S, R, C>>,
+        receiver: mpsc::Receiver<RequestAndResponseSender<S, C>>,
+        event_emitter: mpsc::Sender<ShutdownEvent<S, RoundNumOf<C>, CoordNumOf<C>>>,
     ) {
         std::thread::spawn(move || {
             let context = spawn_args.context;
@@ -436,8 +439,8 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
     fn handle_request_msg(
         &mut self,
-        req: Request<S, R, C>,
-        resp_sender: oneshot::Sender<Response<S, R, C>>,
+        req: Request<S, C>,
+        resp_sender: oneshot::Sender<Response<S, C>>,
     ) {
         let resp = match req {
             Request::PrepareSnapshot => Response::PrepareSnapshot(self.prepare_snapshot()),
@@ -635,7 +638,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         self.participation = Participation::passive();
     }
 
-    fn passive_for(&self, round_num: R) -> bool {
+    fn passive_for(&self, round_num: RoundNumOf<C>) -> bool {
         match self.participation {
             Participation::Active => false,
             Participation::PartiallyActive(r) => round_num < r,
@@ -656,7 +659,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         );
     }
 
-    fn emit_directive(&mut self, round_num: R, coord_num: C) {
+    fn emit_directive(&mut self, round_num: RoundNumOf<C>, coord_num: CoordNumOf<C>) {
         if let Some(state) = &self.state {
             if round_num > self.state_round
                 && round_num <= self.state_round + into_round_num(state.concurrency())
@@ -667,7 +670,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                     .expect("Zero was ruled out via equality check");
 
                 let cluster = state.cluster_at(round_offset);
-                let cluster_size = C::try_from(cluster.len()).unwrap_or_else(|_| {
+                let cluster_size = CoordNumOf::<C>::try_from(cluster.len()).unwrap_or_else(|_| {
                     panic!(
                         "Cannot convert cluster size `{}` into a coordination number.",
                         cluster.len()
@@ -692,18 +695,20 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         }
     }
 
-    fn observe_round_num(&mut self, round_num: R) {
+    fn observe_round_num(&mut self, round_num: RoundNumOf<C>) {
         self.highest_observed_round_num = self
             .highest_observed_round_num
             .map(|r| std::cmp::max(r, round_num))
             .or(Some(round_num));
     }
 
-    fn observe_coord_num(&mut self, coord_num: C) {
+    fn observe_coord_num(&mut self, coord_num: CoordNumOf<C>) {
         self.highest_observed_coord_num = std::cmp::max(self.highest_observed_coord_num, coord_num);
     }
 
-    fn prepare_snapshot(&mut self) -> Result<Snapshot<S, R, C>, PrepareSnapshotError> {
+    fn prepare_snapshot(
+        &mut self,
+    ) -> Result<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>, PrepareSnapshotError> {
         let state = self
             .state
             .as_ref()
@@ -719,13 +724,16 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
     }
 
     // TODO this doesn't do anything and probably never will, consider removal
-    fn affirm_snapshot(&mut self, _snapshot: Snapshot<S, R, C>) -> Result<(), AffirmSnapshotError> {
+    fn affirm_snapshot(
+        &mut self,
+        _snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
+    ) -> Result<(), AffirmSnapshotError> {
         Ok(())
     }
 
     fn install_snapshot(
         &mut self,
-        snapshot: Snapshot<S, R, C>,
+        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> Result<(), InstallSnapshotError> {
         if self.state_round > snapshot.round() {
             return Err(InstallSnapshotError::Outdated);
@@ -769,9 +777,10 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
     fn prepare_entry(
         &mut self,
-        round_num: R,
-        coord_num: C,
-    ) -> Result<Promise<R, C, LogEntryOf<S>>, PrepareError<S, C>> {
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
+    ) -> Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<S, CoordNumOf<C>>>
+    {
         if self.passive_for(round_num) {
             debug!("In passive mode, rejecting prepare request.");
             return Err(PrepareError::Passive);
@@ -874,7 +883,10 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         }
     }
 
-    fn try_get_applied_entry(&mut self, round_num: R) -> Option<(C, Arc<LogEntryOf<S>>)> {
+    fn try_get_applied_entry(
+        &mut self,
+        round_num: RoundNumOf<C>,
+    ) -> Option<(CoordNumOf<C>, Arc<LogEntryOf<S>>)> {
         if let Some(offset) = crate::util::try_usize_delta(self.state_round, round_num) {
             if let Some((c, e)) = self.applied_entry_buffer.get(offset) {
                 return Some((*c, Arc::clone(e)));
@@ -890,10 +902,10 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
     fn accept_entry(
         &mut self,
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<S>>,
-    ) -> Result<(), AcceptError<S, C>> {
+    ) -> Result<(), AcceptError<S, CoordNumOf<C>>> {
         if round_num <= self.state_round {
             Err(AcceptError::Converged(
                 self.highest_observed_coord_num,
@@ -922,9 +934,9 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
     fn accept_entries(
         &mut self,
-        coord_num: C,
-        entries: Vec<(R, Arc<LogEntryOf<S>>)>,
-    ) -> Result<usize, AcceptError<S, C>> {
+        coord_num: CoordNumOf<C>,
+        entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
+    ) -> Result<usize, AcceptError<S, CoordNumOf<C>>> {
         let first_round = entries[0].0;
 
         if let Participation::Passive {
@@ -991,8 +1003,8 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
 
     fn commit_entry(
         &mut self,
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<S>>,
     ) -> Result<(), CommitError<S>> {
         #[cfg(feature = "tracer")]
@@ -1051,7 +1063,7 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
         self.state = Some(state);
     }
 
-    fn apply_commits_to(&mut self, state: Arc<S>) -> (R, Arc<S>) {
+    fn apply_commits_to(&mut self, state: Arc<S>) -> (RoundNumOf<C>, Arc<S>) {
         if !self
             .pending_commits
             .contains_key(&(self.state_round + One::one()))
@@ -1089,7 +1101,10 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeper<S, R, C> {
                     let first_active_round = round + into_round_num(state.concurrency());
                     self.participation = Participation::PartiallyActive(first_active_round);
 
-                    println!("{:?}", Event::<S, R, C>::Activate(first_active_round));
+                    println!(
+                        "{:?}",
+                        Event::<S, RoundNumOf<C>, CoordNumOf<C>>::Activate(first_active_round)
+                    );
                     crate::emit!(
                         self,
                         ShutdownEvent::Regular(Event::Activate(first_active_round))
@@ -1224,13 +1239,13 @@ impl ProofOfLife {
 }
 
 #[pin_project]
-pub struct EventStream<S: State, R: RoundNum, C: CoordNum> {
+pub struct EventStream<S: State, C: Communicator> {
     #[pin]
-    delegate: mpsc::Receiver<ShutdownEvent<S, R, C>>,
+    delegate: mpsc::Receiver<ShutdownEvent<S, RoundNumOf<C>, CoordNumOf<C>>>,
 }
 
-impl<S: State, R: RoundNum, C: CoordNum> futures::stream::Stream for EventStream<S, R, C> {
-    type Item = ShutdownEvent<S, R, C>;
+impl<S: State, C: Communicator> futures::stream::Stream for EventStream<S, C> {
+    type Item = ShutdownEvent<S, RoundNumOf<C>, CoordNumOf<C>>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,

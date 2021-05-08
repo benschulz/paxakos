@@ -14,12 +14,10 @@ pub type RequestHandlerFor<N> = RequestHandler<StateOf<N>, CommunicatorOf<N>>;
 /// Used by [`Communicator`][crate::communicator::Communicator]s to prepare
 /// replies.
 #[derive(Debug)]
-pub struct RequestHandler<S: State, C: Communicator>(
-    StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
-);
+pub struct RequestHandler<S: State, C: Communicator>(StateKeeperHandle<S, C>);
 
 impl<S: State, C: Communicator> RequestHandler<S, C> {
-    pub(crate) fn new(state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>) -> Self {
+    pub(crate) fn new(state_keeper: StateKeeperHandle<S, C>) -> Self {
         Self(state_keeper)
     }
 

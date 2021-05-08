@@ -34,7 +34,7 @@ where
     id: NodeIdOf<S>,
     communicator: RefCell<C>,
 
-    state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
+    state_keeper: StateKeeperHandle<S, C>,
 
     election_lock: Mutex<ElectionToken>,
     term_start: Cell<RoundNumOf<C>>,
@@ -51,7 +51,7 @@ where
     pub fn new(
         id: NodeIdOf<S>,
         communicator: C,
-        state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
+        state_keeper: StateKeeperHandle<S, C>,
         commits: Commits,
     ) -> Self {
         Self {

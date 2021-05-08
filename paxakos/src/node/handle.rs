@@ -31,7 +31,7 @@ where
     C: Communicator,
 {
     sender: mpsc::Sender<RequestAndResponseSender<S, C>>,
-    state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
+    state_keeper: StateKeeperHandle<S, C>,
 }
 
 impl<S, C> Clone for NodeHandle<S, C>
@@ -54,7 +54,7 @@ where
 {
     pub(crate) fn new(
         sender: mpsc::Sender<RequestAndResponseSender<S, C>>,
-        state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
+        state_keeper: StateKeeperHandle<S, C>,
     ) -> Self {
         Self {
             sender,

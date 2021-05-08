@@ -29,10 +29,10 @@ where
     C: Communicator,
 {
     inner: Rc<NodeInner<S, C>>,
-    state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
+    state_keeper: StateKeeperHandle<S, C>,
     proof_of_life: ProofOfLife,
     commits: Commits,
-    events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
+    events: EventStream<S, C>,
     status: NodeStatus,
     participation: Participation<RoundNumOf<C>>,
     handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<S, C>>,

@@ -1,7 +1,7 @@
 use futures::future::{FutureExt, LocalBoxFuture};
 use futures::stream::StreamExt;
 
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
+use crate::communicator::Communicator;
 use crate::event::ShutdownEventFor;
 use crate::state::State;
 
@@ -26,7 +26,7 @@ where
     C: Communicator,
 {
     trigger: LocalBoxFuture<'static, ()>,
-    events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
+    events: EventStream<S, C>,
     commits: Commits,
 }
 
@@ -37,7 +37,7 @@ where
 {
     pub(crate) fn new(
         trigger: LocalBoxFuture<'static, ()>,
-        events: EventStream<S, RoundNumOf<C>, CoordNumOf<C>>,
+        events: EventStream<S, C>,
         commits: Commits,
     ) -> Self {
         Self {
