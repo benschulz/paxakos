@@ -72,7 +72,8 @@ impl RetryPolicy for RetryIndefinitely {
     }
 }
 
-type RequestHandlers<S, R, C> = HashMap<NodeIdOf<S>, RequestHandler<S, R, C>>;
+type RequestHandlers<S, R, C> =
+    HashMap<NodeIdOf<S>, RequestHandler<S, DirectCommunicator<S, R, C>>>;
 type EventListeners<S, R, C> = Vec<mpsc::Sender<DirectCommunicatorEvent<S, R, C>>>;
 
 #[derive(Clone, Debug)]
@@ -107,7 +108,11 @@ impl<S: State, R: RoundNum, C: CoordNum> DirectCommunicators<S, R, C> {
     }
 
     #[allow(dead_code)]
-    pub fn register(&self, node_id: NodeIdOf<S>, handler: RequestHandler<S, R, C>) {
+    pub fn register(
+        &self,
+        node_id: NodeIdOf<S>,
+        handler: RequestHandler<S, DirectCommunicator<S, R, C>>,
+    ) {
         futures::executor::block_on(async {
             let mut handlers = self.request_handlers.lock().await;
             handlers.insert(node_id, handler);

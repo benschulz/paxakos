@@ -3,7 +3,7 @@ mod calc_app;
 use futures::stream::StreamExt;
 use uuid::Uuid;
 
-use paxakos::communicator::Communicator;
+use paxakos::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use paxakos::event::Gap;
 use paxakos::node::EventFor;
 use paxakos::prototyping::{DirectCommunicator, DirectCommunicators, PrototypingNode};
@@ -104,7 +104,10 @@ fn auto_fill_gaps() {
     );
 }
 
-fn setup_node() -> (RequestHandler<CalcState, u64, u32>, CalcNode) {
+fn setup_node() -> (
+    RequestHandler<CalcState, DirectCommunicator<CalcState, u64, u32>>,
+    CalcNode,
+) {
     let node_info = PrototypingNode::new();
     let communicators = DirectCommunicators::<CalcState, u64, u32>::new();
 
@@ -121,10 +124,10 @@ fn setup_node() -> (RequestHandler<CalcState, u64, u32>, CalcNode) {
     (req_handler, node)
 }
 
-fn commit<S: State, R: RoundNum, C: CoordNum>(
-    req_handler: &RequestHandler<S, R, C>,
-    round_num: R,
-    coord_num: C,
+fn commit<S: State, C: Communicator>(
+    req_handler: &RequestHandler<S, C>,
+    round_num: RoundNumOf<C>,
+    coord_num: CoordNumOf<C>,
     log_entry: LogEntryOf<S>,
 ) {
     let _ = futures::executor::block_on(req_handler.handle_commit(round_num, coord_num, log_entry));

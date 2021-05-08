@@ -171,13 +171,7 @@ where
         id: NodeIdOf<S>,
         communicator: C,
         args: super::SpawnArgs<S, RoundNumOf<C>, CoordNumOf<C>>,
-    ) -> Result<
-        (
-            RequestHandler<S, RoundNumOf<C>, CoordNumOf<C>>,
-            NodeKernel<S, C>,
-        ),
-        crate::error::SpawnError,
-    > {
+    ) -> Result<(RequestHandler<S, C>, NodeKernel<S, C>), crate::error::SpawnError> {
         let (initial_status, initial_participation, events, state_keeper, proof_of_life) =
             StateKeeper::spawn(args).await?;
 
