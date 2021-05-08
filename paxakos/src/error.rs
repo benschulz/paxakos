@@ -168,3 +168,7 @@ impl<S: State> From<CommitError<S>> for AppendError {
 #[derive(Clone, Copy, Debug, Error)]
 #[error("node is disoriented")]
 pub struct Disoriented;
+
+#[derive(Clone, Copy, Debug, Error)]
+#[error("node is shut down")]
+pub struct ShutDown;

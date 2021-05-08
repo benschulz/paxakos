@@ -6,12 +6,9 @@ use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
 use crate::state::State;
 use crate::{CoordNum, RoundNum};
 
-#[derive(Debug)]
-pub struct ShutDown;
+pub use crate::error::ShutDown;
 
 impl ShutDown {
-    pub(super) fn into_unit<T>(self) {}
-
     pub(super) fn rule_out<T>(result: Result<T, ShutDown>) -> T {
         result.unwrap()
     }

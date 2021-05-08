@@ -7,6 +7,7 @@ use futures::sink::SinkExt;
 
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::{ApplicableTo, ProjectionOf};
+use crate::error::ShutDown;
 use crate::state::{LogEntryOf, State};
 use crate::{CoordNum, RoundNum};
 
@@ -51,8 +52,8 @@ where
         }
     }
 
-    pub fn status(&self) -> impl Future<Output = Result<NodeStatus, ()>> {
-        dispatch_node_handle_req!(self, Status).map(|r| r.ok_or(()))
+    pub fn status(&self) -> impl Future<Output = Result<NodeStatus, ShutDown>> {
+        dispatch_node_handle_req!(self, Status).map(|r| r.ok_or(ShutDown))
     }
 
     pub fn prepare_snapshot(
@@ -102,7 +103,7 @@ where
     R: RoundNum,
     C: CoordNum,
 {
-    fn force_active(&self) -> futures::future::BoxFuture<'static, Result<bool, ()>> {
+    fn force_active(&self) -> futures::future::BoxFuture<'static, Result<bool, ShutDown>> {
         self.state_keeper.force_active().boxed()
     }
 }

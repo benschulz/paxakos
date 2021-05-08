@@ -17,7 +17,7 @@ use futures::future::{BoxFuture, LocalBoxFuture};
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::communicator::Communicator;
-use crate::error::Disoriented;
+use crate::error::{Disoriented, ShutDown};
 use crate::log::LogKeeping;
 use crate::state::ContextOf;
 #[cfg(feature = "tracer")]
@@ -133,7 +133,7 @@ pub trait Admin {
     ///
     /// [joining_with]:
     /// builder::NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::joining_with
-    fn force_active(&self) -> BoxFuture<'static, Result<bool, ()>>;
+    fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 
 pub struct SpawnArgs<S: State, R: RoundNum, C: CoordNum> {

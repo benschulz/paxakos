@@ -4,7 +4,7 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use futures::channel::{mpsc, oneshot};
-use futures::future::{FutureExt, TryFutureExt};
+use futures::future::FutureExt;
 use futures::sink::SinkExt;
 
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, Disoriented};
@@ -207,8 +207,8 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
         )
     }
 
-    pub fn force_active(&self) -> impl Future<Output = Result<bool, ()>> {
-        crate::dispatch_state_keeper_req!(self, ForceActive).map_err(ShutDown::into_unit::<bool>)
+    pub fn force_active(&self) -> impl Future<Output = Result<bool, ShutDown>> {
+        crate::dispatch_state_keeper_req!(self, ForceActive)
     }
 
     pub fn shut_down(&self, _proof_of_life: ProofOfLife) -> impl Future<Output = ()> {

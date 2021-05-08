@@ -7,7 +7,7 @@ use futures::future::{FutureExt, LocalBoxFuture};
 use futures::stream::{FuturesUnordered, StreamExt};
 
 use crate::applicable::{Identity, Projection};
-use crate::error::CommitError;
+use crate::error::ShutDown;
 use crate::state::{OutcomeOf, State};
 
 #[derive(Clone)]
@@ -123,14 +123,13 @@ impl<S: State, R: Copy, P> Commit<S, R, P> {
     }
 }
 
-// TODO ShutDown is the only reachable error variant
 impl<S, R, P> Future for Commit<S, R, P>
 where
     S: State,
     R: crate::RoundNum,
     P: Projection<OutcomeOf<S>>,
 {
-    type Output = Result<<P as Projection<OutcomeOf<S>>>::Projected, CommitError<S>>;
+    type Output = Result<<P as Projection<OutcomeOf<S>>>::Projected, ShutDown>;
 
     fn poll(
         mut self: std::pin::Pin<&mut Self>,
@@ -138,7 +137,7 @@ where
     ) -> std::task::Poll<Self::Output> {
         self.receiver.poll_unpin(cx).map(|r| {
             r.map(|(_, outcome)| P::project(outcome))
-                .map_err(|_| CommitError::ShutDown)
+                .map_err(|oneshot::Canceled| ShutDown)
         })
     }
 }
