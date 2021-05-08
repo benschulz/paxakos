@@ -4,17 +4,17 @@ use async_trait::async_trait;
 use num_traits::{Bounded, Zero};
 use thiserror::Error;
 
+use crate::communicator::{Communicator, RoundNumOf};
 use crate::error::BoxError;
-use crate::RoundNum;
 
 #[derive(Debug)]
-pub struct AppendArgs<R: RoundNum> {
-    pub round: RangeInclusive<R>,
+pub struct AppendArgs<C: Communicator> {
+    pub round: RangeInclusive<RoundNumOf<C>>,
     pub importance: Importance,
     pub retry_policy: Box<dyn RetryPolicy>,
 }
 
-impl<R: RoundNum> Default for AppendArgs<R> {
+impl<C: Communicator> Default for AppendArgs<C> {
     fn default() -> Self {
         Self {
             round: Zero::zero()..=Bounded::max_value(),

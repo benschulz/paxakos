@@ -431,7 +431,7 @@ where
     fn append<A: ApplicableTo<Self::State> + 'static>(
         &self,
         applicable: A,
-        args: AppendArgs<RoundNumOf<Self>>,
+        args: AppendArgs<Self::Communicator>,
     ) -> futures::future::LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>> {
         self.decorated.append(applicable, args)
     }

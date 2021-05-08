@@ -75,7 +75,7 @@ where
     pub async fn append<A: ApplicableTo<S>>(
         self: Rc<Self>,
         applicable: A,
-        args: AppendArgs<RoundNumOf<C>>,
+        args: AppendArgs<C>,
     ) -> Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError> {
         let log_entry = applicable.into_log_entry();
         let log_entry_id = log_entry.id();
@@ -101,7 +101,7 @@ where
     async fn append_actively(
         self: Rc<Self>,
         log_entry: Arc<LogEntryOf<S>>,
-        mut args: AppendArgs<RoundNumOf<C>>,
+        mut args: AppendArgs<C>,
     ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
         let mut i: usize = 0;
 

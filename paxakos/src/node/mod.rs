@@ -100,7 +100,7 @@ pub trait Node: Sized {
     fn append<A: ApplicableTo<Self::State> + 'static>(
         &self,
         applicable: A,
-        args: AppendArgs<RoundNumOf<Self>>,
+        args: AppendArgs<Self::Communicator>,
     ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>>;
 
     fn shut_down(self) -> Self::Shutdown;

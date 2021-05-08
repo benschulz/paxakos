@@ -98,7 +98,7 @@ where
     pub fn append<A: ApplicableTo<S>>(
         &self,
         applicable: A,
-        args: AppendArgs<RoundNumOf<C>>,
+        args: AppendArgs<C>,
     ) -> impl Future<Output = Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError>>
     {
         dispatch_node_handle_req!(self, Append, {
@@ -139,7 +139,7 @@ pub enum NodeHandleRequest<C: Communicator> {
 
     Append {
         log_entry: Arc<LogEntryOf<C>>,
-        args: AppendArgs<RoundNumOf<C>>,
+        args: AppendArgs<C>,
     },
 }
 

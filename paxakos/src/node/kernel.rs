@@ -137,7 +137,7 @@ where
     fn append<A: ApplicableTo<Self::State> + 'static>(
         &self,
         applicable: A,
-        args: AppendArgs<RoundNumOf<C>>,
+        args: AppendArgs<C>,
     ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>> {
         Rc::clone(&self.inner)
             .append(applicable, args)

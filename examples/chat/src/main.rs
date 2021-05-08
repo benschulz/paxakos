@@ -8,7 +8,7 @@ use futures::io::AsyncRead;
 use paxakos::append::AppendArgs;
 use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
 use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
-use paxakos::{LogEntry, Node, NodeBuilder, NodeHandle, NodeInfo, RoundNum, State};
+use paxakos::{LogEntry, Node, NodeBuilder, NodeHandle, NodeInfo, State};
 use uuid::Uuid;
 
 type ChatCommunicator = DirectCommunicator<ChatState, u64, u32>;
@@ -106,7 +106,7 @@ fn msg(sender: &str, message: &str) -> ChatMessage {
     }
 }
 
-fn always_retry<R: RoundNum>() -> AppendArgs<R> {
+fn always_retry() -> AppendArgs<ChatCommunicator> {
     AppendArgs {
         retry_policy: Box::new(RetryIndefinitely::without_pausing()),
         ..Default::default()
