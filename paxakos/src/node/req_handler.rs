@@ -27,10 +27,7 @@ impl<S: State, C: Communicator> RequestHandler<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
     ) -> impl Future<
-        Output = Result<
-            Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>,
-            PrepareError<S, CoordNumOf<C>>,
-        >,
+        Output = Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<C>>,
     > {
         let handle = self.0.clone();
         async move { handle.handle_prepare(round_num, coord_num).await }

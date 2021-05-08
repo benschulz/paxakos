@@ -130,10 +130,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
     ) -> impl Future<
-        Output = Result<
-            Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>,
-            PrepareError<S, CoordNumOf<C>>,
-        >,
+        Output = Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<C>>,
     > {
         self.handle_prepare(round_num, coord_num)
     }
@@ -143,10 +140,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
     ) -> impl Future<
-        Output = Result<
-            Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>,
-            PrepareError<S, CoordNumOf<C>>,
-        >,
+        Output = Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<C>>,
     > {
         crate::dispatch_state_keeper_req!(self, PrepareEntry, {
             round_num,

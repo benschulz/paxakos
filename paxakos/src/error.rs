@@ -3,7 +3,8 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::state::{LogEntryIdOf, LogEntryOf, State};
+use crate::communicator::{Communicator, CoordNumOf, LogEntryOf};
+use crate::state::{self, LogEntryIdOf, State};
 use crate::CoordNum;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -86,13 +87,13 @@ pub enum ReadStaleError {
 }
 
 /// Preparing a round for proposals failed.
-#[derive(Debug, Error)]
-pub enum PrepareError<S: State, C: CoordNum> {
+#[derive(Error)]
+pub enum PrepareError<C: Communicator> {
     #[error("conflicting promise")]
-    Conflict(C),
+    Conflict(CoordNumOf<C>),
 
     #[error("round already converged")]
-    Converged(C, Option<(C, Arc<LogEntryOf<S>>)>),
+    Converged(CoordNumOf<C>, Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>),
 
     #[error("node is passive")]
     Passive,
@@ -101,8 +102,26 @@ pub enum PrepareError<S: State, C: CoordNum> {
     ShutDown,
 }
 
-impl<S: State, C: CoordNum> From<PrepareError<S, C>> for AppendError {
-    fn from(e: PrepareError<S, C>) -> Self {
+impl<C: Communicator> std::fmt::Debug for PrepareError<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PrepareError::Conflict(coord_num) => f
+                .debug_tuple("PrepareError::Conflict")
+                .field(coord_num)
+                .finish(),
+            PrepareError::Converged(coord_num, converged) => f
+                .debug_tuple("PrepareError::Converged")
+                .field(coord_num)
+                .field(converged)
+                .finish(),
+            PrepareError::Passive => f.debug_tuple("PrepareError::Passive").finish(),
+            PrepareError::ShutDown => f.debug_tuple("PrepareError::ShutDown").finish(),
+        }
+    }
+}
+
+impl<C: Communicator> From<PrepareError<C>> for AppendError {
+    fn from(e: PrepareError<C>) -> Self {
         match e {
             PrepareError::Conflict(_) => AppendError::Lost,
             PrepareError::Converged(_, _) => AppendError::Converged,
@@ -119,7 +138,7 @@ pub enum AcceptError<S: State, C: CoordNum> {
     Conflict(C),
 
     #[error("round already converged")]
-    Converged(C, Option<(C, Arc<LogEntryOf<S>>)>),
+    Converged(C, Option<(C, Arc<state::LogEntryOf<S>>)>),
 
     #[error("node is passive")]
     Passive,

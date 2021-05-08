@@ -145,7 +145,11 @@ pub struct StateKeeper<S: State, C: Communicator> {
     tracer: Option<Box<dyn Tracer<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<S>>>>,
 }
 
-impl<S: State, C: Communicator> StateKeeper<S, C> {
+impl<S, C> StateKeeper<S, C>
+where
+    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    C: Communicator,
+{
     pub async fn spawn(
         args: SpawnArgs<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> Result<
@@ -779,8 +783,7 @@ impl<S: State, C: Communicator> StateKeeper<S, C> {
         &mut self,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
-    ) -> Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<S, CoordNumOf<C>>>
-    {
+    ) -> Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<S>>, PrepareError<C>> {
         if self.passive_for(round_num) {
             debug!("In passive mode, rejecting prepare request.");
             return Err(PrepareError::Passive);

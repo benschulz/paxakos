@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 use crate::append::AppendError;
+use crate::communicator::Communicator;
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
 use crate::state::State;
@@ -26,7 +27,7 @@ impl From<ShutDown> for ReadStaleError {
     }
 }
 
-impl<S: State, C: CoordNum> From<ShutDown> for PrepareError<S, C> {
+impl<C: Communicator> From<ShutDown> for PrepareError<C> {
     fn from(_: ShutDown) -> Self {
         Self::ShutDown
     }

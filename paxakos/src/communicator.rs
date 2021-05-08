@@ -2,9 +2,10 @@ use std::convert::{TryFrom, TryInto};
 use std::future::Future;
 use std::sync::Arc;
 
+use crate::log::LogEntry;
 use crate::state::{self, State};
-use crate::{log::LogEntry, PrepareError};
-use crate::{AcceptError, CommitError, CoordNum, NodeInfo, Promise, Rejection, RoundNum};
+use crate::{AcceptError, CommitError, CoordNum, NodeInfo};
+use crate::{PrepareError, Promise, Rejection, RoundNum};
 
 pub type CoordNumOf<C> = <C as Communicator>::CoordNum;
 pub type ErrorOf<C> = <C as Communicator>::Error;
@@ -84,14 +85,14 @@ pub enum PromiseOrRejection<R, C, E> {
     Rejection(Rejection<C, E>),
 }
 
-impl<S: State, R: RoundNum, C: CoordNum>
-    TryFrom<Result<Promise<R, C, state::LogEntryOf<S>>, PrepareError<S, C>>>
-    for PromiseOrRejection<R, C, state::LogEntryOf<S>>
+impl<C: Communicator>
+    TryFrom<Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>, PrepareError<C>>>
+    for PromiseOrRejection<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>
 {
-    type Error = PrepareError<S, C>;
+    type Error = PrepareError<C>;
 
     fn try_from(
-        result: Result<Promise<R, C, state::LogEntryOf<S>>, PrepareError<S, C>>,
+        result: Result<Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>, PrepareError<C>>,
     ) -> Result<Self, Self::Error> {
         result
             .map(PromiseOrRejection::Promise)
@@ -99,10 +100,10 @@ impl<S: State, R: RoundNum, C: CoordNum>
     }
 }
 
-impl<S: State, C: CoordNum> TryFrom<PrepareError<S, C>> for Rejection<C, state::LogEntryOf<S>> {
-    type Error = PrepareError<S, C>;
+impl<C: Communicator> TryFrom<PrepareError<C>> for Rejection<CoordNumOf<C>, LogEntryOf<C>> {
+    type Error = PrepareError<C>;
 
-    fn try_from(error: PrepareError<S, C>) -> Result<Self, Self::Error> {
+    fn try_from(error: PrepareError<C>) -> Result<Self, Self::Error> {
         match error {
             PrepareError::Conflict(coord_num) => Ok(Rejection::Conflict { coord_num }),
             PrepareError::Converged(coord_num, log_entry) => Ok(Rejection::Converged {
