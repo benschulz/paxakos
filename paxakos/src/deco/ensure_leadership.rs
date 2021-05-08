@@ -298,7 +298,7 @@ where
 
     fn read_stale(
         &self,
-    ) -> futures::future::LocalBoxFuture<'static, Result<std::sync::Arc<Self::State>, ()>> {
+    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<Self::State>, ()>> {
         self.decorated.read_stale()
     }
 

@@ -93,7 +93,7 @@ pub trait Node: Sized {
         snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>>;
 
-    fn read_stale(&self) -> LocalBoxFuture<'static, Result<Arc<Self::State>, ()>>;
+    fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<Self::State>, ()>>;
 
     fn append<A: ApplicableTo<Self::State> + 'static>(
         &self,
