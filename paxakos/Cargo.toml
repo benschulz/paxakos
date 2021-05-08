@@ -31,5 +31,8 @@ serde = { version = "1", features = [ "derive", "rc" ] }
 thiserror = "1"
 tracing = "0.1"
 
+[dev-dependencies]
+uuid = { version = "0.8", features = [ "serde", "v4" ] }
+
 [package.metadata.docs.rs]
 all-features = true
