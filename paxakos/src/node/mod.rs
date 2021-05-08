@@ -47,7 +47,7 @@ pub type NodeIdOf<N> = crate::state::NodeIdOf<StateOf<N>>;
 pub type EventOf<N> = EventFor<StateOf<N>>;
 
 pub type CommitFor<N, A> = Commit<StateOf<N>, RoundNumOf<N>, ProjectionOf<A, StateOf<N>>>;
-pub type EventFor<N> = Event<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
+pub type EventFor<N> = Event<StateOf<N>, CommunicatorOf<N>>;
 pub type HandleFor<N> = NodeHandle<StateOf<N>, CommunicatorOf<N>>;
 
 pub fn builder() -> builder::NodeBuilderBlank {
@@ -112,7 +112,7 @@ impl<'a, N> std::future::Future for NextEvent<'a, N>
 where
     N: Node,
 {
-    type Output = Event<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
+    type Output = EventFor<N>;
 
     fn poll(
         mut self: std::pin::Pin<&mut Self>,

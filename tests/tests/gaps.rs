@@ -8,8 +8,7 @@ use paxakos::event::Gap;
 use paxakos::node::EventFor;
 use paxakos::prototyping::{DirectCommunicator, DirectCommunicators, PrototypingNode};
 use paxakos::state::LogEntryOf;
-use paxakos::{CoordNum, Event, Node, NodeBuilder, NodeInfo};
-use paxakos::{NodeKernel, RequestHandler, RoundNum, State};
+use paxakos::{Event, Node, NodeBuilder, NodeInfo, NodeKernel, RequestHandler, State};
 
 use calc_app::{CalcOp, CalcState};
 
@@ -148,14 +147,14 @@ where
     .unwrap()
 }
 
-fn gaps_of<S: State, R: RoundNum, C: CoordNum>(e: &Event<S, R, C>) -> Vec<Gap<R>> {
+fn gaps_of<S: State, C: Communicator>(e: &Event<S, C>) -> Vec<Gap<RoundNumOf<C>>> {
     match e {
         Event::Gaps(gs) => gs.clone(),
         _ => panic!("Expected Event::Gaps{{..}}, got {:?}.", e),
     }
 }
 
-fn ranges_of<S: State, R: RoundNum, C: CoordNum>(e: &Event<S, R, C>) -> Vec<std::ops::Range<R>> {
+fn ranges_of<S: State, C: Communicator>(e: &Event<S, C>) -> Vec<std::ops::Range<RoundNumOf<C>>> {
     match e {
         Event::Gaps(gs) => gs.iter().map(|g| g.rounds.clone()).collect(),
         _ => panic!("Expected Event::Gaps{{..}}, got {:?}.", e),

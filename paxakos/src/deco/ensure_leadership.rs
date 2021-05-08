@@ -228,7 +228,7 @@ where
     fn poll_events(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> Poll<crate::Event<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>> {
+    ) -> Poll<crate::Event<Self::State, Self::Communicator>> {
         let event = self.decorated.poll_events(cx);
 
         if let Poll::Ready(event) = &event {

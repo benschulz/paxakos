@@ -137,7 +137,7 @@ pub struct StateKeeper<S: State, C: Communicator> {
     participation: Participation<RoundNumOf<C>, CoordNumOf<C>>,
     /// last status that was observable from the outside
     status: NodeStatus,
-    event_emitter: mpsc::Sender<ShutdownEvent<S, RoundNumOf<C>, CoordNumOf<C>>>,
+    event_emitter: mpsc::Sender<ShutdownEvent<S, C>>,
 
     applied_entry_buffer: VecDeque<(CoordNumOf<C>, Arc<LogEntryOf<S>>)>,
 
@@ -187,7 +187,7 @@ impl<S: State, C: Communicator> StateKeeper<S, C> {
             Result<(NodeStatus, super::Participation<RoundNumOf<C>>), SpawnError>,
         >,
         receiver: mpsc::Receiver<RequestAndResponseSender<S, C>>,
-        event_emitter: mpsc::Sender<ShutdownEvent<S, RoundNumOf<C>, CoordNumOf<C>>>,
+        event_emitter: mpsc::Sender<ShutdownEvent<S, C>>,
     ) {
         std::thread::spawn(move || {
             let context = spawn_args.context;
@@ -1096,15 +1096,10 @@ impl<S: State, C: Communicator> StateKeeper<S, C> {
                 // round `r + c`, regardless of any potential concurrency increases between now
                 // (`r`) and then (`r + c`) because no node could have seen them before (`r` was
                 // not settled).
-                println!("Checking for {:?}", (round, coord_num));
                 if observed_proposals.contains(&(round, coord_num)) {
                     let first_active_round = round + into_round_num(state.concurrency());
                     self.participation = Participation::PartiallyActive(first_active_round);
 
-                    println!(
-                        "{:?}",
-                        Event::<S, RoundNumOf<C>, CoordNumOf<C>>::Activate(first_active_round)
-                    );
                     crate::emit!(
                         self,
                         ShutdownEvent::Regular(Event::Activate(first_active_round))
@@ -1241,11 +1236,11 @@ impl ProofOfLife {
 #[pin_project]
 pub struct EventStream<S: State, C: Communicator> {
     #[pin]
-    delegate: mpsc::Receiver<ShutdownEvent<S, RoundNumOf<C>, CoordNumOf<C>>>,
+    delegate: mpsc::Receiver<ShutdownEvent<S, C>>,
 }
 
 impl<S: State, C: Communicator> futures::stream::Stream for EventStream<S, C> {
-    type Item = ShutdownEvent<S, RoundNumOf<C>, CoordNumOf<C>>;
+    type Item = ShutdownEvent<S, C>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,

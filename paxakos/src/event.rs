@@ -1,23 +1,18 @@
 use std::sync::Arc;
 
-use crate::communicator::{CoordNumOf, RoundNumOf};
+use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::node::{NodeStatus, Shutdown, Snapshot};
 use crate::state::{EventOf, LogEntryOf, NodeOf, State};
-use crate::{CoordNum, RoundNum};
+use crate::RoundNum;
 
-pub type ShutdownEventFor<S> = ShutdownEvent<
-    <S as Shutdown>::State,
-    RoundNumOf<<S as Shutdown>::Communicator>,
-    CoordNumOf<<S as Shutdown>::Communicator>,
->;
+pub type ShutdownEventFor<S> = ShutdownEvent<<S as Shutdown>::State, <S as Shutdown>::Communicator>;
 
 /// Emitted by `Node`'s [`poll_events`][crate::Node::poll_events] method.
 #[non_exhaustive]
-#[derive(Debug)]
-pub enum Event<S: State, R: RoundNum, C: CoordNum> {
+pub enum Event<S: State, C: Communicator> {
     Init {
         status: NodeStatus,
-        round: R,
+        round: RoundNumOf<C>,
         state: Option<Arc<S>>,
     },
 
@@ -28,17 +23,17 @@ pub enum Event<S: State, R: RoundNum, C: CoordNum> {
 
     /// The node is transitioning to [partially active
     /// participation][crate::node::Participation].
-    Activate(R),
+    Activate(RoundNumOf<C>),
 
     /// A snapshot was installed.
-    Install { round: R, state: Arc<S> },
+    Install { round: RoundNumOf<C>, state: Arc<S> },
 
     /// An entry has been committed to the log.
     ///
     /// The event does not imply that the entry was applied to the shared state.
     Commit {
         /// The round for which `log_entry` was committed.
-        round: R,
+        round: RoundNumOf<C>,
 
         /// The log entry which was committed.
         log_entry: Arc<LogEntryOf<S>>,
@@ -46,7 +41,7 @@ pub enum Event<S: State, R: RoundNum, C: CoordNum> {
 
     /// The next log entry was applied to the state.
     Apply {
-        round: R,
+        round: RoundNumOf<C>,
         log_entry: Arc<LogEntryOf<S>>,
         result: EventOf<S>,
     },
@@ -57,7 +52,7 @@ pub enum Event<S: State, R: RoundNum, C: CoordNum> {
     /// concurrency bound or if this node created the gap itself. The second
     /// case can arise when the leader tries to concurrently append multiple
     /// entries and abandons some of the earlier appends.
-    Gaps(Vec<Gap<R>>),
+    Gaps(Vec<Gap<RoundNumOf<C>>>),
 
     /// This node received a (potentially indirect) directive for the given
     /// round and from the given node. The node used the mandate obtained with
@@ -66,9 +61,66 @@ pub enum Event<S: State, R: RoundNum, C: CoordNum> {
     /// This event is not emitted when this node is disoriented or lagging.
     Directive {
         leader: NodeOf<S>,
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
     },
+}
+
+impl<S: State, C: Communicator> std::fmt::Debug for Event<S, C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::Init {
+                status,
+                round,
+                state,
+            } => f
+                .debug_struct("Event::Init")
+                .field("status", status)
+                .field("round", round)
+                .field("state", state)
+                .finish(),
+            Event::StatusChange {
+                old_status,
+                new_status,
+            } => f
+                .debug_struct("Event::StatusChange")
+                .field("old_status", old_status)
+                .field("new_status", new_status)
+                .finish(),
+            Event::Activate(round) => f.debug_tuple("Event::Activate").field(round).finish(),
+            Event::Install { round, state } => f
+                .debug_struct("Event::Install")
+                .field("round", round)
+                .field("state", state)
+                .finish(),
+            Event::Commit { round, log_entry } => f
+                .debug_struct("Event::Commit")
+                .field("round", round)
+                .field("log_entry", log_entry)
+                .finish(),
+            Event::Apply {
+                round,
+                log_entry,
+                result,
+            } => f
+                .debug_struct("Event::Apply")
+                .field("round", round)
+                .field("log_entry", log_entry)
+                .field("result", result)
+                .finish(),
+            Event::Gaps(gaps) => f.debug_tuple("Event::Gaps").field(gaps).finish(),
+            Event::Directive {
+                leader,
+                round_num,
+                coord_num,
+            } => f
+                .debug_struct("Event::Directive")
+                .field("leader", leader)
+                .field("round_num", round_num)
+                .field("coord_num", coord_num)
+                .finish(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -82,11 +134,22 @@ pub struct Gap<R: RoundNum> {
 
 /// Emitted by `Shutdown`'s [`poll_shutdown`][crate::Shutdown::poll_shutdown]
 /// method.
-#[derive(Debug)]
-pub enum ShutdownEvent<S: State, R: RoundNum, C: CoordNum> {
-    Regular(Event<S, R, C>),
+pub enum ShutdownEvent<S: State, C: Communicator> {
+    Regular(Event<S, C>),
     #[non_exhaustive]
     Last {
-        snapshot: Option<Snapshot<S, R, C>>,
+        snapshot: Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>,
     },
+}
+
+impl<S: State, C: Communicator> std::fmt::Debug for ShutdownEvent<S, C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ShutdownEvent::Regular(e) => f.debug_tuple("ShutdownEvent::Regular").field(e).finish(),
+            ShutdownEvent::Last { snapshot } => f
+                .debug_struct("ShutdownEvent::Last")
+                .field("snapshot", snapshot)
+                .finish(),
+        }
+    }
 }
