@@ -18,7 +18,7 @@ pub trait EnsureLeadershipBuilderExt: NodeBuilder {
     fn ensure_leadership<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P>>
+    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P>, Self::Voter>
     where
         C: FnOnce(
             EnsureLeadershipBuilderBlank<Self::Node>,
@@ -41,7 +41,7 @@ where
     fn ensure_leadership<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P>>
+    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P>, <B as NodeBuilder>::Voter>
     where
         C: FnOnce(
             EnsureLeadershipBuilderBlank<Self::Node>,

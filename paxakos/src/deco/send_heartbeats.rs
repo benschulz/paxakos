@@ -22,7 +22,7 @@ where
     fn send_heartbeats<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilderWithAll<SendHeartbeats<Self::Node, P, I>>
+    ) -> NodeBuilderWithAll<SendHeartbeats<Self::Node, P, I>, Self::Voter>
     where
         Self::Node: MaybeLeadershipAwareNode<I>,
         C: FnOnce(SendHeartbeatsBuilderBlank<Self::Node>) -> SendHeartbeatsBuilder<Self::Node, P>,
@@ -46,7 +46,7 @@ where
     fn send_heartbeats<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilderWithAll<SendHeartbeats<Self::Node, P, I>>
+    ) -> NodeBuilderWithAll<SendHeartbeats<Self::Node, P, I>, <B as NodeBuilder>::Voter>
     where
         C: FnOnce(SendHeartbeatsBuilderBlank<Self::Node>) -> SendHeartbeatsBuilder<Self::Node, P>,
         P: Fn() -> LogEntryOf<<B as NodeBuilder>::Node> + 'static,

@@ -1,5 +1,6 @@
 //! This example is for illustrative purposes only. Basing a chat protocol on
 //! consensus is a bad idea, but makes a neat example.
+#![feature(never_type)]
 
 use std::convert::Infallible;
 
@@ -11,8 +12,8 @@ use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
 use paxakos::{LogEntry, Node, NodeBuilder, NodeHandle, NodeInfo, State};
 use uuid::Uuid;
 
-type ChatCommunicator = DirectCommunicator<ChatState, u64, u32>;
-type ChatCommunicators = DirectCommunicators<ChatState, u64, u32>;
+type ChatCommunicator = DirectCommunicator<ChatState, u64, u32, !>;
+type ChatCommunicators = DirectCommunicators<ChatState, u64, u32, !>;
 
 fn main() {
     let node_a = PrototypingNode::new();

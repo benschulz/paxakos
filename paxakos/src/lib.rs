@@ -385,6 +385,7 @@ pub mod state;
 #[cfg(feature = "tracer")]
 pub mod tracer;
 mod util;
+pub mod voting;
 
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;

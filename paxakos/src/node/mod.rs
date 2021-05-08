@@ -16,10 +16,10 @@ use futures::future::{BoxFuture, LocalBoxFuture};
 
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::{ApplicableTo, ProjectionOf};
-use crate::communicator::Communicator;
+use crate::communicator::{self, Communicator};
 use crate::error::{Disoriented, ShutDown};
 use crate::log::LogKeeping;
-use crate::state::ContextOf;
+use crate::state::{self, ContextOf};
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::{CoordNum, Event, RoundNum, State};
@@ -37,9 +37,10 @@ pub use status::NodeStatus;
 pub type StateOf<N> = <N as Node>::State;
 pub type CommunicatorOf<N> = <N as Node>::Communicator;
 
-pub type RoundNumOf<N> = crate::communicator::RoundNumOf<CommunicatorOf<N>>;
-pub type CoordNumOf<N> = crate::communicator::CoordNumOf<CommunicatorOf<N>>;
+pub type RoundNumOf<N> = communicator::RoundNumOf<CommunicatorOf<N>>;
+pub type CoordNumOf<N> = communicator::CoordNumOf<CommunicatorOf<N>>;
 
+pub type JustificationOf<N> = communicator::JustificationOf<CommunicatorOf<N>>;
 pub type LogEntryOf<N> = crate::state::LogEntryOf<StateOf<N>>;
 pub type LogEntryIdOf<N> = crate::state::LogEntryIdOf<StateOf<N>>;
 pub type NodeOf<N> = crate::state::NodeOf<StateOf<N>>;
@@ -137,9 +138,11 @@ pub trait Admin {
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 
-pub struct SpawnArgs<S: State, R: RoundNum, C: CoordNum> {
+pub struct SpawnArgs<S: State, V, R: RoundNum, C: CoordNum> {
     pub context: ContextOf<S>,
     pub working_dir: Option<std::path::PathBuf>,
+    pub node_id: state::NodeIdOf<S>,
+    pub voter: V,
     pub snapshot: Option<Snapshot<S, R, C>>,
     pub participation: Participation<R>,
     pub log_keeping: LogKeeping,

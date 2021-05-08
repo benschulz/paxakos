@@ -16,12 +16,18 @@ use crate::{Node, NodeBuilder, RoundNum};
 use super::Decoration;
 
 pub trait FillGapsBuilderExt: NodeBuilder {
-    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilderWithAll<FillGaps<Self::Node, P>>
+    fn fill_gaps<C, P>(
+        self,
+        configure: C,
+    ) -> NodeBuilderWithAll<FillGaps<Self::Node, P>, Self::Voter>
     where
         C: FnOnce(FillGapsBuilderBlank<Self::Node>) -> FillGapsBuilder<Self::Node, P>,
         P: Fn() -> LogEntryOf<Self::Node> + 'static;
 
-    fn fill_gaps_with<P>(self, entry_producer: P) -> NodeBuilderWithAll<FillGaps<Self::Node, P>>
+    fn fill_gaps_with<P>(
+        self,
+        entry_producer: P,
+    ) -> NodeBuilderWithAll<FillGaps<Self::Node, P>, Self::Voter>
     where
         P: 'static + Fn() -> LogEntryOf<Self::Node>,
     {
@@ -46,7 +52,10 @@ impl<B> FillGapsBuilderExt for B
 where
     B: NodeBuilder,
 {
-    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilderWithAll<FillGaps<Self::Node, P>>
+    fn fill_gaps<C, P>(
+        self,
+        configure: C,
+    ) -> NodeBuilderWithAll<FillGaps<Self::Node, P>, <B as NodeBuilder>::Voter>
     where
         C: FnOnce(FillGapsBuilderBlank<Self::Node>) -> FillGapsBuilder<Self::Node, P>,
         P: Fn() -> LogEntryOf<<B as NodeBuilder>::Node> + 'static,

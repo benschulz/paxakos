@@ -19,14 +19,16 @@ use num_traits::{Bounded, One, Zero};
 use pin_project::pin_project;
 use tracing::{debug, info};
 
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
+use crate::communicator::{Communicator, CoordNumOf, JustificationOf, RoundNumOf};
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError, SpawnError};
 use crate::event::{Event, ShutdownEvent};
 use crate::log::LogEntry;
-use crate::state::{ContextOf, LogEntryIdOf, LogEntryOf, OutcomeOf, State};
+use crate::node::NodeInfo;
+use crate::state::{ContextOf, LogEntryIdOf, LogEntryOf, NodeIdOf, NodeOf, OutcomeOf, State};
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
+use crate::voting::{self, Voter};
 use crate::{Condition, CoordNum, Promise, RoundNum};
 
 use super::snapshot::{DeconstructedSnapshot, Snapshot};
@@ -68,9 +70,22 @@ impl<R, C> From<super::Participation<R>> for Participation<R, C> {
 }
 
 #[derive(Debug)]
-pub struct StateKeeper<S: State, C: Communicator> {
+pub struct StateKeeper<S, C, V>
+where
+    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    C: Communicator,
+    V: Voter<
+        State = S,
+        RoundNum = RoundNumOf<C>,
+        CoordNum = CoordNumOf<C>,
+        Justification = JustificationOf<C>,
+    >,
+{
     context: ContextOf<S>,
     working_dir: Option<WorkingDir<RoundNumOf<C>>>,
+
+    node_id: NodeIdOf<S>,
+    voter: V,
 
     receiver: mpsc::Receiver<RequestAndResponseSender<S, C>>,
 
@@ -145,13 +160,19 @@ pub struct StateKeeper<S: State, C: Communicator> {
     tracer: Option<Box<dyn Tracer<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<S>>>>,
 }
 
-impl<S, C> StateKeeper<S, C>
+impl<S, C, V> StateKeeper<S, C, V>
 where
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     C: Communicator,
+    V: Voter<
+        State = S,
+        RoundNum = RoundNumOf<C>,
+        CoordNum = CoordNumOf<C>,
+        Justification = JustificationOf<C>,
+    >,
 {
     pub async fn spawn(
-        args: SpawnArgs<S, RoundNumOf<C>, CoordNumOf<C>>,
+        args: SpawnArgs<S, V, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> Result<
         (
             NodeStatus,
@@ -186,7 +207,7 @@ where
     }
 
     fn start_and_run_new(
-        spawn_args: SpawnArgs<S, RoundNumOf<C>, CoordNumOf<C>>,
+        spawn_args: SpawnArgs<S, V, RoundNumOf<C>, CoordNumOf<C>>,
         start_result_sender: oneshot::Sender<
             Result<(NodeStatus, super::Participation<RoundNumOf<C>>), SpawnError>,
         >,
@@ -196,6 +217,8 @@ where
         std::thread::spawn(move || {
             let context = spawn_args.context;
             let working_dir = spawn_args.working_dir;
+            let node_id = spawn_args.node_id;
+            let voter = spawn_args.voter;
             let snapshot = spawn_args.snapshot;
             let participation = spawn_args.participation;
             let log_keeping = spawn_args.log_keeping;
@@ -261,6 +284,9 @@ where
             let state_keeper = StateKeeper {
                 context,
                 working_dir,
+
+                node_id,
+                voter,
 
                 receiver,
 
@@ -558,7 +584,12 @@ where
                     .map(|(r, _)| *r)
                     .find(|r| *r > self.state_round);
 
-                let result = self.accept_entries(coord_num, entries);
+                let leader = self.deduce_node(entries[0].0, coord_num);
+                if let Some(leader) = &leader {
+                    assert_eq!(leader.id(), self.node_id);
+                }
+
+                let result = self.accept_entries(coord_num, entries, leader);
 
                 if let Some(round_num) = round_num {
                     if result.is_ok() {
@@ -664,7 +695,20 @@ where
     }
 
     fn emit_directive(&mut self, round_num: RoundNumOf<C>, coord_num: CoordNumOf<C>) {
-        if let Some(state) = &self.state {
+        if let Some(leader) = self.deduce_node(round_num, coord_num) {
+            crate::emit!(
+                self,
+                ShutdownEvent::Regular(Event::Directive {
+                    leader,
+                    round_num,
+                    coord_num
+                })
+            );
+        }
+    }
+
+    fn deduce_node(&self, round_num: RoundNumOf<C>, coord_num: CoordNumOf<C>) -> Option<NodeOf<S>> {
+        self.state.as_ref().and_then(|state| {
             if round_num > self.state_round
                 && round_num <= self.state_round + into_round_num(state.concurrency())
             {
@@ -685,18 +729,13 @@ where
                         panic!("Out of usize range: {}", coord_num % cluster_size);
                     });
 
-                let leader = cluster[leader_ix].clone();
+                let leader = cluster.into_iter().nth(leader_ix).unwrap();
 
-                crate::emit!(
-                    self,
-                    ShutdownEvent::Regular(Event::Directive {
-                        leader,
-                        round_num,
-                        coord_num
-                    })
-                );
+                Some(leader)
+            } else {
+                None
             }
-        }
+        })
     }
 
     fn observe_round_num(&mut self, round_num: RoundNumOf<C>) {
@@ -863,29 +902,41 @@ where
         if coord_num < strongest_promise {
             Err(PrepareError::Conflict(strongest_promise))
         } else {
-            overriding_insert(&mut self.promises, round_num, coord_num);
+            let voting_decision = self.voter.contemplate(
+                round_num,
+                coord_num,
+                self.deduce_node(round_num, coord_num).as_ref(),
+                self.state.as_deref(),
+            );
 
-            let promise = self
-                .accepted_entries
-                .range(round_num..)
-                .map(|(r, (c, e))| Condition::from((*r, *c, Arc::clone(e))))
-                .collect::<Vec<Condition<C>>>();
+            match voting_decision {
+                voting::Decision::Abstain(reason) => Err(PrepareError::Abstained(reason)),
+                voting::Decision::Vote => {
+                    overriding_insert(&mut self.promises, round_num, coord_num);
 
-            #[cfg(feature = "tracer")]
-            {
-                if let Some(tracer) = self.tracer.as_mut() {
-                    tracer.record_promise(
-                        round_num,
-                        coord_num,
-                        promise
-                            .iter()
-                            .map(|c| (c.round_num, c.coord_num, c.log_entry.id()))
-                            .collect(),
-                    );
+                    let promise = self
+                        .accepted_entries
+                        .range(round_num..)
+                        .map(|(r, (c, e))| Condition::from((*r, *c, Arc::clone(e))))
+                        .collect::<Vec<Condition<C>>>();
+
+                    #[cfg(feature = "tracer")]
+                    {
+                        if let Some(tracer) = self.tracer.as_mut() {
+                            tracer.record_promise(
+                                round_num,
+                                coord_num,
+                                promise
+                                    .iter()
+                                    .map(|c| (c.round_num, c.coord_num, c.log_entry.id()))
+                                    .collect(),
+                            );
+                        }
+                    }
+
+                    Ok(Promise(promise))
                 }
             }
-
-            Ok(Promise(promise))
         }
     }
 
@@ -932,8 +983,12 @@ where
             if relevant_promise > coord_num {
                 Err(AcceptError::Conflict(relevant_promise))
             } else {
-                self.accept_entries(coord_num, vec![(round_num, entry)])
-                    .map(|n| assert!(n == 1))
+                self.accept_entries(
+                    coord_num,
+                    vec![(round_num, entry)],
+                    self.deduce_node(round_num, coord_num),
+                )
+                .map(|n| assert!(n == 1))
             }
         }
     }
@@ -942,6 +997,7 @@ where
         &mut self,
         coord_num: CoordNumOf<C>,
         entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
+        leader: Option<NodeOf<S>>,
     ) -> Result<usize, AcceptError<C>> {
         let first_round = entries[0].0;
 
@@ -986,6 +1042,9 @@ where
                 }
             }
 
+            self.voter
+                .observe_accept(round_num, coord_num, &*log_entry, leader.as_ref());
+
             accepted += 1;
 
             match self.accepted_entries.entry(round_num) {
@@ -1028,6 +1087,13 @@ where
         if self.state.is_none() {
             return Err(CommitError::Disoriented);
         }
+
+        self.voter.observe_commit(
+            round_num,
+            coord_num,
+            &entry,
+            self.deduce_node(round_num, coord_num).as_ref(),
+        );
 
         crate::emit!(
             self,

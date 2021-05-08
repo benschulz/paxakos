@@ -8,10 +8,11 @@ use num_traits::One;
 
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::ApplicableTo;
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
+use crate::communicator::{Communicator, CoordNumOf, JustificationOf, RoundNumOf};
 use crate::error::Disoriented;
 use crate::event::{Event, ShutdownEvent};
 use crate::state::{LogEntryOf, NodeIdOf, State};
+use crate::voting::Voter;
 
 use super::commits::Commits;
 use super::handle::{NodeHandleRequest, NodeHandleResponse};
@@ -167,11 +168,19 @@ where
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     C: Communicator,
 {
-    pub(crate) async fn spawn(
+    pub(crate) async fn spawn<V>(
         id: NodeIdOf<S>,
         communicator: C,
-        args: super::SpawnArgs<S, RoundNumOf<C>, CoordNumOf<C>>,
-    ) -> Result<(RequestHandler<S, C>, NodeKernel<S, C>), crate::error::SpawnError> {
+        args: super::SpawnArgs<S, V, RoundNumOf<C>, CoordNumOf<C>>,
+    ) -> Result<(RequestHandler<S, C>, NodeKernel<S, C>), crate::error::SpawnError>
+    where
+        V: Voter<
+            State = S,
+            RoundNum = RoundNumOf<C>,
+            CoordNum = CoordNumOf<C>,
+            Justification = JustificationOf<C>,
+        >,
+    {
         let (initial_status, initial_participation, events, state_keeper, proof_of_life) =
             StateKeeper::spawn(args).await?;
 

@@ -9,6 +9,7 @@ use crate::{PrepareError, Promise, Rejection, RoundNum};
 
 pub type CoordNumOf<C> = <C as Communicator>::CoordNum;
 pub type ErrorOf<C> = <C as Communicator>::Error;
+pub type JustificationOf<C> = <C as Communicator>::Justification;
 pub type LogEntryOf<C> = <C as Communicator>::LogEntry;
 pub type LogEntryIdOf<C> = <LogEntryOf<C> as LogEntry>::Id;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
@@ -38,6 +39,7 @@ pub trait Communicator: Sized + 'static {
     type LogEntry: LogEntry;
 
     type Error: std::fmt::Debug + Send + Sync + 'static;
+    type Justification: std::fmt::Debug + Send + Sync + 'static;
 
     type SendPrepare: Future<Output = Result<PromiseOrRejection<Self>, Self::Error>>;
     type SendProposal: Future<Output = Result<AcceptanceOrRejection<Self>, Self::Error>>;
@@ -76,10 +78,11 @@ pub trait Communicator: Sized + 'static {
     ) -> Vec<(&'a Self::Node, Self::SendCommitById)>;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum PromiseOrRejection<C: Communicator> {
     Promise(Promise<C>),
     Rejection(Rejection<C>),
+    Abstained(JustificationOf<C>),
 }
 
 impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for PromiseOrRejection<C> {

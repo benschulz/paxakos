@@ -76,19 +76,62 @@ where
     }
 }
 
-type RequestHandlers<S, R, C> =
-    HashMap<NodeIdOf<S>, RequestHandler<S, DirectCommunicator<S, R, C>>>;
+type RequestHandlers<S, R, C, J> =
+    HashMap<NodeIdOf<S>, RequestHandler<S, DirectCommunicator<S, R, C, J>>>;
 type EventListeners<S, R, C> = Vec<mpsc::Sender<DirectCommunicatorEvent<S, R, C>>>;
 
-#[derive(Clone, Debug)]
-pub struct DirectCommunicators<S: State, R: RoundNum, C: CoordNum> {
-    request_handlers: Arc<Mutex<RequestHandlers<S, R, C>>>,
+#[derive(Debug)]
+pub struct DirectCommunicators<S: State, R: RoundNum, C: CoordNum, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync + 'static,
+{
+    request_handlers: Arc<Mutex<RequestHandlers<S, R, C, J>>>,
     failure_rate: Cell<f32>,
     e2e_delay_ms_distr: Cell<rand_distr::Normal<f32>>,
     event_listeners: Arc<Mutex<EventListeners<S, R, C>>>,
+    _p: std::marker::PhantomData<J>,
 }
 
-impl<S: State, R: RoundNum, C: CoordNum> DirectCommunicators<S, R, C> {
+impl<S, R, C, J> Default for DirectCommunicators<S, R, C, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S, R, C, J> Clone for DirectCommunicators<S, R, C, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync,
+{
+    fn clone(&self) -> Self {
+        Self {
+            request_handlers: Arc::clone(&self.request_handlers),
+            failure_rate: Cell::new(self.failure_rate.get()),
+            e2e_delay_ms_distr: Cell::new(self.e2e_delay_ms_distr.get()),
+            event_listeners: Arc::clone(&self.event_listeners),
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<S, R, C, J> DirectCommunicators<S, R, C, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync,
+{
     #[allow(dead_code)]
     pub fn new() -> Self {
         Self::with_characteristics(0.0, rand_distr::Normal::new(0.0, 0.0).unwrap())
@@ -103,6 +146,7 @@ impl<S: State, R: RoundNum, C: CoordNum> DirectCommunicators<S, R, C> {
             failure_rate: Cell::new(failure_rate),
             e2e_delay_ms_distr: Cell::new(e2e_delay_ms_distr),
             event_listeners: Arc::new(Mutex::new(Vec::new())),
+            _p: std::marker::PhantomData,
         }
     }
 
@@ -115,7 +159,7 @@ impl<S: State, R: RoundNum, C: CoordNum> DirectCommunicators<S, R, C> {
     pub fn register(
         &self,
         node_id: NodeIdOf<S>,
-        handler: RequestHandler<S, DirectCommunicator<S, R, C>>,
+        handler: RequestHandler<S, DirectCommunicator<S, R, C, J>>,
     ) {
         futures::executor::block_on(async {
             let mut handlers = self.request_handlers.lock().await;
@@ -135,17 +179,11 @@ impl<S: State, R: RoundNum, C: CoordNum> DirectCommunicators<S, R, C> {
         recv
     }
 
-    pub fn create_communicator_for(&self, node_id: NodeIdOf<S>) -> DirectCommunicator<S, R, C> {
+    pub fn create_communicator_for(&self, node_id: NodeIdOf<S>) -> DirectCommunicator<S, R, C, J> {
         DirectCommunicator {
             set: self.clone(),
             node_id,
         }
-    }
-}
-
-impl<S: State, R: RoundNum, C: CoordNum> Default for DirectCommunicators<S, R, C> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -192,10 +230,31 @@ pub enum DirectCommunicatorError {
     Timeout,
 }
 
-#[derive(Clone, Debug)]
-pub struct DirectCommunicator<S: State, R: RoundNum, C: CoordNum> {
-    set: DirectCommunicators<S, R, C>,
+#[derive(Debug)]
+pub struct DirectCommunicator<S, R, C, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync + 'static,
+{
+    set: DirectCommunicators<S, R, C, J>,
     node_id: NodeIdOf<S>,
+}
+
+impl<S, R, C, J> Clone for DirectCommunicator<S, R, C, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync,
+{
+    fn clone(&self) -> Self {
+        Self {
+            set: self.set.clone(),
+            node_id: self.node_id,
+        }
+    }
 }
 
 macro_rules! send_fn {
@@ -287,7 +346,13 @@ macro_rules! send_fn {
     }
 }
 
-impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, R, C> {
+impl<S, R, C, J> Communicator for DirectCommunicator<S, R, C, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync + 'static,
+{
     type Node = NodeOf<S>;
 
     type RoundNum = R;
@@ -296,6 +361,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Communicator for DirectCommunicator<S, 
     type LogEntry = LogEntryOf<S>;
 
     type Error = DirectCommunicatorError;
+    type Justification = J;
 
     type SendPrepare = LocalBoxFuture<'static, Result<PromiseOrRejection<Self>, Self::Error>>;
     type SendProposal = LocalBoxFuture<'static, Result<AcceptanceOrRejection<Self>, Self::Error>>;

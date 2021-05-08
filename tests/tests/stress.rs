@@ -1,3 +1,5 @@
+#![feature(never_type)]
+
 mod calc_app;
 mod tracer;
 
@@ -18,7 +20,7 @@ use paxakos::{Node, NodeBuilder, NodeInfo, Shutdown};
 use calc_app::{CalcOp, CalcState};
 use tracer::StabilityChecker;
 
-type CalcCommunicators = DirectCommunicators<CalcState, u64, u32>;
+type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !>;
 
 #[test]
 fn stress_test() {

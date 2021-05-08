@@ -37,14 +37,16 @@ pub trait MaybeLeadershipAwareNode<I>: Node {
 }
 
 pub trait TrackLeadershipBuilderExt: NodeBuilder {
-    fn track_leadership(self) -> NodeBuilderWithAll<TrackLeadership<Self::Node>>;
+    fn track_leadership(self) -> NodeBuilderWithAll<TrackLeadership<Self::Node>, Self::Voter>;
 }
 
 impl<B> TrackLeadershipBuilderExt for B
 where
     B: NodeBuilder,
 {
-    fn track_leadership(self) -> NodeBuilderWithAll<TrackLeadership<Self::Node>> {
+    fn track_leadership(
+        self,
+    ) -> NodeBuilderWithAll<TrackLeadership<Self::Node>, <B as NodeBuilder>::Voter> {
         self.decorated_with(())
     }
 }

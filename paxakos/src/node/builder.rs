@@ -6,12 +6,13 @@ use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::deco::Decoration;
 use crate::error::SpawnError;
 use crate::log::LogKeeping;
-use crate::node::{self, Participation, RequestHandlerFor};
+use crate::node::{self, JustificationOf, Participation, RequestHandlerFor};
 #[cfg(feature = "tracer")]
 use crate::state::LogEntryIdOf;
 use crate::state::{ContextOf, NodeIdOf};
 #[cfg(feature = "tracer")]
 use crate::tracer::{Tracer, TracerFor};
+use crate::voting::{IndiscriminateVoter, IndiscriminateVoterFor, Voter};
 use crate::{Identifier, Node, State};
 
 use super::snapshot::{Snapshot, SnapshotFor};
@@ -25,10 +26,15 @@ use super::{CommunicatorOf, NodeKernel, StateOf};
 //      Overall this seems a bit messy with all the structs. Is there a
 //      better approach?
 pub trait NodeBuilder: Sized {
-    type Node: 'static + Node;
+    type Node: Node + 'static;
+    type Voter: Voter;
+
     type Future: Future<Output = Result<(RequestHandlerFor<Self::Node>, Self::Node), SpawnError>>;
 
-    fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilderWithAll<D>
+    fn decorated_with<D>(
+        self,
+        arguments: <D as Decoration>::Arguments,
+    ) -> NodeBuilderWithAll<D, Self::Voter>
     where
         D: Decoration<
             Decorated = Self::Node,
@@ -243,6 +249,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
             communicator: self.communicator,
             snapshot,
             participation,
+            voter: IndiscriminateVoter::new(),
             log_keeping: Default::default(),
             finisher: Box::new(Ok),
 
@@ -254,9 +261,10 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
 
 type Finisher<N> = dyn FnOnce(NodeKernel<StateOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
 
-pub struct NodeBuilderWithAll<N: Node> {
+pub struct NodeBuilderWithAll<N: Node, V = IndiscriminateVoterFor<N>> {
     working_dir: Option<std::path::PathBuf>,
     node_id: NodeIdOf<StateOf<N>>,
+    voter: V,
     communicator: CommunicatorOf<N>,
     snapshot: Option<SnapshotFor<N>>,
     participation: Participation<node::RoundNumOf<N>>,
@@ -267,7 +275,7 @@ pub struct NodeBuilderWithAll<N: Node> {
     tracer: Option<Box<TracerFor<CommunicatorOf<N>>>>,
 }
 
-impl<S, C> NodeBuilderWithAll<NodeKernel<S, C>>
+impl<S, C, V> NodeBuilderWithAll<NodeKernel<S, C>, V>
 where
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     C: Communicator,
@@ -295,13 +303,40 @@ where
 
         self
     }
+
+    pub fn voting_with<T>(self, voter: T) -> NodeBuilderWithAll<NodeKernel<S, C>, T> {
+        NodeBuilderWithAll {
+            working_dir: self.working_dir,
+            node_id: self.node_id,
+            voter,
+            communicator: self.communicator,
+            snapshot: self.snapshot,
+            participation: self.participation,
+            log_keeping: self.log_keeping,
+            finisher: self.finisher,
+
+            #[cfg(feature = "tracer")]
+            tracer: self.tracer,
+        }
+    }
 }
 
-impl<N: 'static + Node> NodeBuilder for NodeBuilderWithAll<N> {
+impl<N, V> NodeBuilder for NodeBuilderWithAll<N, V>
+where
+    N: Node + 'static,
+    V: Voter<
+        State = StateOf<N>,
+        RoundNum = node::RoundNumOf<N>,
+        CoordNum = node::CoordNumOf<N>,
+        Justification = JustificationOf<N>,
+    >,
+{
     type Node = N;
+    type Voter = V;
+
     type Future = LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>>;
 
-    fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilderWithAll<D>
+    fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilderWithAll<D, V>
     where
         D: Decoration<Decorated = N, State = StateOf<N>, Communicator = CommunicatorOf<N>>,
     {
@@ -313,6 +348,7 @@ impl<N: 'static + Node> NodeBuilder for NodeBuilderWithAll<N> {
             communicator: self.communicator,
             snapshot: self.snapshot,
             participation: self.participation,
+            voter: self.voter,
             log_keeping: self.log_keeping,
             finisher: Box::new(move |x| ((finisher)(x)).and_then(|node| D::wrap(node, arguments))),
 
@@ -330,6 +366,8 @@ impl<N: 'static + Node> NodeBuilder for NodeBuilderWithAll<N> {
             super::SpawnArgs {
                 context,
                 working_dir: self.working_dir,
+                node_id: self.node_id,
+                voter: self.voter,
                 snapshot: self.snapshot,
                 participation: self.participation,
                 log_keeping: self.log_keeping,

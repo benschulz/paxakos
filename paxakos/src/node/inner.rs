@@ -422,6 +422,10 @@ where
 
                 Err(AppendError::Lost)
             }
+
+            PromiseOrRejection::Abstained(_) => {
+                unreachable!()
+            }
         }
     }
 
@@ -446,6 +450,7 @@ where
         let mut promises = 0;
         let mut max_promise = own_promise;
 
+        let mut abstentions = Vec::new();
         let mut communication_errors = Vec::new();
 
         while let Some(response) = pending_responses.next().await {
@@ -457,9 +462,14 @@ where
 
                     if promises + pending_len < quorum {
                         return Err(AppendError::NoQuorum {
+                            abstentions,
                             communication_errors,
                         });
                     }
+                }
+
+                Ok(PromiseOrRejection::Abstained(justification)) => {
+                    abstentions.push(justification);
                 }
 
                 Ok(PromiseOrRejection::Rejection(rejection)) => {
@@ -612,6 +622,7 @@ where
                         }
 
                         return Err(AppendError::NoQuorum {
+                            abstentions: Vec::new(),
                             communication_errors,
                         });
                     }
