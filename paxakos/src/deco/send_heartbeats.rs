@@ -196,7 +196,7 @@ where
                 log_entry,
                 AppendArgs {
                     importance: Importance::MaintainLeadership(Peeryness::Peery),
-                    retry_policy: Box::new(DoNotRetry),
+                    retry_policy: Box::new(DoNotRetry::new()),
                     ..Default::default()
                 },
             )
@@ -339,7 +339,10 @@ where
         &self,
         applicable: A,
         args: AppendArgs<Self::Communicator>,
-    ) -> futures::future::LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>> {
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<CommitFor<Self, A>, AppendError<Self::Communicator>>,
+    > {
         self.decorated.append(applicable, args)
     }
 

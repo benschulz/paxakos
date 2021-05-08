@@ -262,7 +262,7 @@ where
                 AppendArgs {
                     round: round_num..=round_num,
                     importance: Importance::MaintainLeadership(Peeryness::Peery),
-                    retry_policy: Box::new(DoNotRetry),
+                    retry_policy: Box::new(DoNotRetry::new()),
                 },
             )
             .map(move |res| {
@@ -432,7 +432,10 @@ where
         &self,
         applicable: A,
         args: AppendArgs<Self::Communicator>,
-    ) -> futures::future::LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>> {
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<CommitFor<Self, A>, AppendError<Self::Communicator>>,
+    > {
         self.decorated.append(applicable, args)
     }
 

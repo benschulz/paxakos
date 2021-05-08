@@ -138,7 +138,7 @@ where
         &self,
         applicable: A,
         args: AppendArgs<C>,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>> {
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError<C>>> {
         Rc::clone(&self.inner)
             .append(applicable, args)
             .boxed_local()
@@ -231,7 +231,7 @@ where
     C: Communicator,
 {
     append:
-        LocalBoxFuture<'static, Result<CommitFor<NodeKernel<S, C>, LogEntryOf<S>>, AppendError>>,
+        LocalBoxFuture<'static, Result<CommitFor<NodeKernel<S, C>, LogEntryOf<S>>, AppendError<C>>>,
     send: Option<oneshot::Sender<NodeHandleResponse<S, C>>>,
 }
 

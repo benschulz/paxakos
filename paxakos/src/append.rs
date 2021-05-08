@@ -4,14 +4,14 @@ use async_trait::async_trait;
 use num_traits::{Bounded, Zero};
 use thiserror::Error;
 
-use crate::communicator::{Communicator, RoundNumOf};
+use crate::communicator::{Communicator, ErrorOf, RoundNumOf};
 use crate::error::BoxError;
 
-#[derive(Debug)]
 pub struct AppendArgs<C: Communicator> {
     pub round: RangeInclusive<RoundNumOf<C>>,
     pub importance: Importance,
-    pub retry_policy: Box<dyn RetryPolicy>,
+    // TODO box internally
+    pub retry_policy: Box<dyn RetryPolicy<Communicator = C> + Send>,
 }
 
 impl<C: Communicator> Default for AppendArgs<C> {
@@ -19,7 +19,7 @@ impl<C: Communicator> Default for AppendArgs<C> {
         Self {
             round: Zero::zero()..=Bounded::max_value(),
             importance: Importance::GainLeadership,
-            retry_policy: Box::new(DoNotRetry),
+            retry_policy: Box::new(DoNotRetry::new()),
         }
     }
 }
@@ -63,9 +63,9 @@ pub enum Peeryness {
     Unpeery,
 }
 
-#[derive(Debug, Error)]
+#[derive(Error)]
 #[non_exhaustive]
-pub enum AppendError {
+pub enum AppendError<C: Communicator> {
     /// Append was aborted.
     #[error("append was aborted")]
     Aborted(BoxError),
@@ -90,14 +90,13 @@ pub enum AppendError {
     ///
     /// This commonly indicates communication errors.
     #[error("node could not achieve a quorum")]
-    NoQuorum,
-
-    /// An I/O error was encountered.
-    #[error("I/O error")]
-    IoError(crate::error::IoError),
+    NoQuorum {
+        communication_errors: Vec<ErrorOf<C>>,
+    },
 
     /// Catch-all, this may be refined over time.
     #[error("uncategorized error occured")]
+    // TODO remove, introduce new variant for decorations
     Other(crate::error::BoxError),
 
     /// Node is in passive mode.
@@ -113,17 +112,55 @@ pub enum AppendError {
     ShutDown,
 }
 
+impl<C: Communicator> std::fmt::Debug for AppendError<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AppendError::Aborted(err) => f.debug_tuple("AppendError::Aborted").field(err).finish(),
+            AppendError::Converged => f.debug_tuple("AppendError::Converged").finish(),
+            AppendError::Disoriented => f.debug_tuple("AppendError::Disoriented").finish(),
+            AppendError::Exiled => f.debug_tuple("AppendError::Exiled").finish(),
+            AppendError::Lost => f.debug_tuple("AppendError::Lost").finish(),
+            AppendError::NoQuorum {
+                communication_errors,
+            } => f
+                .debug_struct("AppendError::NoQuorum")
+                .field("communication_errors", communication_errors)
+                .finish(),
+            AppendError::Other(err) => f.debug_tuple("AppendError::Other").field(err).finish(),
+            AppendError::Passive => f.debug_tuple("AppendError::Passive").finish(),
+            AppendError::Railroaded => f.debug_tuple("AppendError::Railroaded").finish(),
+            AppendError::ShutDown => f.debug_tuple("AppendError::ShutDown").finish(),
+        }
+    }
+}
+
 #[async_trait]
-pub trait RetryPolicy: std::fmt::Debug + Send {
-    async fn eval(&mut self, err: AppendError) -> Result<(), BoxError>;
+pub trait RetryPolicy {
+    type Communicator: Communicator;
+
+    async fn eval(&mut self, err: AppendError<Self::Communicator>) -> Result<(), BoxError>;
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct DoNotRetry;
+pub struct DoNotRetry<C>(crate::util::PhantomSend<C>);
+
+impl<C> DoNotRetry<C>
+where
+    C: Communicator,
+{
+    pub fn new() -> Self {
+        Self(crate::util::PhantomSend::new())
+    }
+}
 
 #[async_trait]
-impl RetryPolicy for DoNotRetry {
-    async fn eval(&mut self, _err: AppendError) -> Result<(), BoxError> {
+impl<C> RetryPolicy for DoNotRetry<C>
+where
+    C: Communicator,
+{
+    type Communicator = C;
+
+    async fn eval(&mut self, _err: AppendError<Self::Communicator>) -> Result<(), BoxError> {
         Err(Box::new(AbortedError))
     }
 }

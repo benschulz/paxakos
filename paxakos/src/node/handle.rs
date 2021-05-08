@@ -99,7 +99,7 @@ where
         &self,
         applicable: A,
         args: AppendArgs<C>,
-    ) -> impl Future<Output = Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError>>
+    ) -> impl Future<Output = Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError<C>>>
     {
         dispatch_node_handle_req!(self, Append, {
             log_entry: applicable.into_log_entry(),
@@ -133,7 +133,6 @@ where
     }
 }
 
-#[derive(Debug)]
 pub enum NodeHandleRequest<C: Communicator> {
     Status,
 
@@ -147,7 +146,7 @@ pub enum NodeHandleRequest<C: Communicator> {
 pub enum NodeHandleResponse<S: State, C: Communicator> {
     Status(NodeStatus),
 
-    Append(Result<Commit<S, RoundNumOf<C>>, AppendError>),
+    Append(Result<Commit<S, RoundNumOf<C>>, AppendError<C>>),
 }
 
 mod macros {

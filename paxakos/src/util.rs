@@ -67,3 +67,14 @@ where
         }
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct PhantomSend<T>(std::marker::PhantomData<T>);
+
+unsafe impl<T> Send for PhantomSend<T> {}
+
+impl<T> PhantomSend<T> {
+    pub fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}

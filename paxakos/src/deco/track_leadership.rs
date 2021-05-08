@@ -284,7 +284,10 @@ where
         &self,
         applicable: A,
         args: AppendArgs<Self::Communicator>,
-    ) -> futures::future::LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>> {
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<CommitFor<Self, A>, AppendError<Self::Communicator>>,
+    > {
         self.decorated.append(applicable, args)
     }
 

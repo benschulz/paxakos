@@ -76,7 +76,7 @@ where
         self: Rc<Self>,
         applicable: A,
         args: AppendArgs<C>,
-    ) -> Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError<C>> {
         let log_entry = applicable.into_log_entry();
         let log_entry_id = log_entry.id();
 
@@ -102,7 +102,7 @@ where
         self: Rc<Self>,
         log_entry: Arc<LogEntryOf<S>>,
         mut args: AppendArgs<C>,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
         let mut i: usize = 0;
 
         loop {
@@ -133,7 +133,7 @@ where
         log_entry: Arc<LogEntryOf<S>>,
         round: RangeInclusive<RoundNumOf<C>>,
         importance: Importance,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
         let reservation = self.state_keeper.reserve_round_num(round).await?;
 
         let result = self
@@ -151,7 +151,7 @@ where
         log_entry: Arc<LogEntryOf<S>>,
         round_num: RoundNumOf<C>,
         importance: Importance,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
         let node_id = self.id;
 
         let log_entry_id = log_entry.id();
@@ -220,7 +220,7 @@ where
         &self,
         cluster_size: usize,
         own_node_idx: usize,
-    ) -> Result<CoordNumOf<C>, AppendError> {
+    ) -> Result<CoordNumOf<C>, AppendError<C>> {
         assert!(own_node_idx < cluster_size);
 
         let cluster_size = CoordNumOf::<C>::try_from(cluster_size).unwrap_or_else(|_| {
@@ -260,7 +260,7 @@ where
         quorum_prime: usize,
         other_nodes: &[NodeOf<S>],
         importance: Importance,
-    ) -> Result<Option<Arc<LogEntryOf<S>>>, AppendError> {
+    ) -> Result<Option<Arc<LogEntryOf<S>>>, AppendError<C>> {
         // This holds iff we already believe to be leader for `round_num`.
         if round_num >= self.term_start.get() && coord_num == self.campaigned_on.get() {
             return Ok(self.state_keeper.accepted_entry_of(round_num).await?);
@@ -348,7 +348,7 @@ where
         coord_num: CoordNumOf<C>,
         quorum_prime: usize,
         other_nodes: &[NodeOf<S>],
-    ) -> Result<Option<Arc<LogEntryOf<S>>>, AppendError> {
+    ) -> Result<Option<Arc<LogEntryOf<S>>>, AppendError<C>> {
         let own_promise = self
             .state_keeper
             .prepare_entry(round_num, coord_num)
@@ -430,7 +430,7 @@ where
             Item = impl Future<Output = Result<PromiseOrRejection<C>, ErrorOf<C>>>,
         >,
         own_promise: Promise<C>,
-    ) -> Result<PromiseOrRejection<C>, AppendError> {
+    ) -> Result<PromiseOrRejection<C>, AppendError<C>> {
         if quorum == 0 {
             return Ok(PromiseOrRejection::Promise(own_promise));
         }
@@ -443,13 +443,19 @@ where
         let mut promises = 0;
         let mut max_promise = own_promise;
 
+        let mut communication_errors = Vec::new();
+
         while let Some(response) = pending_responses.next().await {
             pending_len -= 1;
 
             match response {
-                Err(_) => {
+                Err(err) => {
+                    communication_errors.push(err);
+
                     if promises + pending_len < quorum {
-                        return Err(AppendError::NoQuorum);
+                        return Err(AppendError::NoQuorum {
+                            communication_errors,
+                        });
                     }
                 }
 
@@ -503,7 +509,7 @@ where
                 impl Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
             >,
         ),
-        AppendError,
+        AppendError<C>,
     > {
         self.state_keeper
             .accept_entry(round_num, coord_num, Arc::clone(&log_entry))
@@ -534,7 +540,7 @@ where
             HashSet<NodeIdOf<S>>,
             FuturesUnordered<P>,
         ),
-        AppendError,
+        AppendError<C>,
     >
     where
         P: Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
@@ -554,6 +560,8 @@ where
         let mut pending_len = pending_responses.len();
         let mut accepted = HashSet::new();
         let mut rejected_or_failed = HashSet::new();
+
+        let mut communication_errors = Vec::new();
 
         let mut conflict = None;
 
@@ -579,12 +587,20 @@ where
                     return Err(AppendError::Converged);
                 }
                 rejection_or_failure => {
-                    if let Ok(AcceptanceOrRejection::Rejection(Rejection::Conflict { coord_num })) =
-                        rejection_or_failure
-                    {
-                        conflict = conflict
-                            .map(|c| std::cmp::max(c, coord_num))
-                            .or(Some(coord_num));
+                    match rejection_or_failure {
+                        Err(err) => {
+                            communication_errors.push(err);
+                        }
+                        Ok(AcceptanceOrRejection::Rejection(Rejection::Conflict { coord_num })) => {
+                            conflict = conflict
+                                .map(|c| std::cmp::max(c, coord_num))
+                                .or(Some(coord_num));
+                        }
+                        Ok(AcceptanceOrRejection::Acceptance)
+                        | Ok(AcceptanceOrRejection::Rejection(Rejection::Converged { .. })) => {
+                            // covered in outer match
+                            unreachable!()
+                        }
                     }
 
                     if accepted.len() + pending_len < quorum {
@@ -592,7 +608,9 @@ where
                             self.state_keeper.observe_coord_num(coord_num).await?;
                         }
 
-                        return Err(AppendError::NoQuorum);
+                        return Err(AppendError::NoQuorum {
+                            communication_errors,
+                        });
                     }
 
                     rejected_or_failed.insert(node_id);
@@ -615,7 +633,7 @@ where
         mut pending_acceptances: FuturesUnordered<
             impl 'static + Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
         >,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError> {
+    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
         let accepted = other_nodes
             .drain_filter(|n| accepted.contains(&n.id()))
             .collect::<Vec<_>>();

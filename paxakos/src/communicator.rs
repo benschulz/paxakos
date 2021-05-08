@@ -37,7 +37,7 @@ pub trait Communicator: Sized + 'static {
 
     type LogEntry: LogEntry;
 
-    type Error: Send + Sync + 'static;
+    type Error: std::fmt::Debug + Send + Sync + 'static;
 
     type SendPrepare: Future<Output = Result<PromiseOrRejection<Self>, Self::Error>>;
     type SendProposal: Future<Output = Result<AcceptanceOrRejection<Self>, Self::Error>>;

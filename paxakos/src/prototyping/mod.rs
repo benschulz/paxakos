@@ -43,21 +43,26 @@ impl NodeInfo for PrototypingNode {
 }
 
 #[derive(Debug)]
-pub struct RetryIndefinitely(u64);
+pub struct RetryIndefinitely<C>(u64, crate::util::PhantomSend<C>);
 
-impl RetryIndefinitely {
+impl<C> RetryIndefinitely<C> {
     pub fn without_pausing() -> Self {
-        Self(0)
+        Self(0, crate::util::PhantomSend::new())
     }
 
     pub fn pausing_up_to(duration: std::time::Duration) -> Self {
-        Self(duration.as_millis() as u64)
+        Self(duration.as_millis() as u64, crate::util::PhantomSend::new())
     }
 }
 
 #[async_trait]
-impl RetryPolicy for RetryIndefinitely {
-    async fn eval(&mut self, _err: AppendError) -> Result<(), BoxError> {
+impl<C> RetryPolicy for RetryIndefinitely<C>
+where
+    C: Communicator,
+{
+    type Communicator = C;
+
+    async fn eval(&mut self, _err: AppendError<Self::Communicator>) -> Result<(), BoxError> {
         if self.0 > 0 {
             use rand::Rng;
 

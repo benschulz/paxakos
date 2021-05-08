@@ -119,7 +119,7 @@ impl<C: Communicator> std::fmt::Debug for PrepareError<C> {
     }
 }
 
-impl<C: Communicator> From<PrepareError<C>> for AppendError {
+impl<C: Communicator> From<PrepareError<C>> for AppendError<C> {
     fn from(e: PrepareError<C>) -> Self {
         match e {
             PrepareError::Conflict(_) => AppendError::Lost,
@@ -164,7 +164,7 @@ impl<C: Communicator> std::fmt::Debug for AcceptError<C> {
     }
 }
 
-impl<C: Communicator> From<AcceptError<C>> for AppendError {
+impl<C: Communicator> From<AcceptError<C>> for AppendError<C> {
     fn from(e: AcceptError<C>) -> Self {
         match e {
             AcceptError::Conflict(_) => AppendError::Lost,
@@ -191,7 +191,7 @@ pub enum CommitError<S: State> {
     ShutDown,
 }
 
-impl<S: State> From<CommitError<S>> for AppendError {
+impl<S: State, C: Communicator> From<CommitError<S>> for AppendError<C> {
     fn from(e: CommitError<S>) -> Self {
         match e {
             CommitError::Disoriented => AppendError::Disoriented,

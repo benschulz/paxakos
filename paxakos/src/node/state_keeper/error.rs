@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::communicator::Communicator;
+use crate::communicator::{Communicator, RoundNumOf};
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
 use crate::state::State;
@@ -15,7 +15,7 @@ impl ShutDown {
     }
 }
 
-impl From<ShutDown> for AppendError {
+impl<C: Communicator> From<ShutDown> for AppendError<C> {
     fn from(_: ShutDown) -> Self {
         AppendError::ShutDown
     }
@@ -87,7 +87,7 @@ pub enum AcquireRoundNumError {
     ShutDown,
 }
 
-impl From<AcquireRoundNumError> for AppendError {
+impl<C: Communicator> From<AcquireRoundNumError> for AppendError<C> {
     fn from(e: AcquireRoundNumError) -> Self {
         match e {
             AcquireRoundNumError::Converged => AppendError::Converged,
@@ -109,8 +109,8 @@ pub enum ClusterError<R: RoundNum> {
     ShutDown,
 }
 
-impl<R: RoundNum> From<ClusterError<R>> for AppendError {
-    fn from(e: ClusterError<R>) -> Self {
+impl<C: Communicator> From<ClusterError<RoundNumOf<C>>> for AppendError<C> {
+    fn from(e: ClusterError<RoundNumOf<C>>) -> Self {
         match e {
             ClusterError::Disoriented => AppendError::Disoriented,
             ClusterError::Converged(_) => AppendError::Converged,

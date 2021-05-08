@@ -101,7 +101,7 @@ pub trait Node: Sized {
         &self,
         applicable: A,
         args: AppendArgs<Self::Communicator>,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError>>;
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError<Self::Communicator>>>;
 
     fn shut_down(self) -> Self::Shutdown;
 }
