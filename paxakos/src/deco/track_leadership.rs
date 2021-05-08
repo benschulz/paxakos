@@ -8,6 +8,7 @@ use num_traits::{Bounded, One};
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::ApplicableTo;
 use crate::communicator::Communicator;
+use crate::error::Disoriented;
 use crate::node::builder::{NodeBuilder, NodeBuilderWithAll};
 use crate::node::{CommitFor, CommunicatorOf, CoordNumOf, Node, NodeIdOf, NodeInfo, NodeKernel};
 use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
@@ -275,7 +276,7 @@ where
 
     fn read_stale(
         &self,
-    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<Self::State>, ()>> {
+    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<Self::State>, Disoriented>> {
         self.decorated.read_stale()
     }
 

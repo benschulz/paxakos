@@ -17,6 +17,7 @@ use futures::future::{BoxFuture, LocalBoxFuture};
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::communicator::Communicator;
+use crate::error::Disoriented;
 use crate::log::LogKeeping;
 use crate::state::ContextOf;
 #[cfg(feature = "tracer")]
@@ -93,7 +94,7 @@ pub trait Node: Sized {
         snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>>;
 
-    fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<Self::State>, ()>>;
+    fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<Self::State>, Disoriented>>;
 
     fn append<A: ApplicableTo<Self::State> + 'static>(
         &self,

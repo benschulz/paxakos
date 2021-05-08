@@ -6,6 +6,7 @@ use futures::stream::StreamExt;
 
 use crate::append::{AppendArgs, AppendError, DoNotRetry};
 use crate::applicable::ApplicableTo;
+use crate::error::Disoriented;
 use crate::node::builder::NodeBuilderWithAll;
 use crate::node::{CommitFor, CommunicatorOf, CoordNumOf, LogEntryOf, NodeIdOf};
 use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
@@ -298,7 +299,7 @@ where
 
     fn read_stale(
         &self,
-    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<Self::State>, ()>> {
+    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<Self::State>, Disoriented>> {
         self.decorated.read_stale()
     }
 

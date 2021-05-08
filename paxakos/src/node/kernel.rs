@@ -9,6 +9,7 @@ use num_traits::One;
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::ApplicableTo;
 use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
+use crate::error::Disoriented;
 use crate::event::{Event, ShutdownEvent};
 use crate::state::{LogEntryOf, NodeIdOf, State};
 
@@ -143,7 +144,7 @@ where
             .boxed_local()
     }
 
-    fn read_stale(&self) -> LocalBoxFuture<'static, Result<Arc<S>, ()>> {
+    fn read_stale(&self) -> LocalBoxFuture<'static, Result<Arc<S>, Disoriented>> {
         self.state_keeper
             .read_stale(&self.proof_of_life)
             .boxed_local()

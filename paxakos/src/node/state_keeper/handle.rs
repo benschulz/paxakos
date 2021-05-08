@@ -7,8 +7,8 @@ use futures::channel::{mpsc, oneshot};
 use futures::future::{FutureExt, TryFutureExt};
 use futures::sink::SinkExt;
 
-use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
-use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
+use crate::error::{AcceptError, AffirmSnapshotError, CommitError, Disoriented};
+use crate::error::{InstallSnapshotError, PrepareError, PrepareSnapshotError, ReadStaleError};
 use crate::node::{Commit, Snapshot};
 use crate::state::{LogEntryIdOf, LogEntryOf, NodeOf, OutcomeOf, State};
 use crate::{CoordNum, LogEntry, Promise, RoundNum};
@@ -50,11 +50,11 @@ impl<S: State, R: RoundNum, C: CoordNum> StateKeeperHandle<S, R, C> {
     pub fn read_stale(
         &self,
         _proof_of_life: &ProofOfLife,
-    ) -> impl Future<Output = Result<Arc<S>, ()>> {
+    ) -> impl Future<Output = Result<Arc<S>, Disoriented>> {
         self.try_read_stale().map(|r| {
             r.map_err(|e| match e {
                 ReadStaleError::ShutDown => unreachable!("proof of life given"),
-                ReadStaleError::Disoriented => (),
+                ReadStaleError::Disoriented => Disoriented,
             })
         })
     }
