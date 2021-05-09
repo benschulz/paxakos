@@ -25,7 +25,6 @@ pub type RequestAndResponseSender<S, C> = (
 );
 
 /// A remote handle for a paxakos [`Node`][crate::Node].
-#[derive(Clone)]
 pub struct NodeHandle<S, C>
 where
     S: State,
@@ -33,6 +32,19 @@ where
 {
     sender: mpsc::Sender<RequestAndResponseSender<S, C>>,
     state_keeper: StateKeeperHandle<S, RoundNumOf<C>, CoordNumOf<C>>,
+}
+
+impl<S, C> Clone for NodeHandle<S, C>
+where
+    S: State,
+    C: Communicator,
+{
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+            state_keeper: self.state_keeper.clone(),
+        }
+    }
 }
 
 impl<S, C> NodeHandle<S, C>
