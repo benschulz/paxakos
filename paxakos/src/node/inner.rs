@@ -16,7 +16,7 @@ use tracing::debug;
 use crate::append::{AppendArgs, AppendError, Importance, Peeryness};
 use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::communicator::{AcceptanceOrRejection, Communicator, CoordNumOf, ErrorOf};
-use crate::communicator::{PromiseOrRejection, RoundNumOf};
+use crate::communicator::{RoundNumOf, Vote};
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
 use crate::{LogEntry, Promise, Rejection, State};
 
@@ -318,7 +318,7 @@ where
                         .collect::<FuturesUnordered<_>>();
 
                     while let Some(response) = pending_responses.next().await {
-                        if let Ok(PromiseOrRejection::Rejection(rejection)) = response {
+                        if let Ok(Vote::Rejected(rejection)) = response {
                             self.state_keeper
                                 .observe_coord_num(rejection.coord_num())
                                 .await?;
@@ -371,7 +371,7 @@ where
             .await;
 
         match promise_or_rejection? {
-            PromiseOrRejection::Promise(promise) => {
+            Vote::Given(promise) => {
                 let converged_log_entry = if promise.is_empty() {
                     None
                 } else {
@@ -404,7 +404,7 @@ where
                 Ok(converged_log_entry)
             }
 
-            PromiseOrRejection::Rejection(rejection) => {
+            Vote::Rejected(rejection) => {
                 self.state_keeper
                     .observe_coord_num(rejection.coord_num())
                     .await?;
@@ -423,7 +423,7 @@ where
                 Err(AppendError::Lost)
             }
 
-            PromiseOrRejection::Abstained(_) => {
+            Vote::Abstained(_) => {
                 unreachable!()
             }
         }
@@ -433,13 +433,11 @@ where
         &self,
         round_num: RoundNumOf<C>,
         quorum: usize,
-        pending_responses: impl IntoIterator<
-            Item = impl Future<Output = Result<PromiseOrRejection<C>, ErrorOf<C>>>,
-        >,
+        pending_responses: impl IntoIterator<Item = impl Future<Output = Result<Vote<C>, ErrorOf<C>>>>,
         own_promise: Promise<C>,
-    ) -> Result<PromiseOrRejection<C>, AppendError<C>> {
+    ) -> Result<Vote<C>, AppendError<C>> {
         if quorum == 0 {
-            return Ok(PromiseOrRejection::Promise(own_promise));
+            return Ok(Vote::Given(own_promise));
         }
 
         let mut pending_responses: FuturesUnordered<_> = pending_responses.into_iter().collect();
@@ -468,11 +466,11 @@ where
                     }
                 }
 
-                Ok(PromiseOrRejection::Abstained(justification)) => {
+                Ok(Vote::Abstained(justification)) => {
                     abstentions.push(justification);
                 }
 
-                Ok(PromiseOrRejection::Rejection(rejection)) => {
+                Ok(Vote::Rejected(rejection)) => {
                     self.state_keeper
                         .observe_coord_num(rejection.coord_num())
                         .await?;
@@ -487,15 +485,15 @@ where
                             .await?;
                     }
 
-                    return Ok(PromiseOrRejection::Rejection(rejection));
+                    return Ok(Vote::Rejected(rejection));
                 }
 
-                Ok(PromiseOrRejection::Promise(promise)) => {
+                Ok(Vote::Given(promise)) => {
                     let current_max_promise = std::mem::replace(&mut max_promise, Promise::empty());
                     let new_max_promise = current_max_promise.merge_with(promise);
 
                     if promises + 1 >= quorum {
-                        return Ok(PromiseOrRejection::Promise(new_max_promise));
+                        return Ok(Vote::Given(new_max_promise));
                     } else {
                         promises += 1;
                         max_promise = new_max_promise;

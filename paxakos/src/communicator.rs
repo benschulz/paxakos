@@ -41,7 +41,7 @@ pub trait Communicator: Sized + 'static {
     type Error: std::fmt::Debug + Send + Sync + 'static;
     type Justification: std::fmt::Debug + Send + Sync + 'static;
 
-    type SendPrepare: Future<Output = Result<PromiseOrRejection<Self>, Self::Error>>;
+    type SendPrepare: Future<Output = Result<Vote<Self>, Self::Error>>;
     type SendProposal: Future<Output = Result<AcceptanceOrRejection<Self>, Self::Error>>;
     type SendCommit: Future<Output = Result<Committed, Self::Error>>;
     type SendCommitById: Future<Output = Result<Committed, Self::Error>>;
@@ -79,19 +79,19 @@ pub trait Communicator: Sized + 'static {
 }
 
 #[derive(Debug)]
-pub enum PromiseOrRejection<C: Communicator> {
-    Promise(Promise<C>),
-    Rejection(Rejection<C>),
+pub enum Vote<C: Communicator> {
+    Given(Promise<C>),
+    Rejected(Rejection<C>),
     Abstained(JustificationOf<C>),
 }
 
-impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for PromiseOrRejection<C> {
+impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for Vote<C> {
     type Error = PrepareError<C>;
 
     fn try_from(result: Result<Promise<C>, PrepareError<C>>) -> Result<Self, Self::Error> {
         result
-            .map(PromiseOrRejection::Promise)
-            .or_else(|err| err.try_into().map(PromiseOrRejection::Rejection))
+            .map(Vote::Given)
+            .or_else(|err| err.try_into().map(Vote::Rejected))
     }
 }
 
@@ -110,11 +110,11 @@ impl<C: Communicator> TryFrom<PrepareError<C>> for Rejection<C> {
     }
 }
 
-impl<C: Communicator> From<Result<Promise<C>, Rejection<C>>> for PromiseOrRejection<C> {
+impl<C: Communicator> From<Result<Promise<C>, Rejection<C>>> for Vote<C> {
     fn from(result: Result<Promise<C>, Rejection<C>>) -> Self {
         match result {
-            Ok(promise) => PromiseOrRejection::Promise(promise),
-            Err(rejection) => PromiseOrRejection::Rejection(rejection),
+            Ok(promise) => Vote::Given(promise),
+            Err(rejection) => Vote::Rejected(rejection),
         }
     }
 }

@@ -12,7 +12,7 @@ use futures::stream::Stream;
 use thiserror::Error;
 
 use crate::append::{AppendError, RetryPolicy};
-use crate::communicator::{AcceptanceOrRejection, Committed, Communicator, PromiseOrRejection};
+use crate::communicator::{AcceptanceOrRejection, Committed, Communicator, Vote};
 use crate::error::BoxError;
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
 use crate::{CoordNum, LogEntry, NodeInfo};
@@ -363,7 +363,7 @@ where
     type Error = DirectCommunicatorError;
     type Justification = J;
 
-    type SendPrepare = LocalBoxFuture<'static, Result<PromiseOrRejection<Self>, Self::Error>>;
+    type SendPrepare = LocalBoxFuture<'static, Result<Vote<Self>, Self::Error>>;
     type SendProposal = LocalBoxFuture<'static, Result<AcceptanceOrRejection<Self>, Self::Error>>;
     type SendCommit = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
     type SendCommitById = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
@@ -378,7 +378,7 @@ where
             self, receivers;
             handle_prepare, round_num, coord_num;
             DirectCommunicatorPayload::Prepare { round_num, coord_num };
-            |r| DirectCommunicatorPayload::Promise(matches!(r, &Ok(PromiseOrRejection::Promise(_))));
+            |r| DirectCommunicatorPayload::Promise(matches!(r, &Ok(Vote::Given(_))));
         )
     }
 
