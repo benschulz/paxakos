@@ -42,7 +42,7 @@ pub trait Communicator: Sized + 'static {
     type Justification: std::fmt::Debug + Send + Sync + 'static;
 
     type SendPrepare: Future<Output = Result<Vote<Self>, Self::Error>>;
-    type SendProposal: Future<Output = Result<AcceptanceOrRejection<Self>, Self::Error>>;
+    type SendProposal: Future<Output = Result<Acceptance<Self>, Self::Error>>;
     type SendCommit: Future<Output = Result<Committed, Self::Error>>;
     type SendCommitById: Future<Output = Result<Committed, Self::Error>>;
 
@@ -120,18 +120,18 @@ impl<C: Communicator> From<Result<Promise<C>, Rejection<C>>> for Vote<C> {
 }
 
 #[derive(Clone, Debug)]
-pub enum AcceptanceOrRejection<C: Communicator> {
-    Acceptance,
-    Rejection(Rejection<C>),
+pub enum Acceptance<C: Communicator> {
+    Given,
+    Rejected(Rejection<C>),
 }
 
-impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>> for AcceptanceOrRejection<C> {
+impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>> for Acceptance<C> {
     type Error = AcceptError<C>;
 
     fn try_from(result: Result<(), AcceptError<C>>) -> Result<Self, Self::Error> {
         result
-            .map(|_| AcceptanceOrRejection::Acceptance)
-            .or_else(|err| err.try_into().map(AcceptanceOrRejection::Rejection))
+            .map(|_| Acceptance::Given)
+            .or_else(|err| err.try_into().map(Acceptance::Rejected))
     }
 }
 
@@ -150,11 +150,11 @@ impl<C: Communicator> TryFrom<AcceptError<C>> for Rejection<C> {
     }
 }
 
-impl<C: Communicator> From<Result<(), Rejection<C>>> for AcceptanceOrRejection<C> {
+impl<C: Communicator> From<Result<(), Rejection<C>>> for Acceptance<C> {
     fn from(result: Result<(), Rejection<C>>) -> Self {
         match result {
-            Ok(_) => AcceptanceOrRejection::Acceptance,
-            Err(rejection) => AcceptanceOrRejection::Rejection(rejection),
+            Ok(_) => Acceptance::Given,
+            Err(rejection) => Acceptance::Rejected(rejection),
         }
     }
 }

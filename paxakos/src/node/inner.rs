@@ -15,7 +15,7 @@ use tracing::debug;
 
 use crate::append::{AppendArgs, AppendError, Importance, Peeryness};
 use crate::applicable::{ApplicableTo, ProjectionOf};
-use crate::communicator::{AcceptanceOrRejection, Communicator, CoordNumOf, ErrorOf};
+use crate::communicator::{Acceptance, Communicator, CoordNumOf, ErrorOf};
 use crate::communicator::{RoundNumOf, Vote};
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
 use crate::{LogEntry, Promise, Rejection, State};
@@ -517,7 +517,7 @@ where
             HashSet<NodeIdOf<S>>,
             HashSet<NodeIdOf<S>>,
             FuturesUnordered<
-                impl Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
+                impl Future<Output = (NodeIdOf<S>, Result<Acceptance<C>, ErrorOf<C>>)>,
             >,
         ),
         AppendError<C>,
@@ -554,7 +554,7 @@ where
         AppendError<C>,
     >
     where
-        P: Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
+        P: Future<Output = (NodeIdOf<S>, Result<Acceptance<C>, ErrorOf<C>>)>,
     {
         if quorum == 0 {
             return Ok((
@@ -580,14 +580,14 @@ where
             pending_len -= 1;
 
             match response {
-                Ok(AcceptanceOrRejection::Acceptance) => {
+                Ok(Acceptance::Given) => {
                     accepted.insert(node_id);
 
                     if accepted.len() >= quorum {
                         return Ok((accepted, rejected_or_failed, pending_responses));
                     }
                 }
-                Ok(AcceptanceOrRejection::Rejection(Rejection::Converged {
+                Ok(Acceptance::Rejected(Rejection::Converged {
                     log_entry: Some((coord_num, entry)),
                     ..
                 })) => {
@@ -602,13 +602,13 @@ where
                         Err(err) => {
                             communication_errors.push(err);
                         }
-                        Ok(AcceptanceOrRejection::Rejection(Rejection::Conflict { coord_num })) => {
+                        Ok(Acceptance::Rejected(Rejection::Conflict { coord_num })) => {
                             conflict = conflict
                                 .map(|c| std::cmp::max(c, coord_num))
                                 .or(Some(coord_num));
                         }
-                        Ok(AcceptanceOrRejection::Acceptance)
-                        | Ok(AcceptanceOrRejection::Rejection(Rejection::Converged { .. })) => {
+                        Ok(Acceptance::Given)
+                        | Ok(Acceptance::Rejected(Rejection::Converged { .. })) => {
                             // covered in outer match
                             unreachable!()
                         }
@@ -643,7 +643,7 @@ where
         accepted: HashSet<NodeIdOf<S>>,
         rejected_or_failed: HashSet<NodeIdOf<S>>,
         mut pending_acceptances: FuturesUnordered<
-            impl 'static + Future<Output = (NodeIdOf<S>, Result<AcceptanceOrRejection<C>, ErrorOf<C>>)>,
+            impl 'static + Future<Output = (NodeIdOf<S>, Result<Acceptance<C>, ErrorOf<C>>)>,
         >,
     ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
         let accepted = other_nodes
@@ -687,7 +687,7 @@ where
                 let node = pending_nodes_by_id.remove(&node_id).expect("pending node");
 
                 match response {
-                    Ok(AcceptanceOrRejection::Acceptance) => {
+                    Ok(Acceptance::Given) => {
                         let commit = self
                             .communicator
                             .borrow_mut()
