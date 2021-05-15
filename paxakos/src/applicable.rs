@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::log::LogEntry;
 use crate::state::{LogEntryOf, OutcomeOf, State};
 
+pub type ProjectedOf<A, S> = <ProjectionOf<A, S> as Projection<OutcomeOf<S>>>::Projected;
 pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 
 pub trait ApplicableTo<S: State> {
@@ -27,7 +28,7 @@ impl<S: State<LogEntry = E>, E: LogEntry> ApplicableTo<S> for Arc<E> {
     }
 }
 
-pub trait Projection<T>: Unpin {
+pub trait Projection<T>: Send + Unpin {
     type Projected;
 
     fn project(val: T) -> Self::Projected;

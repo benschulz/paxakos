@@ -377,6 +377,8 @@ pub mod communicator;
 pub mod deco;
 pub mod error;
 pub mod event;
+#[cfg(feature = "locking")]
+pub mod locking;
 mod log;
 pub mod node;
 #[cfg(feature = "prototyping")]

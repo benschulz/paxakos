@@ -13,7 +13,10 @@ categories = [ "network-programming" ]
 
 [features]
 default = []
+locker = []
+locking = [ "locker", "release-locks" ]
 prototyping = [ "rand", "rand_distr", "tracer" ]
+release-locks = []
 tracer = []
 
 [dependencies]
