@@ -16,7 +16,7 @@ use paxakos::deco::{EnsureLeadershipBuilderExt, FillGapsBuilderExt};
 use paxakos::deco::{SendHeartbeatsBuilderExt, TrackLeadershipBuilderExt};
 use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
 use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
-use paxakos::{Node, NodeBuilder, NodeInfo, Shutdown};
+use paxakos::{Node, NodeInfo, Shutdown};
 
 use calc_app::{CalcOp, CalcState};
 use tracer::StabilityChecker;

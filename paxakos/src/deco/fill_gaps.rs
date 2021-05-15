@@ -8,18 +8,20 @@ use futures::stream::StreamExt;
 use crate::append::{AppendArgs, AppendError, DoNotRetry, Importance, Peeryness};
 use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
-use crate::node::builder::NodeBuilderWithAll;
-use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, LogEntryOf, NodeIdOf};
-use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
-use crate::{Node, NodeBuilder, RoundNum};
+use crate::node::builder::NodeBuilder;
+use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, JustificationOf};
+use crate::node::{LogEntryOf, NodeIdOf, NodeStatus, Participation, RoundNumOf};
+use crate::node::{Snapshot, SnapshotFor, StateOf};
+use crate::voting::Voter;
+use crate::{Node, RoundNum};
 
 use super::Decoration;
 
-pub trait FillGapsBuilderExt: NodeBuilder {
-    fn fill_gaps<C, P>(
-        self,
-        configure: C,
-    ) -> NodeBuilderWithAll<FillGaps<Self::Node, P>, Self::Voter>
+pub trait FillGapsBuilderExt: Sized {
+    type Node: Node;
+    type Voter: Voter;
+
+    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilder<FillGaps<Self::Node, P>, Self::Voter>
     where
         C: FnOnce(FillGapsBuilderBlank<Self::Node>) -> FillGapsBuilder<Self::Node, P>,
         P: Fn() -> LogEntryOf<Self::Node> + 'static;
@@ -27,7 +29,7 @@ pub trait FillGapsBuilderExt: NodeBuilder {
     fn fill_gaps_with<P>(
         self,
         entry_producer: P,
-    ) -> NodeBuilderWithAll<FillGaps<Self::Node, P>, Self::Voter>
+    ) -> NodeBuilder<FillGaps<Self::Node, P>, Self::Voter>
     where
         P: 'static + Fn() -> LogEntryOf<Self::Node>,
     {
@@ -48,17 +50,23 @@ where
     _node: std::marker::PhantomData<N>,
 }
 
-impl<B> FillGapsBuilderExt for B
+impl<N, V> FillGapsBuilderExt for NodeBuilder<N, V>
 where
-    B: NodeBuilder,
+    N: Node + 'static,
+    V: Voter<
+        State = StateOf<N>,
+        RoundNum = RoundNumOf<N>,
+        CoordNum = CoordNumOf<N>,
+        Justification = JustificationOf<N>,
+    >,
 {
-    fn fill_gaps<C, P>(
-        self,
-        configure: C,
-    ) -> NodeBuilderWithAll<FillGaps<Self::Node, P>, <B as NodeBuilder>::Voter>
+    type Node = N;
+    type Voter = V;
+
+    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilder<FillGaps<N, P>, V>
     where
-        C: FnOnce(FillGapsBuilderBlank<Self::Node>) -> FillGapsBuilder<Self::Node, P>,
-        P: Fn() -> LogEntryOf<<B as NodeBuilder>::Node> + 'static,
+        C: FnOnce(FillGapsBuilderBlank<N>) -> FillGapsBuilder<N, P>,
+        P: Fn() -> LogEntryOf<N> + 'static,
     {
         self.decorated_with(configure(FillGapsBuilderBlank::new()).build())
     }

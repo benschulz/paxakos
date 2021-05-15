@@ -7,18 +7,23 @@ use futures::stream::StreamExt;
 use crate::append::{AppendArgs, DoNotRetry};
 use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
-use crate::node::builder::NodeBuilderWithAll;
-use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, LogEntryOf, NodeIdOf};
-use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
-use crate::{Node, NodeBuilder, RoundNum};
+use crate::node::builder::NodeBuilder;
+use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, JustificationOf};
+use crate::node::{LogEntryOf, NodeIdOf, NodeStatus, Participation, RoundNumOf};
+use crate::node::{Snapshot, SnapshotFor, StateOf};
+use crate::voting::Voter;
+use crate::{Node, RoundNum};
 
 use super::Decoration;
 
-pub trait EnsureLeadershipBuilderExt: NodeBuilder {
+pub trait EnsureLeadershipBuilderExt {
+    type Node: Node + 'static;
+    type Voter: Voter;
+
     fn ensure_leadership<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P>, Self::Voter>
+    ) -> NodeBuilder<EnsureLeadership<Self::Node, P>, Self::Voter>
     where
         C: FnOnce(
             EnsureLeadershipBuilderBlank<Self::Node>,
@@ -34,19 +39,23 @@ pub struct EnsureLeadershipBuilder<N, P> {
     _node: std::marker::PhantomData<N>,
 }
 
-impl<B> EnsureLeadershipBuilderExt for B
+impl<N, V> EnsureLeadershipBuilderExt for NodeBuilder<N, V>
 where
-    B: NodeBuilder,
+    N: Node + 'static,
+    V: Voter<
+        State = StateOf<N>,
+        RoundNum = RoundNumOf<N>,
+        CoordNum = CoordNumOf<N>,
+        Justification = JustificationOf<N>,
+    >,
 {
-    fn ensure_leadership<C, P>(
-        self,
-        configure: C,
-    ) -> NodeBuilderWithAll<EnsureLeadership<Self::Node, P>, <B as NodeBuilder>::Voter>
+    type Node = N;
+    type Voter = V;
+
+    fn ensure_leadership<C, P>(self, configure: C) -> NodeBuilder<EnsureLeadership<N, P>, V>
     where
-        C: FnOnce(
-            EnsureLeadershipBuilderBlank<Self::Node>,
-        ) -> EnsureLeadershipBuilder<Self::Node, P>,
-        P: Fn() -> LogEntryOf<<B as NodeBuilder>::Node> + 'static,
+        C: FnOnce(EnsureLeadershipBuilderBlank<N>) -> EnsureLeadershipBuilder<N, P>,
+        P: Fn() -> LogEntryOf<N> + 'static,
     {
         self.decorated_with(configure(EnsureLeadershipBuilderBlank::new()).build())
     }

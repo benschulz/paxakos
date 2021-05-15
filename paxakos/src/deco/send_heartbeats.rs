@@ -7,22 +7,27 @@ use futures::stream::StreamExt;
 use crate::append::{AppendArgs, DoNotRetry, Importance, Peeryness};
 use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
-use crate::node::builder::NodeBuilderWithAll;
-use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, LogEntryOf, NodeIdOf};
-use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
-use crate::{Node, NodeBuilder, RoundNum};
+use crate::node::builder::NodeBuilder;
+use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, JustificationOf};
+use crate::node::{LogEntryOf, NodeIdOf, NodeStatus, Participation, RoundNumOf, Snapshot};
+use crate::node::{SnapshotFor, StateOf};
+use crate::voting::Voter;
+use crate::{Node, RoundNum};
 
 use super::Decoration;
 use super::{track_leadership::MaybeLeadershipAwareNode, LeadershipAwareNode};
 
-pub trait SendHeartbeatsBuilderExt<I>: NodeBuilder
+pub trait SendHeartbeatsBuilderExt<I>
 where
     I: 'static,
 {
+    type Node: Node + 'static;
+    type Voter: Voter;
+
     fn send_heartbeats<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilderWithAll<SendHeartbeats<Self::Node, P, I>, Self::Voter>
+    ) -> NodeBuilder<SendHeartbeats<Self::Node, P, I>, Self::Voter>
     where
         Self::Node: MaybeLeadershipAwareNode<I>,
         C: FnOnce(SendHeartbeatsBuilderBlank<Self::Node>) -> SendHeartbeatsBuilder<Self::Node, P>,
@@ -37,19 +42,24 @@ pub struct SendHeartbeatsBuilder<N, P> {
     _node: std::marker::PhantomData<N>,
 }
 
-impl<B, I> SendHeartbeatsBuilderExt<I> for B
+impl<N, V, I> SendHeartbeatsBuilderExt<I> for NodeBuilder<N, V>
 where
-    B: NodeBuilder,
-    <B as NodeBuilder>::Node: MaybeLeadershipAwareNode<I>,
+    N: MaybeLeadershipAwareNode<I> + 'static,
+    V: Voter<
+        State = StateOf<N>,
+        RoundNum = RoundNumOf<N>,
+        CoordNum = CoordNumOf<N>,
+        Justification = JustificationOf<N>,
+    >,
     I: 'static,
 {
-    fn send_heartbeats<C, P>(
-        self,
-        configure: C,
-    ) -> NodeBuilderWithAll<SendHeartbeats<Self::Node, P, I>, <B as NodeBuilder>::Voter>
+    type Node = N;
+    type Voter = V;
+
+    fn send_heartbeats<C, P>(self, configure: C) -> NodeBuilder<SendHeartbeats<N, P, I>, V>
     where
-        C: FnOnce(SendHeartbeatsBuilderBlank<Self::Node>) -> SendHeartbeatsBuilder<Self::Node, P>,
-        P: Fn() -> LogEntryOf<<B as NodeBuilder>::Node> + 'static,
+        C: FnOnce(SendHeartbeatsBuilderBlank<N>) -> SendHeartbeatsBuilder<N, P>,
+        P: Fn() -> LogEntryOf<N> + 'static,
     {
         self.decorated_with(configure(SendHeartbeatsBuilderBlank::new()).build())
     }

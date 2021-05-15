@@ -4,7 +4,7 @@ mod calc_app;
 
 use paxakos::node::Snapshot;
 use paxakos::prototyping::{DirectCommunicators, PrototypingNode};
-use paxakos::{Node, NodeBuilder, NodeInfo, NodeStatus};
+use paxakos::{Node, NodeInfo, NodeStatus};
 
 use calc_app::CalcState;
 

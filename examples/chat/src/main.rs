@@ -9,7 +9,7 @@ use futures::io::AsyncRead;
 use paxakos::append::AppendArgs;
 use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
 use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
-use paxakos::{LogEntry, Node, NodeBuilder, NodeHandle, NodeInfo, State};
+use paxakos::{LogEntry, Node, NodeHandle, NodeInfo, State};
 use uuid::Uuid;
 
 type ChatCommunicator = DirectCommunicator<ChatState, u64, u32, !>;

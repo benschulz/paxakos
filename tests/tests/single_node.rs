@@ -9,7 +9,7 @@ use uuid::Uuid;
 use paxakos::append::AppendArgs;
 use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
 use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
-use paxakos::{Event, Node, NodeBuilder, NodeInfo};
+use paxakos::{Event, Node, NodeInfo};
 
 use calc_app::{CalcOp, CalcState};
 

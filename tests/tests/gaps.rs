@@ -10,7 +10,7 @@ use paxakos::event::Gap;
 use paxakos::node::EventFor;
 use paxakos::prototyping::{DirectCommunicator, DirectCommunicators, PrototypingNode};
 use paxakos::state::LogEntryOf;
-use paxakos::{Event, Node, NodeBuilder, NodeInfo, NodeKernel, RequestHandler, State};
+use paxakos::{Event, Node, NodeInfo, NodeKernel, RequestHandler, State};
 
 use calc_app::{CalcOp, CalcState};
 

@@ -6,7 +6,7 @@ use futures::stream::StreamExt;
 use uuid::Uuid;
 
 use paxakos::prototyping::{DirectCommunicators, PrototypingNode};
-use paxakos::{Node, NodeBuilder, NodeInfo, Shutdown, ShutdownEvent};
+use paxakos::{Node, NodeInfo, Shutdown, ShutdownEvent};
 
 use calc_app::{CalcOp, CalcState};
 

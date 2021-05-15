@@ -1,5 +1,3 @@
-use std::future::Future;
-
 use futures::future::{FutureExt, LocalBoxFuture, TryFutureExt};
 
 use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
@@ -15,40 +13,6 @@ use crate::{Identifier, Node, State};
 
 use super::snapshot::{Snapshot, SnapshotFor};
 use super::{CommunicatorOf, NodeKernel, StateOf};
-
-/// Builder to spawn a `Node`.
-///
-/// This API is badly desgined. Please have a look at and follow the
-/// documentation of [`node_builder()`](crate::node_builder()).
-// TODO This trait seems pointless, rename -WithAll to NodeBuilder?
-//      Overall this seems a bit messy with all the structs. Is there a
-//      better approach?
-pub trait NodeBuilder: Sized {
-    type Node: Node + 'static;
-    type Voter: Voter;
-
-    type Future: Future<Output = Result<(RequestHandlerFor<Self::Node>, Self::Node), SpawnError>>;
-
-    fn decorated_with<D>(
-        self,
-        arguments: <D as Decoration>::Arguments,
-    ) -> NodeBuilderWithAll<D, Self::Voter>
-    where
-        D: Decoration<
-            Decorated = Self::Node,
-            State = StateOf<Self::Node>,
-            Communicator = CommunicatorOf<Self::Node>,
-        >;
-
-    fn spawn(self) -> Self::Future
-    where
-        <Self::Node as Node>::State: State<Context = ()>,
-    {
-        self.spawn_in(())
-    }
-
-    fn spawn_in(self, context: ContextOf<StateOf<Self::Node>>) -> Self::Future;
-}
 
 #[derive(Default)]
 pub struct NodeBuilderBlank;
@@ -116,7 +80,7 @@ pub struct NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C: Communicator> {
 
 impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     /// Starts the node without any state.
-    pub fn without<S>(self) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    pub fn without<S>(self) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
@@ -129,7 +93,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     pub fn with_initial_state<S>(
         self,
         initial_state: impl Into<Option<S>>,
-    ) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    ) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
@@ -156,7 +120,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     pub fn resuming_from<S>(
         self,
         snapshot: impl Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
-    ) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    ) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
@@ -170,7 +134,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     pub fn recovering_with<S>(
         self,
         snapshot: impl Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
-    ) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    ) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
@@ -181,7 +145,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     ///
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
-    pub fn recovering_without<S>(self) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    pub fn recovering_without<S>(self) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
@@ -205,7 +169,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     pub fn joining_with<S>(
         self,
         snapshot: impl Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
-    ) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    ) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
@@ -226,7 +190,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     ///
     /// [recovering_without]:
     /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_without
-    pub fn joining_without<S>(self) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    pub fn joining_without<S>(self) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
@@ -237,11 +201,11 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
         self,
         snapshot: Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>,
         participation: Participation<RoundNumOf<C>>,
-    ) -> NodeBuilderWithAll<NodeKernel<S, C>>
+    ) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        NodeBuilderWithAll {
+        NodeBuilder {
             working_dir: self.working_dir,
             node_id: self.node_id,
             communicator: self.communicator,
@@ -259,7 +223,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
 
 type Finisher<N> = dyn FnOnce(NodeKernel<StateOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
 
-pub struct NodeBuilderWithAll<N: Node, V = IndiscriminateVoterFor<N>> {
+pub struct NodeBuilder<N: Node, V = IndiscriminateVoterFor<N>> {
     working_dir: Option<std::path::PathBuf>,
     node_id: NodeIdOf<StateOf<N>>,
     voter: V,
@@ -273,7 +237,7 @@ pub struct NodeBuilderWithAll<N: Node, V = IndiscriminateVoterFor<N>> {
     tracer: Option<Box<dyn Tracer<CommunicatorOf<N>>>>,
 }
 
-impl<S, C, V> NodeBuilderWithAll<NodeKernel<S, C>, V>
+impl<S, C, V> NodeBuilder<NodeKernel<S, C>, V>
 where
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     C: Communicator,
@@ -299,8 +263,8 @@ where
         self
     }
 
-    pub fn voting_with<T>(self, voter: T) -> NodeBuilderWithAll<NodeKernel<S, C>, T> {
-        NodeBuilderWithAll {
+    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<NodeKernel<S, C>, T> {
+        NodeBuilder {
             working_dir: self.working_dir,
             node_id: self.node_id,
             voter,
@@ -316,7 +280,7 @@ where
     }
 }
 
-impl<N, V> NodeBuilder for NodeBuilderWithAll<N, V>
+impl<N, V> NodeBuilder<N, V>
 where
     N: Node + 'static,
     V: Voter<
@@ -326,18 +290,13 @@ where
         Justification = JustificationOf<N>,
     >,
 {
-    type Node = N;
-    type Voter = V;
-
-    type Future = LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>>;
-
-    fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilderWithAll<D, V>
+    pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V>
     where
         D: Decoration<Decorated = N, State = StateOf<N>, Communicator = CommunicatorOf<N>>,
     {
         let finisher = self.finisher;
 
-        NodeBuilderWithAll {
+        NodeBuilder {
             working_dir: self.working_dir,
             node_id: self.node_id,
             communicator: self.communicator,
@@ -352,7 +311,17 @@ where
         }
     }
 
-    fn spawn_in(self, context: ContextOf<StateOf<N>>) -> Self::Future {
+    pub fn spawn(self) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>>
+    where
+        StateOf<N>: State<Context = ()>,
+    {
+        self.spawn_in(())
+    }
+
+    pub fn spawn_in(
+        self,
+        context: ContextOf<StateOf<N>>,
+    ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>> {
         let finisher = self.finisher;
 
         NodeKernel::spawn(

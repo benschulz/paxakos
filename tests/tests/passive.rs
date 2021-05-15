@@ -15,7 +15,7 @@ use paxakos::{
     node::{Participation, Snapshot},
     AcceptError, PrepareError,
 };
-use paxakos::{Node, NodeBuilder, NodeInfo, NodeKernel};
+use paxakos::{Node, NodeInfo, NodeKernel};
 
 use calc_app::{CalcOp, CalcState};
 

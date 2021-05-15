@@ -9,11 +9,12 @@ use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
 use crate::communicator::Communicator;
 use crate::error::Disoriented;
-use crate::node::builder::{NodeBuilder, NodeBuilderWithAll};
-use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, Node, NodeIdOf};
-use crate::node::{NodeInfo, NodeKernel, NodeStatus, Participation, RoundNumOf};
-use crate::node::{Snapshot, SnapshotFor, StateOf};
+use crate::node::builder::NodeBuilder;
+use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, JustificationOf};
+use crate::node::{Node, NodeIdOf, NodeInfo, NodeKernel, NodeStatus, Participation};
+use crate::node::{RoundNumOf, Snapshot, SnapshotFor, StateOf};
 use crate::state::State;
+use crate::voting::Voter;
 use crate::RoundNum;
 
 use super::Decoration;
@@ -37,17 +38,27 @@ pub trait MaybeLeadershipAwareNode<I>: Node {
     fn leadership(&self) -> Option<&[LeadershipFor<Self>]>;
 }
 
-pub trait TrackLeadershipBuilderExt: NodeBuilder {
-    fn track_leadership(self) -> NodeBuilderWithAll<TrackLeadership<Self::Node>, Self::Voter>;
+pub trait TrackLeadershipBuilderExt {
+    type Node: Node;
+    type Voter: Voter;
+
+    fn track_leadership(self) -> NodeBuilder<TrackLeadership<Self::Node>, Self::Voter>;
 }
 
-impl<B> TrackLeadershipBuilderExt for B
+impl<N, V> TrackLeadershipBuilderExt for NodeBuilder<N, V>
 where
-    B: NodeBuilder,
+    N: Node + 'static,
+    V: Voter<
+        State = StateOf<N>,
+        RoundNum = RoundNumOf<N>,
+        CoordNum = CoordNumOf<N>,
+        Justification = JustificationOf<N>,
+    >,
 {
-    fn track_leadership(
-        self,
-    ) -> NodeBuilderWithAll<TrackLeadership<Self::Node>, <B as NodeBuilder>::Voter> {
+    type Node = N;
+    type Voter = V;
+
+    fn track_leadership(self) -> NodeBuilder<TrackLeadership<N>, V> {
         self.decorated_with(())
     }
 }
