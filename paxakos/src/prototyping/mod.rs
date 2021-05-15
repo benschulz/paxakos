@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -79,9 +78,11 @@ where
 type RequestHandlers<S, R, C, J> =
     HashMap<NodeIdOf<S>, RequestHandler<S, DirectCommunicator<S, R, C, J>>>;
 type EventListeners<S, R, C> = Vec<mpsc::Sender<DirectCommunicatorEvent<S, R, C>>>;
+type PacketLossRates<S> = HashMap<(NodeIdOf<S>, NodeIdOf<S>), f32>;
+type E2eDelays<S> = HashMap<(NodeIdOf<S>, NodeIdOf<S>), rand_distr::Normal<f32>>;
 
 #[derive(Debug)]
-pub struct DirectCommunicators<S: State, R: RoundNum, C: CoordNum, J>
+pub struct DirectCommunicators<S, R, C, J>
 where
     S: State,
     R: RoundNum,
@@ -89,40 +90,12 @@ where
     J: std::fmt::Debug + Send + Sync + 'static,
 {
     request_handlers: Arc<Mutex<RequestHandlers<S, R, C, J>>>,
-    failure_rate: Cell<f32>,
-    e2e_delay_ms_distr: Cell<rand_distr::Normal<f32>>,
+    default_packet_loss: f32,
+    default_e2e_delay: rand_distr::Normal<f32>,
+    packet_loss: Arc<Mutex<PacketLossRates<S>>>,
+    e2e_delay: Arc<Mutex<E2eDelays<S>>>,
     event_listeners: Arc<Mutex<EventListeners<S, R, C>>>,
     _p: std::marker::PhantomData<J>,
-}
-
-impl<S, R, C, J> Default for DirectCommunicators<S, R, C, J>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    J: std::fmt::Debug + Send + Sync,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<S, R, C, J> Clone for DirectCommunicators<S, R, C, J>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    J: std::fmt::Debug + Send + Sync,
-{
-    fn clone(&self) -> Self {
-        Self {
-            request_handlers: Arc::clone(&self.request_handlers),
-            failure_rate: Cell::new(self.failure_rate.get()),
-            e2e_delay_ms_distr: Cell::new(self.e2e_delay_ms_distr.get()),
-            event_listeners: Arc::clone(&self.event_listeners),
-            _p: std::marker::PhantomData,
-        }
-    }
 }
 
 impl<S, R, C, J> DirectCommunicators<S, R, C, J>
@@ -137,22 +110,33 @@ where
         Self::with_characteristics(0.0, rand_distr::Normal::new(0.0, 0.0).unwrap())
     }
 
-    pub fn with_characteristics(
-        failure_rate: f32,
-        e2e_delay_ms_distr: rand_distr::Normal<f32>,
-    ) -> Self {
+    pub fn with_characteristics(packet_loss: f32, e2e_delay: rand_distr::Normal<f32>) -> Self {
         Self {
             request_handlers: Arc::new(Mutex::new(HashMap::new())),
-            failure_rate: Cell::new(failure_rate),
-            e2e_delay_ms_distr: Cell::new(e2e_delay_ms_distr),
+            default_packet_loss: packet_loss,
+            default_e2e_delay: e2e_delay,
+            packet_loss: Arc::new(Mutex::new(HashMap::new())),
+            e2e_delay: Arc::new(Mutex::new(HashMap::new())),
             event_listeners: Arc::new(Mutex::new(Vec::new())),
             _p: std::marker::PhantomData,
         }
     }
 
     #[allow(dead_code)]
-    pub fn failure_rate(&mut self, failure_rate: f32) {
-        self.failure_rate.set(failure_rate);
+    pub async fn set_packet_loss(&mut self, from: NodeIdOf<S>, to: NodeIdOf<S>, packet_loss: f32) {
+        let mut link = self.packet_loss.lock().await;
+        link.insert((from, to), packet_loss);
+    }
+
+    #[allow(dead_code)]
+    pub async fn set_delay(
+        &mut self,
+        from: NodeIdOf<S>,
+        to: NodeIdOf<S>,
+        delay: rand_distr::Normal<f32>,
+    ) {
+        let mut link = self.e2e_delay.lock().await;
+        link.insert((from, to), delay);
     }
 
     #[allow(dead_code)]
@@ -184,6 +168,38 @@ where
             set: self.clone(),
             node_id,
         }
+    }
+}
+
+impl<S, R, C, J> Clone for DirectCommunicators<S, R, C, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync,
+{
+    fn clone(&self) -> Self {
+        Self {
+            request_handlers: Arc::clone(&self.request_handlers),
+            default_packet_loss: self.default_packet_loss,
+            default_e2e_delay: self.default_e2e_delay,
+            packet_loss: Arc::clone(&self.packet_loss),
+            e2e_delay: Arc::clone(&self.e2e_delay),
+            event_listeners: Arc::clone(&self.event_listeners),
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<S, R, C, J> Default for DirectCommunicators<S, R, C, J>
+where
+    S: State,
+    R: RoundNum,
+    C: CoordNum,
+    J: std::fmt::Debug + Send + Sync,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -275,14 +291,37 @@ macro_rules! send_fn {
                 (
                     receiver,
                     async move {
-                        let e2e_delay = delay(&this.set.e2e_delay_ms_distr.get());
-                        let dropped = roll_for_failure(this.set.failure_rate.get());
+                        let (packet_loss_rate_there, packet_loss_rate_back) = {
+                            let per_link = this.set.packet_loss.lock().await;
+
+                            let there = per_link.get(&(this.node_id, receiver_id)).copied();
+                            let there = there.unwrap_or(this.set.default_packet_loss);
+
+                            let back = per_link.get(&(receiver_id, this.node_id)).copied();
+                            let back = back.unwrap_or(this.set.default_packet_loss);
+
+                            (there, back)
+                        };
+                        let (e2e_delay_distr_there, e2e_delay_distr_back) = {
+                            let per_link = this.set.e2e_delay.lock().await;
+
+                            let there = per_link.get(&(this.node_id, receiver_id)).copied();
+                            let there = there.unwrap_or(this.set.default_e2e_delay);
+
+                            let back = per_link.get(&(receiver_id, this.node_id)).copied();
+                            let back = back.unwrap_or(this.set.default_e2e_delay);
+
+                            (there, back)
+                        };
+
+                        let e2e_delay = delay(&e2e_delay_distr_there);
+                        let dropped = roll_for_failure(packet_loss_rate_there);
 
                         {
                             let listeners = this.set.event_listeners.lock().await;
                             for mut l in listeners.iter().cloned() {
                                 let _ = l.send(DirectCommunicatorEvent {
-                                    sender: this.node_id.clone(),
+                                    sender: this.node_id,
                                     receiver: receiver_id,
                                     e2e_delay,
                                     dropped,
@@ -311,15 +350,15 @@ macro_rules! send_fn {
                             .try_into()
                             .map_err(|_| DirectCommunicatorError::Other);
 
-                        let e2e_delay = delay(&this.set.e2e_delay_ms_distr.get());
-                        let dropped = roll_for_failure(this.set.failure_rate.get());
+                        let e2e_delay = delay(&e2e_delay_distr_back);
+                        let dropped = roll_for_failure(packet_loss_rate_back);
 
                         {
                             let listeners = this.set.event_listeners.lock().await;
                             for mut l in listeners.iter().cloned() {
                                 let _ = l.send(DirectCommunicatorEvent {
                                     sender: receiver_id,
-                                    receiver: this.node_id.clone(),
+                                    receiver: this.node_id,
                                     e2e_delay,
                                     dropped,
                                     payload: $response_payload(&response),
