@@ -161,6 +161,12 @@ impl<C: Communicator> From<Result<(), Rejection<C>>> for Acceptance<C> {
 
 pub struct Committed;
 
+impl From<()> for Committed {
+    fn from(_: ()) -> Self {
+        Self
+    }
+}
+
 impl<S: State> TryFrom<Result<(), CommitError<S>>> for Committed {
     type Error = CommitError<S>;
 
