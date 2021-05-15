@@ -79,7 +79,7 @@ pub struct NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C: Communicator> {
 }
 
 impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
-    /// Starts the node without any state.
+    /// Starts the node without any state and in passive mode.
     pub fn without<S>(self) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
@@ -124,7 +124,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(snapshot.into(), Participation::Active)
+        self.with_snapshot_and_participation(snapshot, Participation::Active)
     }
 
     /// Resume operation from the given snapshot.
@@ -138,7 +138,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(snapshot.into(), Participation::Passive)
+        self.with_snapshot_and_participation(snapshot, Participation::Passive)
     }
 
     /// Resume operation without a snapshot.
@@ -173,7 +173,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     {
-        self.with_snapshot_and_participation(snapshot.into(), Participation::Active)
+        self.with_snapshot_and_participation(snapshot, Participation::Active)
     }
 
     /// Commence operation without a snapshot.
@@ -197,14 +197,22 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
         self.with_snapshot_and_participation(None, Participation::Active)
     }
 
-    fn with_snapshot_and_participation<S>(
+    #[doc(hidden)]
+    pub fn with_snapshot_and_participation<S, I>(
         self,
-        snapshot: Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>,
+        snapshot: I,
         participation: Participation<RoundNumOf<C>>,
     ) -> NodeBuilder<NodeKernel<S, C>>
     where
         S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+        I: Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
     {
+        if matches!(participation, Participation::PartiallyActive(_)) {
+            panic!("Unsupported: {:?}", participation);
+        }
+
+        let snapshot = snapshot.into();
+
         NodeBuilder {
             working_dir: self.working_dir,
             node_id: self.node_id,

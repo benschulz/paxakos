@@ -234,7 +234,7 @@ pub enum DirectCommunicatorPayload<S: State, R: RoundNum, C: CoordNum> {
         round_num: R,
         coord_num: C,
     },
-    Committed,
+    Committed(bool),
 }
 
 #[derive(Debug, Error)]
@@ -447,7 +447,7 @@ where
             self, receivers, log_entry;
             handle_commit, round_num, coord_num, log_entry;
             DirectCommunicatorPayload::Commit { round_num, coord_num, log_entry: log_entry.clone() };
-            |_| DirectCommunicatorPayload::Committed;
+            |r| DirectCommunicatorPayload::Committed(matches!(r, &Ok(_)));
         )
     }
 
@@ -462,7 +462,7 @@ where
             self, receivers;
             handle_commit_by_id, round_num, coord_num, log_entry_id;
             DirectCommunicatorPayload::CommitById { round_num, coord_num };
-            |_| DirectCommunicatorPayload::Committed;
+            |r| DirectCommunicatorPayload::Committed(matches!(r, &Ok(_)));
         )
     }
 }

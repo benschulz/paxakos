@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>playground — paxakos</title>
+    <style type="text/css">
+      body {
+        display: flex;
+        overflow-x: hidden;
+        background: black;
+        flex-direction: column;
+        color: white;
+      }
+
+      .visualization {
+        position: relative;
+      }
+
+      .visualization__layers {
+        position: relative;
+        display: block;
+        overflow: hidden;
+        margin: auto;
+        width: min(95vw, 60vh);
+        height: min(95vw, 60vh);
+      }
+
+      .visualization__node-layer {
+        position: absolute;
+        transform: rotate(var(--rot));
+        top: 10%;
+        left: 10%;
+        right: 10%;
+        bottom: 10%;
+        pointer-events: none;
+      }
+
+      .visualization__node {
+        position: absolute;
+        display: block;
+        box-sizing: border-box;
+        transform: rotate(var(--brot));
+        left: 43%;
+        width: 14%;
+        height: 14%;
+        pointer-events: auto;
+        border-radius: 50%;
+        background: grey;
+        color: #000;
+        padding: calc(7% - 1em);
+        line-height: 2em;
+        text-align: center;
+      }
+
+      .visualization__node--active {
+        background: deepskyblue;
+      }
+
+      .visualization__node--terminated {
+        background: rgb(153, 69, 69);
+      }
+
+      .visualization__node::before {
+        content: attr(data-name);
+      }
+
+      .visualization__node[data-leader]::after {
+        position: absolute;
+        display: block;
+        box-sizing: border-box;
+        top: -15%;
+        right: -15%;
+        width: 30%;
+        height: 30%;
+        border-radius: 50%;
+        background: deepskyblue;
+        color: #000;
+        padding: calc(15% - 0.5em);
+        line-height: 1em;
+        text-align: center;
+        font-size: 10px;
+        content: attr(data-leader);
+      }
+
+      .visualization__link-layer {
+        position: absolute;
+        transform: rotate(var(--rot));
+        top: 15.6%;
+        left: 15.6%;
+        right: 15.6%;
+        bottom: 15.6%;
+      }
+
+      .visualization__link {
+        position: absolute;
+        display: block;
+        transform-origin: top;
+        transform: translate(-0.5px) rotate(var(--rot));
+        left: 50%;
+        width: 1px;
+        height: var(--h);
+      }
+
+      .visualization__link::after {
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: white;
+        opacity: var(--usage);
+        content: "";
+      }
+
+      .visualization__packet {
+        position: absolute;
+        display: block;
+        z-index: 2;
+        top: 0;
+        margin: -3.5px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: deepskyblue;
+      }
+
+      .visualization__packet--in-transmission {
+        top: 100%;
+      }
+
+      .visualization__packet--dropping {
+        width: 0;
+        height: 0;
+        opacity: 0;
+      }
+
+      .visualization__packet--positive {
+        background: rgb(69, 153, 107);
+      }
+
+      .visualization__packet--negative {
+        background: rgb(153, 69, 69);
+      }
+
+      .node__action {
+        position: absolute;
+        display: flex;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        align-items: center;
+        justify-content: center;
+        animation: pulse 1s 1;
+        opacity: 0;
+        font-size: 1.5em;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 0;
+          transform: translateY(0);
+        }
+
+        50% {
+          opacity: 1;
+        }
+
+        100% {
+          opacity: 0;
+          transform: translateY(-40%);
+        }
+      }
+
+      .node__action--heartbeat::after {
+        content: "❤️";
+      }
+
+      .node__action--fill::after {
+        content: "✨";
+      }
+
+      .node__action--ensure-leadership::after {
+        content: "👑";
+      }
+
+      .timeline {
+        transition: 0.2s;
+        position: relative;
+        transform-origin: left;
+        transform: scale(var(--scale)) translateX(var(--translateX));
+        margin-top: var(--height);
+        height: 15px;
+      }
+
+      .timeline__node {
+        transition: 0.4s;
+        position: absolute;
+        display: flex;
+        left: calc(var(--round) * 15px - (100px - 15px) / 2);
+        width: 100px;
+        height: var(--height);
+        bottom: 15px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .timeline__node::before {
+        content: attr(data-name);
+      }
+
+      .timeline__node::after {
+        content: "↓";
+      }
+
+      .timeline__rounds {
+        box-sizing: border-box;
+        width: 100000%;
+        height: 15px;
+        border: 1px solid white;
+        border-left: none;
+        border-right: none;
+        background-image: linear-gradient(
+          90deg,
+          white 0px,
+          white 1px,
+          black 1px,
+          black 15px
+        );
+        background-size: 15px 15px;
+      }
+
+      .timeline__concurrency {
+        position: absolute;
+        display: block;
+        left: var(--left);
+        bottom: 0;
+        width: var(--width);
+        height: 15px;
+        background: rgba(0, 191, 255, 0.3);
+      }
+
+      .timeline__concurrency::before {
+        transform: rotate(-75deg);
+        transform-origin: top left;
+        clip-path: polygon(
+          0 0,
+          100% 0,
+          100% 100%,
+          /*height/tan(75deg)*/ 8.57437415779px 100%
+        );
+        position: absolute;
+        display: inline-block;
+        background: rgba(0, 191, 255, 0.3);
+        height: 32px;
+        line-height: 32px;
+        padding: 0 0.5em 0 1.5em;
+        content: "Concurrency";
+      }
+
+      .timeline__action {
+        position: absolute;
+        display: flex;
+        top: 0.5px;
+        left: calc(var(--round) * 15px + 0.5px);
+        width: 15px;
+        height: 14px;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+      }
+
+      .timeline__action--heartbeat::after {
+        content: "❤️";
+      }
+
+      .timeline__action--fill::after {
+        content: "✨";
+      }
+
+      .timeline__action--ensure-leadership::after {
+        content: "👑";
+      }
+
+      .timeline__current-round {
+        transition: 0.4s;
+        position: absolute;
+        display: flex;
+        left: calc(var(--round) * 15px - (100px - 15px) / 2);
+        width: 100px;
+        height: 2.5em;
+        top: 15px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .timeline__current-round::before {
+        content: "↑";
+      }
+
+      .timeline__current-round::after {
+        counter-reset: round var(--round);
+        content: "R" counter(round);
+      }
+
+      .link-control {
+        display: flex;
+        margin: 48px 16px;
+        align-items: center;
+      }
+
+      .link-control__node {
+        display: flex;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        background: deepskyblue;
+        align-items: center;
+        justify-content: center;
+        color: black;
+      }
+
+      .link-control__node::before {
+        content: attr(data-name);
+      }
+
+      .link-control__links {
+        flex: 1 1 auto;
+      }
+
+      .link-control__link {
+        position: relative;
+        display: flex;
+        justify-content: center;
+      }
+
+      .link-control__link--there {
+        margin-bottom: 8px;
+        border-bottom: 1px solid white;
+      }
+
+      .link-control__link--there::after {
+        position: absolute;
+        transform-origin: bottom right;
+        transform: rotate(-45deg);
+        right: 0;
+        bottom: -1px;
+        width: 5px;
+        height: 5px;
+        border-color: white;
+        border-style: solid;
+        border-width: 0 1px 1px 0;
+        content: "";
+      }
+
+      .link-control__link--back {
+        margin-top: 8px;
+        border-top: 1px solid white;
+      }
+
+      .link-control__link--back::before {
+        position: absolute;
+        transform-origin: top left;
+        transform: rotate(-45deg);
+        top: -1px;
+        left: 0;
+        width: 5px;
+        height: 5px;
+        border-color: white;
+        border-style: solid;
+        border-width: 1px 0 0 1px;
+        content: "";
+      }
+
+      .link-control__link > * {
+        flex: 0 0 auto;
+      }
+
+      .link-control__link > label {
+        margin: 0 5px 0 15px;
+      }
+
+      .link-control__link > input {
+        flex: 0 1 150px;
+        width: 0;
+      }
+
+      .appends {
+        align-self: center;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .append {
+        display: flex;
+        align-items: center;
+      }
+
+      .append__progress {
+        display: flex;
+        margin: 16px;
+        border-left: 1px solid white;
+        flex-wrap: wrap;
+      }
+
+      .append__action {
+        border: 1px solid white;
+        border-left-width: 0;
+        width: 8px;
+        height: 8px;
+      }
+
+      .append__action--success {
+        background: #9d3;
+      }
+
+      .append__action--failure {
+        background: #d33;
+      }
+
+      .setup {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: black;
+        padding: 32px;
+      }
+
+      .setup > label,
+      .setup > div {
+        display: block;
+        margin: 16px 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>Playground</h1>
+    <div id="visualization" class="visualization"></div>
+    <h2>Appends</h2>
+    <div id="appends" class="appends"></div>
+    <div id="controls"></div>
+    <div id="setup" class="setup">
+      <h2>Setup</h2>
+      <label>
+        Node Count
+        <input id="node-count" type="number" value="5" />
+      </label>
+      <label>
+        Concurrency
+        <input id="concurrency" type="number" value="10" />
+      </label>
+      <label>
+        Packet Loss
+        <input
+          id="packet-loss"
+          type="range"
+          min="0"
+          max="1"
+          step="0.005"
+          value="0.025"
+        />
+        <span id="packet-loss-display"></span>
+      </label>
+      <div>
+        Link Delay
+        <label>
+          μ
+          <input
+            id="e2e-delay-mean"
+            type="range"
+            min="0"
+            max="1000"
+            step="5"
+            value="300"
+        /></label>
+        <span id="e2e-delay-mean-display"></span>
+
+        <label style="margin-left: 32px">
+          σ
+          <input
+            id="e2e-delay-std-dev"
+            type="range"
+            min="0"
+            max="200"
+            step="5"
+            value="50"
+        /></label>
+        <span id="e2e-delay-std-dev-display"></span>
+      </div>
+
+      <input id="go" type="submit" value="Go" />
+    </div>
+  </body>
+  <script charset="utf-8">
+    const roundWidth = 15;
+
+    document.querySelectorAll("#setup input").forEach((i) => {
+      i.addEventListener("change", updateSetup);
+    });
+    updateSetup();
+
+    function updateSetup() {
+      document.querySelector("#packet-loss-display").textContent = `${(
+        100 * document.querySelector("#packet-loss").valueAsNumber
+      ).toLocaleString()} %`;
+
+      document.querySelector(
+        "#e2e-delay-mean-display"
+      ).textContent = `${document
+        .querySelector("#e2e-delay-mean")
+        .valueAsNumber.toLocaleString()} ms`;
+
+      document.querySelector(
+        "#e2e-delay-std-dev-display"
+      ).textContent = `${document
+        .querySelector("#e2e-delay-std-dev")
+        .valueAsNumber.toLocaleString()} ms`;
+    }
+
+    document.querySelector("#go").addEventListener("click", () => {
+      document.querySelector("#setup").style.display = "none";
+
+      setupCluster(
+        Math.max(1, document.querySelector("#node-count").valueAsNumber | 0),
+        document.querySelector("#concurrency").valueAsNumber,
+        document.querySelector("#packet-loss").valueAsNumber,
+        document.querySelector("#e2e-delay-mean").valueAsNumber,
+        document.querySelector("#e2e-delay-std-dev").valueAsNumber
+      );
+    });
+
+    const visualization = document.querySelector("#visualization");
+    const appends = document.querySelector("#appends");
+    const controls = document.querySelector("#controls");
+    const nodeCountcc = document.querySelector("#node-count");
+
+    let events = {
+      close() {},
+    };
+
+    function setupCluster(
+      nodeCount,
+      concurrency,
+      defaultPacketLoss,
+      defaultE2eDelayMean,
+      defaultE2eDelayStdDev
+    ) {
+      fetch("/", {
+        method: "POST",
+        body: JSON.stringify({
+          nodeCount: nodeCount,
+          concurrency,
+          packetLoss: defaultPacketLoss,
+          e2eDelayMean: defaultE2eDelayMean,
+          e2eDelayStdDev: defaultE2eDelayStdDev,
+        }),
+      })
+        .then((r) => r.json())
+        .then(({ id: clusterId, nodes }) => {
+          visualization.innerHTML = "";
+          appends.innerHTML = "";
+          controls.innerHTML = "";
+
+          const timeline = visualization.appendChild(
+            createElement("div", {
+              classes: ["visualization__timeline", "timeline"],
+              cssProps: {
+                height: `${nodeCount + 1}.5em`,
+              },
+            })
+          );
+
+          const rounds = timeline.appendChild(
+            createElement("div", { classes: ["timeline__rounds"] })
+          );
+
+          const concurrencyWindow = timeline.appendChild(
+            createElement("div", {
+              classes: ["timeline__concurrency"],
+              cssProps: {
+                width: `${concurrency * roundWidth}px`,
+              },
+            })
+          );
+
+          const currentRound = timeline.appendChild(
+            createElement("div", {
+              classes: ["timeline__current-round"],
+              cssProps: { round: 0 },
+            })
+          );
+
+          const layers = visualization.appendChild(
+            createElement("div", { classes: ["visualization__layers"] })
+          );
+
+          const a = (2 * Math.PI) / nodeCount;
+          const packetCounters = { sum: 0 };
+          const progress = {
+            minRound: 0,
+            maxRound: 0,
+          };
+          const actions = {
+            heartbeat: {},
+            fill: {},
+            "ensure-leadership": {},
+          };
+
+          nodes.forEach((node, i) => {
+            const control = controls.appendChild(
+              createElement("div", {
+                classes: ["control", `control--node-${node.id}`],
+              })
+            );
+            control.style.display = "none";
+
+            control.appendChild(
+              createElement("h2", { text: `Node ${node.name}` })
+            );
+
+            const metaControl = control.appendChild(createElement("div"));
+
+            const takeSnapshot = metaControl.appendChild(
+              createElement("button", { text: "Take Snapshot" })
+            );
+            takeSnapshot.addEventListener("click", () => {
+              fetch(`/${clusterId}/node/${node.id}/take-snapshot`, {
+                method: "POST",
+              });
+            });
+
+            const crash = metaControl.appendChild(
+              createElement("button", { text: "Crash" })
+            );
+            crash.addEventListener("click", () => {
+              fetch(`/${clusterId}/node/${node.id}/crash`, {
+                method: "POST",
+              });
+            });
+
+            const shutDown = metaControl.appendChild(
+              createElement("button", { text: "Shut Down" })
+            );
+            shutDown.addEventListener("click", () => {
+              fetch(`/${clusterId}/node/${node.id}/shut-down`, {
+                method: "POST",
+              });
+            });
+
+            control.appendChild(
+              createElement("label", { text: "Amount of Actions" })
+            );
+
+            const amountOfActions = control.appendChild(
+              createElement("input", {
+                props: {
+                  type: "number",
+                  value: "1",
+                },
+              })
+            );
+
+            control.appendChild(createElement("label", { text: "From Round" }));
+
+            const fromRound = control.appendChild(
+              createElement("input", { props: { type: "number" } })
+            );
+
+            control.appendChild(
+              createElement("label", { text: "Until Round" })
+            );
+
+            const untilRound = control.appendChild(
+              createElement("input", { props: { type: "number" } })
+            );
+
+            const queueAppend = control.appendChild(
+              createElement("input", {
+                props: {
+                  type: "submit",
+                  value: "Queue Append",
+                },
+              })
+            );
+
+            queueAppend.addEventListener("click", () => {
+              const args = {
+                amount: (amountOfActions.valueAsNumber || 1) | 0,
+              };
+
+              if (
+                typeof fromRound.valueAsNumber === "number" &&
+                fromRound.valueAsNumber >= 0
+              ) {
+                args.fromRound = fromRound.valueAsNumber | 0;
+              }
+
+              if (
+                typeof untilRound.valueAsNumber === "number" &&
+                untilRound.valueAsNumber >= 0
+              ) {
+                args.untilRound = untilRound.valueAsNumber | 0;
+              }
+
+              fetch(`/${clusterId}/node/${node.id}/appends`, {
+                method: "POST",
+                body: JSON.stringify(args),
+              })
+                .then((r) => r.json())
+                .then(({ id: appendId }) => {
+                  const append = appends.insertBefore(
+                    createElement("div", {
+                      props: { id: `id-${appendId}` },
+                      classes: ["append"],
+                      text: `Node ${node.name}`,
+                    }),
+                    appends.firstChild
+                  );
+
+                  const progress = append.appendChild(
+                    createElement("div", { classes: ["append__progress"] })
+                  );
+
+                  for (let ai = 0; ai < args.amount; ++ai) {
+                    progress.appendChild(
+                      createElement("div", {
+                        classes: ["append__action", "append__action--pending"],
+                      })
+                    );
+                  }
+                });
+            });
+
+            control.appendChild(createElement("h3", { text: "Snapshots" }));
+
+            control.appendChild(
+              createElement("ul", {
+                data: {
+                  node: node.id,
+                },
+                classes: ["snapshots"],
+              })
+            );
+
+            control.appendChild(
+              createElement("h3", { text: "Links (Packet Loss Rate / Delay)" })
+            );
+
+            [{ id: null, name: "★" }].concat(nodes).forEach((otherNode) => {
+              if (otherNode === node) {
+                return;
+              }
+
+              const otherNodes =
+                otherNode.id === null ? nodes.map((n) => n.id) : [otherNode.id];
+
+              const linkControl = control.appendChild(
+                createElement("div", { classes: ["link-control"] })
+              );
+
+              const thisNode = linkControl.appendChild(
+                createElement("div", {
+                  data: { name: node.name },
+                  classes: ["link-control__node"],
+                })
+              );
+
+              const links = linkControl.appendChild(
+                createElement("div", { classes: ["link-control__links"] })
+              );
+
+              const linkThere = links.appendChild(
+                createElement("div", {
+                  classes: ["link-control__link", "link-control__link--there"],
+                })
+              );
+
+              insertLinkControls(linkThere, [node.id], otherNodes);
+
+              const linkBack = links.appendChild(
+                createElement("div", {
+                  classes: ["link-control__link", "link-control__link--back"],
+                })
+              );
+
+              insertLinkControls(linkBack, otherNodes, [node.id]);
+
+              const otherNodeEl = linkControl.appendChild(
+                createElement("div", {
+                  data: { name: otherNode.name },
+                  classes: ["link-control__node"],
+                })
+              );
+
+              function insertLinkControls(link, from, to) {
+                const packetLoss = link.appendChild(
+                  createElement("input", {
+                    props: {
+                      type: "range",
+                      min: 0,
+                      max: 1,
+                      step: 0.005,
+                      value: `${defaultPacketLoss}`,
+                    },
+                    classes: [
+                      "packet-loss",
+                      `from-${from.join("+")}`,
+                      `to-${to.join("+")}`,
+                    ],
+                  })
+                );
+
+                const packetLossDisplay = link.appendChild(
+                  createElement("span", {
+                    classes: [
+                      "packet-loss-display",
+                      `from-${from.join("+")}`,
+                      `to-${to.join("+")}`,
+                    ],
+                    text: `${(100 * defaultPacketLoss).toLocaleString()} %`,
+                  })
+                );
+                packetLossDisplay.style.minWidth = "70px";
+                packetLossDisplay.style.textAlign = "right";
+
+                packetLoss.addEventListener("change", () => {
+                  packetLossDisplay.textContent = `${(
+                    100 * packetLoss.valueAsNumber
+                  ).toLocaleString()} %`;
+
+                  fetch(`/${clusterId}`, {
+                    method: "PATCH",
+                    body: JSON.stringify(
+                      from.flatMap((f) =>
+                        to.map((t) => ({
+                          link: {
+                            from: f,
+                            to: t,
+                            packetLoss: packetLoss.valueAsNumber,
+                          },
+                        }))
+                      )
+                    ),
+                  });
+                });
+
+                const slash = link.appendChild(
+                  createElement("span", { text: "/" })
+                );
+                slash.style.margin = "0 20px 0 35px";
+
+                link.appendChild(createElement("label", { text: "μ" }));
+
+                const delayMean = link.appendChild(
+                  createElement("input", {
+                    props: {
+                      type: "range",
+                      min: 0,
+                      max: 1000,
+                      step: 5,
+                      value: `${defaultE2eDelayMean}`,
+                    },
+                    classes: [
+                      "e2e-delay-mean",
+                      `from-${from.join("+")}`,
+                      `to-${to.join("+")}`,
+                    ],
+                  })
+                );
+
+                const delayMeanDisplay = link.appendChild(
+                  createElement("span", {
+                    classes: [
+                      "e2e-delay-mean-display",
+                      `from-${from.join("+")}`,
+                      `to-${to.join("+")}`,
+                    ],
+                    text: `${defaultE2eDelayMean.toLocaleString()} ms`,
+                  })
+                );
+                delayMeanDisplay.style.minWidth = "70px";
+                delayMeanDisplay.style.textAlign = "right";
+
+                delayMean.addEventListener("change", () => {
+                  delayMeanDisplay.textContent = `${delayMean.valueAsNumber.toLocaleString()} ms`;
+                  updateE2eDelay();
+                });
+
+                link.appendChild(createElement("label", { text: "σ" }));
+
+                const delayStdDev = link.appendChild(
+                  createElement("input", {
+                    props: {
+                      type: "range",
+                      min: 0,
+                      max: 200,
+                      step: 5,
+                      value: `${defaultE2eDelayStdDev}`,
+                    },
+                    classes: [
+                      "e2e-delay-std-dev",
+                      `from-${from.join("+")}`,
+                      `to-${to.join("+")}`,
+                    ],
+                  })
+                );
+
+                const delayStdDevDisplay = link.appendChild(
+                  createElement("span", {
+                    classes: [
+                      "e2e-delay-std-dev-display",
+                      `from-${from.join("+")}`,
+                      `to-${to.join("+")}`,
+                    ],
+                    text: `${defaultE2eDelayStdDev.toLocaleString()} ms`,
+                  })
+                );
+                delayStdDevDisplay.style.minWidth = "70px";
+                delayStdDevDisplay.style.textAlign = "right";
+
+                delayStdDev.addEventListener("change", () => {
+                  delayStdDevDisplay.textContent = `${delayStdDev.valueAsNumber.toLocaleString()} ms`;
+                  updateE2eDelay();
+                });
+
+                function updateE2eDelay() {
+                  fetch(`/${clusterId}`, {
+                    method: "PATCH",
+                    body: JSON.stringify(
+                      from.flatMap((f) =>
+                        to.map((t) => ({
+                          link: {
+                            from: f,
+                            to: t,
+                            e2eDelayMean: delayMean.valueAsNumber,
+                            e2eDelayStdDev: delayStdDev.valueAsNumber,
+                          },
+                        }))
+                      )
+                    ),
+                  });
+                }
+              }
+            });
+
+            const timelineNode = timeline.appendChild(
+              createElement("div", {
+                data: {
+                  id: node.id,
+                  name: node.name,
+                },
+                classes: ["timeline__node"],
+              })
+            );
+
+            const nodeLayer = layers.appendChild(
+              createElement("div", {
+                classes: ["visualization__node-layer"],
+                cssProps: { rot: `${i * a}rad` },
+              })
+            );
+
+            const linkLayer = layers.insertBefore(
+              createElement("div", {
+                classes: ["visualization__link-layer"],
+                cssProps: { rot: `${i * a}rad` },
+              }),
+              layers.firstChild
+            );
+
+            const nodeEl = nodeLayer.appendChild(
+              createElement("div", {
+                data: {
+                  id: node.id,
+                  name: node.name,
+                },
+                classes: ["visualization__node", "node"],
+                cssProps: {
+                  brot: `${-(i * a)}rad`,
+                },
+              })
+            );
+
+            nodeEl.addEventListener("click", () => {
+              document
+                .querySelectorAll(".control")
+                .forEach((c) => (c.style.display = "none"));
+
+              document.querySelector(
+                `.control--node-${node.id}`
+              ).style.display = null;
+            });
+
+            packetCounters[node.id] = {};
+            progress[node.id] = 0;
+            nodes.forEach((otherNode, j) => {
+              if (otherNode === node) {
+                return;
+              }
+
+              packetCounters[node.id][otherNode.id] = 0;
+              const da = ((nodeCount + j - i) % nodeCount) * a;
+              const h = 100 * Math.sin(da / 2);
+
+              const link = linkLayer.appendChild(
+                createElement("div", {
+                  data: {
+                    from: node.id,
+                    to: otherNode.id,
+                  },
+                  classes: [
+                    "visualization__link",
+                    "link",
+                    `from-${node.id}`,
+                    `to-${otherNode.id}`,
+                  ],
+                  cssProps: {
+                    h: `${h}%`,
+                    rot: `${(da - Math.PI) / 2}rad`,
+                    usage: 1 / (nodeCount - 1),
+                  },
+                })
+              );
+            });
+          });
+
+          events.close();
+          events = new EventSource(`${clusterId}/events`);
+          events.onopen = function () {
+            fetch(`/${clusterId}/start`, {
+              method: "POST",
+            });
+          };
+          events.onmessage = function (event) {
+            const data = JSON.parse(event.data);
+
+            if ("node" in data) {
+              if ("round" in data) {
+                if (data.event === "apply") {
+                  progress[data.node] = data.round;
+                  progress.minRound = Array.from({ length: nodeCount })
+                    .map((_, i) => progress[i])
+                    .reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY);
+                  progress.maxRound = Math.max(progress.maxRound, data.round);
+
+                  updateRounds();
+                }
+
+                if (actions[data.action] && !actions[data.action][data.round]) {
+                  const action = createElement("div", {
+                    classes: [
+                      "timeline__action",
+                      `timeline__action--${data.action}`,
+                    ],
+                    cssProps: {
+                      round: data.round,
+                    },
+                  });
+                  rounds.appendChild(action);
+
+                  actions[data.action][data.round] = action;
+                }
+              } else if ("action" in data) {
+                const node = layers.querySelector(
+                  `.visualization__node[data-id="${data.node}"]`
+                );
+
+                const action = createElement("div", {
+                  classes: ["node__action", `node__action--${data.action}`],
+                });
+
+                requestAnimationFrame(() => {
+                  node.appendChild(action);
+
+                  setTimeout(() => action.remove(), 1500);
+                });
+              }
+
+              if ("leader" in data) {
+                const node = layers.querySelector(
+                  `.visualization__node[data-id="${data.node}"]`
+                );
+
+                if (typeof data.leader === "string") {
+                  node.dataset.leader = nodes.find(
+                    (n) => n.id === data.leader
+                  ).name;
+                } else {
+                  delete node.dataset.leader;
+                }
+              }
+            }
+
+            if (
+              "from" in data &&
+              "to" in data &&
+              "dropped" in data &&
+              data.from !== data.to
+            ) {
+              ++packetCounters[data.from][data.to];
+              ++packetCounters.sum;
+
+              animatePacket(data);
+            }
+
+            if ("from" in data && "to" in data && "packetLoss" in data) {
+              document
+                .querySelectorAll(
+                  `.packet-loss.from-${data.from}.to-${data.to}`
+                )
+                .forEach((i) => (i.value = data.packetLoss));
+
+              document
+                .querySelectorAll(
+                  `.packet-loss-display.from-${data.from}.to-${data.to}`
+                )
+                .forEach(
+                  (d) =>
+                    (d.textContent = `${(
+                      100 * data.packetLoss
+                    ).toLocaleString()} %`)
+                );
+            }
+
+            if ("from" in data && "to" in data && "e2eDelayMean" in data) {
+              document
+                .querySelectorAll(
+                  `.e2e-delay-mean.from-${data.from}.to-${data.to}`
+                )
+                .forEach((i) => (i.value = data.e2eDelayMean));
+
+              document
+                .querySelectorAll(
+                  `.e2e-delay-mean-display.from-${data.from}.to-${data.to}`
+                )
+                .forEach(
+                  (d) =>
+                    (d.textContent = `${data.e2eDelayMean.toLocaleString()} ms`)
+                );
+            }
+
+            if ("from" in data && "to" in data && "e2eDelayStdDev" in data) {
+              document
+                .querySelectorAll(
+                  `.e2e-delay-std-dev.from-${data.from}.to-${data.to}`
+                )
+                .forEach((i) => (i.value = data.e2eDelayStdDev));
+
+              document
+                .querySelectorAll(
+                  `.e2e-delay-std-dev-display.from-${data.from}.to-${data.to}`
+                )
+                .forEach(
+                  (d) =>
+                    (d.textContent = `${data.e2eDelayStdDev.toLocaleString()} ms`)
+                );
+            }
+
+            if ("append" in data) {
+              const action = document.querySelector(
+                `#id-${data.append} .append__action--pending`
+              );
+              action.classList.remove("append__action--pending");
+              action.classList.add(`append__action--${data.outcome}`);
+            }
+
+            if ("id" in data && "takenBy" in data) {
+              document.querySelectorAll(".snapshots").forEach((snapshots) => {
+                const snapshot = snapshots.appendChild(
+                  createElement("li", {
+                    text: `Round ${data.round}`,
+                  })
+                );
+
+                const recover = snapshot.appendChild(
+                  createElement("button", {
+                    text: "Recover",
+                  })
+                );
+                recover.addEventListener("click", () => {
+                  fetch(
+                    `/${clusterId}/node/${snapshots.dataset.node}/recover`,
+                    {
+                      method: "POST",
+                      body: JSON.stringify({
+                        snapshot: data.id,
+                      }),
+                    }
+                  ).then(() => {
+                    const node = layers.querySelector(
+                      `.visualization__node[data-id="${snapshots.dataset.node}"]`
+                    );
+
+                    node.classList.remove("visualization__node--terminated");
+                  });
+                });
+
+                const resume = snapshot.appendChild(
+                  createElement("button", {
+                    props: {
+                      disabled: data.resumableBy !== snapshots.dataset.node,
+                    },
+                    text: "Resume",
+                  })
+                );
+                resume.addEventListener("click", () => {
+                  resume.disabled = true;
+
+                  fetch(`/${clusterId}/node/${snapshots.dataset.node}/resume`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      snapshot: data.id,
+                    }),
+                  }).then(() => {
+                    const node = layers.querySelector(
+                      `.visualization__node[data-id="${snapshots.dataset.node}"]`
+                    );
+
+                    node.classList.remove("visualization__node--terminated");
+                  });
+                });
+              });
+            }
+
+            if ("node" in data && "event" in data && !("action" in data)) {
+              console.log(data);
+
+              const node = layers.querySelector(
+                `.visualization__node[data-id="${data.node}"]`
+              );
+
+              node.classList.toggle(
+                "visualization__node--active",
+                data.event === "activate"
+              );
+              node.classList.toggle(
+                "visualization__node--terminated",
+                data.event !== "activate"
+              );
+            }
+          };
+
+          events.onerror = function (event) {
+            console.error(event);
+          };
+
+          window.onresize = updateRounds;
+
+          let animationReq = requestAnimationFrame(animate);
+          let doUpdateRounds = true;
+          let inFlightPackets = 0;
+          const newPackets = [];
+          const appendedPackets = [];
+
+          function animatePacket(packet) {
+            newPackets.push(packet);
+
+            animationReq = animationReq || requestAnimationFrame(animate);
+          }
+
+          function updateRounds() {
+            doUpdateRounds = true;
+
+            animationReq = animationReq || requestAnimationFrame(animate);
+          }
+
+          function animate() {
+            animationReq = null;
+
+            while (appendedPackets.length) {
+              const { packet, dropped } = appendedPackets.pop();
+
+              packet.classList.add("visualization__packet--in-transmission");
+              packet.classList.toggle(
+                "visualization__packet--dropping",
+                dropped
+              );
+            }
+
+            if (newPackets.length) {
+              for (l of layers.querySelectorAll(".link")) {
+                const relativeUsage =
+                  packetCounters[l.dataset.from][l.dataset.to] /
+                  packetCounters.sum;
+                const normalizedUsage = Math.min(
+                  1,
+                  relativeUsage * (nodeCount - 1)
+                );
+                l.style.setProperty("--usage", normalizedUsage);
+              }
+
+              animationReq = animationReq || requestAnimationFrame(animate);
+            }
+
+            while (newPackets.length) {
+              const { from, to, response, e2eDelay, dropped } =
+                newPackets.pop();
+
+              if (inFlightPackets < 500) {
+                const link = layers.querySelector(
+                  `.link.from-${from}.to-${to}`
+                );
+
+                const packet = createElement("div", {
+                  classes: [
+                    "visualization__packet",
+                    `visualization__packet--${response}`,
+                  ],
+                });
+                packet.style.transitionDuration = `${e2eDelay}ms`;
+
+                link.appendChild(packet);
+                inFlightPackets += 1;
+
+                setTimeout(() => {
+                  packet.remove();
+                  inFlightPackets -= 1;
+                }, e2eDelay);
+
+                appendedPackets.push({ packet, dropped });
+              }
+            }
+
+            if (doUpdateRounds) {
+              doUpdateRounds = false;
+
+              const roundCount =
+                progress.maxRound - progress.minRound + concurrency;
+              const requiredSpace = roundCount * roundWidth;
+
+              if (requiredSpace > visualization.offsetWidth) {
+                timeline.style.setProperty(
+                  "--scale",
+                  visualization.offsetWidth / requiredSpace
+                );
+                timeline.style.setProperty("--translateX", 0);
+              } else {
+                const minRoundLeft =
+                  ((visualization.offsetWidth - requiredSpace) / 2) | 0;
+                timeline.style.setProperty("--scale", 1);
+                timeline.style.setProperty(
+                  "--translateX",
+                  `${minRoundLeft - progress.minRound * roundWidth}px`
+                );
+              }
+
+              for (n of visualization.querySelectorAll(".timeline__node")) {
+                const id = n.dataset.id;
+                n.style.setProperty("--round", progress[id]);
+
+                // TODO use text bounding rects
+                const below = Array.from({ length: nodeCount })
+                  .map((_, i) => i)
+                  .filter(
+                    (i) => i > id && Math.abs(progress[id] - progress[i]) <= 0
+                  ).length;
+
+                const height = below + 2;
+                n.style.setProperty("--height", `${height}.5em`);
+              }
+
+              currentRound.style.setProperty("--round", progress.maxRound);
+              concurrencyWindow.style.setProperty(
+                "--left",
+                `${(progress.maxRound + 1) * roundWidth}.5px`
+              );
+            }
+          }
+        });
+    }
+
+    function createElement(tagName, opts = {}) {
+      const element = document.createElement(tagName);
+
+      Object.keys(opts.props || {}).forEach((p) => {
+        element[p] = opts.props[p];
+      });
+
+      Object.keys(opts.data || {}).forEach((d) => {
+        element.dataset[d] = opts.data[d];
+      });
+
+      (opts.classes || []).forEach((c) => element.classList.add(c));
+
+      Object.keys(opts.cssProps || {}).forEach((p) => {
+        element.style.setProperty(`--${p}`, opts.cssProps[p]);
+      });
+
+      if ("text" in opts) {
+        element.textContent = opts.text;
+      }
+
+      return element;
+    }
+  </script>
+</html>
