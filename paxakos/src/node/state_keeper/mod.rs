@@ -152,6 +152,7 @@ where
     pending_commits: BTreeMap<RoundNumOf<C>, PendingCommit<C>>,
     awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S, RoundNumOf<C>>>>,
 
+    // TODO persist in snapshots
     participation: Participation<RoundNumOf<C>, CoordNumOf<C>>,
     /// last status that was observable from the outside
     status: NodeStatus,

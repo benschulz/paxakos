@@ -95,6 +95,7 @@ where
     }
 }
 
+// TODO enable something like on_converged().modulate_rate(0.5, 1.8)
 impl<N, P> SendHeartbeatsBuilder<N, P>
 where
     N: Node,
