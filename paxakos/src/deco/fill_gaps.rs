@@ -9,7 +9,7 @@ use crate::append::{AppendArgs, AppendError, DoNotRetry, Importance, Peeryness};
 use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilderWithAll;
-use crate::node::{CommitFor, CommunicatorOf, CoordNumOf, LogEntryOf, NodeIdOf};
+use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, LogEntryOf, NodeIdOf};
 use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
 use crate::{Node, NodeBuilder, RoundNum};
 
@@ -441,10 +441,7 @@ where
         &self,
         applicable: A,
         args: AppendArgs<Self::Communicator>,
-    ) -> futures::future::LocalBoxFuture<
-        'static,
-        Result<CommitFor<Self, A>, AppendError<Self::Communicator>>,
-    > {
+    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
         self.decorated.append(applicable, args)
     }
 

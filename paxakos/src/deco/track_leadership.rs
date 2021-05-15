@@ -5,17 +5,20 @@ use std::task::Poll;
 use futures::future::LocalBoxFuture;
 use num_traits::{Bounded, One};
 
-use crate::append::{AppendArgs, AppendError};
+use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
 use crate::communicator::Communicator;
 use crate::error::Disoriented;
 use crate::node::builder::{NodeBuilder, NodeBuilderWithAll};
-use crate::node::{CommitFor, CommunicatorOf, CoordNumOf, Node, NodeIdOf, NodeInfo, NodeKernel};
-use crate::node::{NodeStatus, Participation, RoundNumOf, Snapshot, SnapshotFor, StateOf};
+use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, Node, NodeIdOf};
+use crate::node::{NodeInfo, NodeKernel, NodeStatus, Participation, RoundNumOf};
+use crate::node::{Snapshot, SnapshotFor, StateOf};
 use crate::state::State;
 use crate::RoundNum;
 
 use super::Decoration;
+
+pub type LeadershipFor<N> = Leadership<NodeIdOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 
 pub trait LeadershipAwareNode<I>: Node {
     /// Leadership as assumed by this node.
@@ -27,13 +30,11 @@ pub trait LeadershipAwareNode<I>: Node {
     /// achieved a quorum with an even higher number.
     // TODO consider renaming to "lax_leadership" and introducing a strict version
     //      which disregards prepare messages
-    fn leadership(&self) -> &[Leadership<NodeIdOf<Self>, RoundNumOf<Self>, CoordNumOf<Self>>];
+    fn leadership(&self) -> &[LeadershipFor<Self>];
 }
 
 pub trait MaybeLeadershipAwareNode<I>: Node {
-    fn leadership(
-        &self,
-    ) -> Option<&[Leadership<NodeIdOf<Self>, RoundNumOf<Self>, CoordNumOf<Self>>]>;
+    fn leadership(&self) -> Option<&[LeadershipFor<Self>]>;
 }
 
 pub trait TrackLeadershipBuilderExt: NodeBuilder {
@@ -55,7 +56,7 @@ pub struct TrackLeadership<N: Node> {
     decorated: N,
     suspended: bool,
     mandates: BTreeMap<RoundNumOf<N>, Mandate<N>>,
-    leadership: Vec<Leadership<NodeIdOf<N>, RoundNumOf<N>, CoordNumOf<N>>>,
+    leadership: Vec<LeadershipFor<N>>,
 }
 
 struct Mandate<N: Node> {
@@ -286,10 +287,7 @@ where
         &self,
         applicable: A,
         args: AppendArgs<Self::Communicator>,
-    ) -> futures::future::LocalBoxFuture<
-        'static,
-        Result<CommitFor<Self, A>, AppendError<Self::Communicator>>,
-    > {
+    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
         self.decorated.append(applicable, args)
     }
 
@@ -307,13 +305,13 @@ where
         >,
     <D as Decoration>::Decorated: LeadershipAwareNode<I>,
 {
-    fn leadership(&self) -> &[Leadership<NodeIdOf<D>, RoundNumOf<D>, CoordNumOf<D>>] {
+    fn leadership(&self) -> &[LeadershipFor<D>] {
         Decoration::peek_into(self).leadership()
     }
 }
 
 impl<N: Node> LeadershipAwareNode<()> for TrackLeadership<N> {
-    fn leadership(&self) -> &[Leadership<NodeIdOf<N>, RoundNumOf<N>, CoordNumOf<N>>] {
+    fn leadership(&self) -> &[LeadershipFor<N>] {
         &self.leadership
     }
 }
@@ -327,7 +325,7 @@ where
         > + 'static,
     <D as Decoration>::Decorated: MaybeLeadershipAwareNode<I>,
 {
-    fn leadership(&self) -> Option<&[Leadership<NodeIdOf<D>, RoundNumOf<D>, CoordNumOf<D>>]> {
+    fn leadership(&self) -> Option<&[LeadershipFor<D>]> {
         if std::any::Any::type_id(self)
             == std::any::TypeId::of::<TrackLeadership<<D as Decoration>::Decorated>>()
         {
@@ -347,15 +345,7 @@ where
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     C: Communicator,
 {
-    fn leadership(
-        &self,
-    ) -> Option<
-        &[Leadership<
-            crate::state::NodeIdOf<S>,
-            crate::communicator::RoundNumOf<C>,
-            crate::communicator::CoordNumOf<C>,
-        >],
-    > {
+    fn leadership(&self) -> Option<&[LeadershipFor<Self>]> {
         None
     }
 }

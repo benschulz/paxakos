@@ -22,7 +22,7 @@ use crate::log::LogKeeping;
 use crate::state::{self, ContextOf};
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
-use crate::{CoordNum, Event, RoundNum, State};
+use crate::{Event, State};
 
 pub use builder::NodeBuilder;
 pub use commits::Commit;
@@ -41,12 +41,13 @@ pub type RoundNumOf<N> = communicator::RoundNumOf<CommunicatorOf<N>>;
 pub type CoordNumOf<N> = communicator::CoordNumOf<CommunicatorOf<N>>;
 
 pub type JustificationOf<N> = communicator::JustificationOf<CommunicatorOf<N>>;
-pub type LogEntryOf<N> = crate::state::LogEntryOf<StateOf<N>>;
-pub type LogEntryIdOf<N> = crate::state::LogEntryIdOf<StateOf<N>>;
-pub type NodeOf<N> = crate::state::NodeOf<StateOf<N>>;
-pub type NodeIdOf<N> = crate::state::NodeIdOf<StateOf<N>>;
-pub type EventOf<N> = EventFor<StateOf<N>>;
+pub type LogEntryOf<N> = state::LogEntryOf<StateOf<N>>;
+pub type LogEntryIdOf<N> = state::LogEntryIdOf<StateOf<N>>;
+pub type NodeOf<N> = state::NodeOf<StateOf<N>>;
+pub type NodeIdOf<N> = state::NodeIdOf<StateOf<N>>;
+pub type EventOf<N> = state::EventOf<StateOf<N>>;
 
+pub type AppendResultFor<N, A> = Result<CommitFor<N, A>, AppendError<CommunicatorOf<N>>>;
 pub type CommitFor<N, A> = Commit<StateOf<N>, RoundNumOf<N>, ProjectionOf<A, StateOf<N>>>;
 pub type EventFor<N> = Event<StateOf<N>, CommunicatorOf<N>>;
 pub type HandleFor<N> = NodeHandle<StateOf<N>, CommunicatorOf<N>>;
@@ -102,7 +103,7 @@ pub trait Node: Sized {
         &self,
         applicable: A,
         args: AppendArgs<Self::Communicator>,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError<Self::Communicator>>>;
+    ) -> LocalBoxFuture<'static, AppendResultFor<Self, A>>;
 
     fn shut_down(self) -> Self::Shutdown;
 }
@@ -138,16 +139,16 @@ pub trait Admin {
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 
-pub struct SpawnArgs<S: State, V, R: RoundNum, C: CoordNum> {
+pub struct SpawnArgs<S: State, C: Communicator, V> {
     pub context: ContextOf<S>,
     pub working_dir: Option<std::path::PathBuf>,
     pub node_id: state::NodeIdOf<S>,
     pub voter: V,
-    pub snapshot: Option<Snapshot<S, R, C>>,
-    pub participation: Participation<R>,
+    pub snapshot: Option<Snapshot<S, communicator::RoundNumOf<C>, communicator::CoordNumOf<C>>>,
+    pub participation: Participation<communicator::RoundNumOf<C>>,
     pub log_keeping: LogKeeping,
     #[cfg(feature = "tracer")]
-    pub tracer: Option<Box<dyn Tracer<R, C, crate::state::LogEntryIdOf<S>>>>,
+    pub tracer: Option<Box<dyn Tracer<C>>>,
 }
 
 /// Reflects a [`Node`]'s possible modes of participation.

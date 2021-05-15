@@ -488,9 +488,9 @@ pub struct Condition<C: Communicator> {
     pub log_entry: Arc<LogEntryOf<C>>,
 }
 
-impl<C: Communicator> Into<(RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)> for Condition<C> {
-    fn into(self) -> (RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>) {
-        (self.round_num, self.coord_num, self.log_entry)
+impl<C: Communicator> From<Condition<C>> for (RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>) {
+    fn from(val: Condition<C>) -> Self {
+        (val.round_num, val.coord_num, val.log_entry)
     }
 }
 
@@ -524,9 +524,9 @@ impl<C: Communicator> From<Vec<Condition<C>>> for Promise<C> {
     }
 }
 
-impl<C: Communicator> Into<Vec<Condition<C>>> for Promise<C> {
-    fn into(self) -> Vec<Condition<C>> {
-        self.0
+impl<C: Communicator> From<Promise<C>> for Vec<Condition<C>> {
+    fn from(val: Promise<C>) -> Self {
+        val.0
     }
 }
 

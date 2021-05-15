@@ -5,24 +5,23 @@ use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use streamunordered::StreamUnordered;
 
+use paxakos::communicator::{Communicator, CoordNumOf, LogEntryIdOf, RoundNumOf};
 use paxakos::{CoordNum, Identifier, RoundNum};
 
-pub struct StabilityChecker<N, R, C, L>
+type EventFor<C> = Event<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>>;
+
+pub struct StabilityChecker<N, C>
 where
     N: Identifier,
-    R: RoundNum,
-    C: CoordNum,
-    L: Identifier,
+    C: Communicator,
 {
-    receivers: HashMap<N, mpsc::UnboundedReceiver<Event<R, C, L>>>,
+    receivers: HashMap<N, mpsc::UnboundedReceiver<EventFor<C>>>,
 }
 
-impl<N, R, C, L> StabilityChecker<N, R, C, L>
+impl<N, C> StabilityChecker<N, C>
 where
     N: Identifier + Ord,
-    R: RoundNum,
-    C: CoordNum,
-    L: Identifier,
+    C: Communicator,
 {
     pub fn new() -> Self {
         Self {
@@ -30,7 +29,7 @@ where
         }
     }
 
-    pub fn tracer(&mut self, node: N) -> Box<dyn paxakos::tracer::Tracer<R, C, L>> {
+    pub fn tracer(&mut self, node: N) -> Box<dyn paxakos::tracer::Tracer<C>> {
         let (send, recv) = mpsc::unbounded();
 
         assert!(self.receivers.insert(node, recv).is_none());
@@ -46,7 +45,8 @@ where
             nodes.sort();
 
             let mut received_events = Vec::new();
-            let mut received_events_indexed: BTreeMap<R, BTreeMap<N, Vec<_>>> = BTreeMap::new();
+            let mut received_events_indexed: BTreeMap<RoundNumOf<C>, BTreeMap<N, Vec<_>>> =
+                BTreeMap::new();
 
             let event_stream = receivers
                 .into_iter()
@@ -184,34 +184,40 @@ where
 }
 
 #[derive(Debug)]
-struct Tracer<R, C, I>
+struct Tracer<C>
 where
-    R: RoundNum,
-    C: CoordNum,
-    I: Identifier,
+    C: Communicator,
 {
-    sender: mpsc::UnboundedSender<Event<R, C, I>>,
+    sender: mpsc::UnboundedSender<Event<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>>>,
 }
 
-impl<R, C, I> paxakos::tracer::Tracer<R, C, I> for Tracer<R, C, I>
+impl<C> paxakos::tracer::Tracer<C> for Tracer<C>
 where
-    R: RoundNum,
-    C: CoordNum,
-    I: Identifier,
+    C: Communicator,
 {
-    fn record_promise(&mut self, round_num: R, coord_num: C, promise: Vec<(R, C, I)>) {
+    fn record_promise(
+        &mut self,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
+        promise: Vec<(RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>)>,
+    ) {
         let _ = self
             .sender
             .unbounded_send(Event::Promise(round_num, coord_num, promise));
     }
 
-    fn record_accept(&mut self, round_num: R, coord_num: C, log_entry_id: I) {
+    fn record_accept(
+        &mut self,
+        round_num: RoundNumOf<C>,
+        coord_num: CoordNumOf<C>,
+        log_entry_id: LogEntryIdOf<C>,
+    ) {
         let _ = self
             .sender
             .unbounded_send(Event::Accept(round_num, coord_num, log_entry_id));
     }
 
-    fn record_commit(&mut self, round_num: R, log_entry_id: I) {
+    fn record_commit(&mut self, round_num: RoundNumOf<C>, log_entry_id: LogEntryIdOf<C>) {
         let _ = self
             .sender
             .unbounded_send(Event::Commit(round_num, log_entry_id));

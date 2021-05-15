@@ -149,6 +149,7 @@ impl<C> DoNotRetry<C>
 where
     C: Communicator,
 {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self(crate::util::PhantomSend::new())
     }

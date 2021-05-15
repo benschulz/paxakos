@@ -19,13 +19,13 @@ use num_traits::{Bounded, One, Zero};
 use pin_project::pin_project;
 use tracing::{debug, info};
 
-use crate::communicator::{Communicator, CoordNumOf, JustificationOf, RoundNumOf};
+use crate::communicator::{Communicator, CoordNumOf, JustificationOf, LogEntryOf, RoundNumOf};
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError, SpawnError};
 use crate::event::{Event, ShutdownEvent};
 use crate::log::LogEntry;
 use crate::node::NodeInfo;
-use crate::state::{ContextOf, LogEntryIdOf, LogEntryOf, NodeIdOf, NodeOf, OutcomeOf, State};
+use crate::state::{ContextOf, LogEntryIdOf, NodeIdOf, NodeOf, OutcomeOf, State};
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::voting::{self, Voter};
@@ -69,7 +69,11 @@ impl<R, C> From<super::Participation<R>> for Participation<R, C> {
     }
 }
 
-#[derive(Debug)]
+type SpawnResult<C> = Result<(NodeStatus, super::Participation<RoundNumOf<C>>), SpawnError>;
+type RoundNumRequest<S, C> = (RangeInclusive<RoundNumOf<C>>, ResponseSender<S, C>);
+type AcceptedEntry<C> = (CoordNumOf<C>, Arc<LogEntryOf<C>>);
+type PendingCommit<C> = (std::time::Instant, CoordNumOf<C>, Arc<LogEntryOf<C>>);
+
 pub struct StateKeeper<S, C, V>
 where
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
@@ -134,7 +138,7 @@ where
     ///
     /// [concurrency]: crate::state::State::concurrency
     promises: BTreeMap<RoundNumOf<C>, CoordNumOf<C>>,
-    accepted_entries: BTreeMap<RoundNumOf<C>, (CoordNumOf<C>, Arc<LogEntryOf<S>>)>,
+    accepted_entries: BTreeMap<RoundNumOf<C>, AcceptedEntry<C>>,
     leadership: (RoundNumOf<C>, CoordNumOf<C>),
 
     /// Round number of the last applied log entry, initially `Zero::zero()`.
@@ -142,11 +146,10 @@ where
     /// Current state or `None` iff the node is `Disoriented`.
     state: Option<Arc<S>>,
 
-    round_num_requests: VecDeque<(RangeInclusive<RoundNumOf<C>>, ResponseSender<S, C>)>,
+    round_num_requests: VecDeque<RoundNumRequest<S, C>>,
     acquired_round_nums: HashSet<RoundNumOf<C>>,
 
-    pending_commits:
-        BTreeMap<RoundNumOf<C>, (std::time::Instant, CoordNumOf<C>, Arc<LogEntryOf<S>>)>,
+    pending_commits: BTreeMap<RoundNumOf<C>, PendingCommit<C>>,
     awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S, RoundNumOf<C>>>>,
 
     participation: Participation<RoundNumOf<C>, CoordNumOf<C>>,
@@ -157,10 +160,10 @@ where
     event_emitter: mpsc::Sender<ShutdownEvent<S, C>>,
     warn_counter: u16,
 
-    applied_entry_buffer: VecDeque<(CoordNumOf<C>, Arc<LogEntryOf<S>>)>,
+    applied_entry_buffer: VecDeque<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>,
 
     #[cfg(feature = "tracer")]
-    tracer: Option<Box<dyn Tracer<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<S>>>>,
+    tracer: Option<Box<dyn Tracer<C>>>,
 }
 
 impl<S, C, V> StateKeeper<S, C, V>
@@ -175,7 +178,7 @@ where
     >,
 {
     pub async fn spawn(
-        args: SpawnArgs<S, V, RoundNumOf<C>, CoordNumOf<C>>,
+        args: SpawnArgs<S, C, V>,
     ) -> Result<
         (
             NodeStatus,
@@ -210,10 +213,8 @@ where
     }
 
     fn start_and_run_new(
-        spawn_args: SpawnArgs<S, V, RoundNumOf<C>, CoordNumOf<C>>,
-        start_result_sender: oneshot::Sender<
-            Result<(NodeStatus, super::Participation<RoundNumOf<C>>), SpawnError>,
-        >,
+        spawn_args: SpawnArgs<S, C, V>,
+        start_result_sender: oneshot::Sender<SpawnResult<C>>,
         receiver: mpsc::Receiver<RequestAndResponseSender<S, C>>,
         event_emitter: mpsc::Sender<ShutdownEvent<S, C>>,
     ) {
@@ -1022,7 +1023,7 @@ where
     fn try_get_applied_entry(
         &mut self,
         round_num: RoundNumOf<C>,
-    ) -> Option<(CoordNumOf<C>, Arc<LogEntryOf<S>>)> {
+    ) -> Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)> {
         if let Some(offset) = crate::util::try_usize_delta(self.state_round, round_num) {
             if let Some((c, e)) = self.applied_entry_buffer.get(offset) {
                 return Some((*c, Arc::clone(e)));
@@ -1040,7 +1041,7 @@ where
         &mut self,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
-        entry: Arc<LogEntryOf<S>>,
+        entry: Arc<LogEntryOf<C>>,
     ) -> Result<(), AcceptError<C>> {
         if round_num <= self.state_round {
             Err(AcceptError::Converged(
@@ -1075,7 +1076,7 @@ where
     fn accept_entries(
         &mut self,
         coord_num: CoordNumOf<C>,
-        entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
+        entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<C>>)>,
         leader: Option<NodeOf<S>>,
     ) -> Result<usize, AcceptError<C>> {
         let first_round = entries[0].0;
@@ -1149,7 +1150,7 @@ where
         &mut self,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
-        entry: Arc<LogEntryOf<S>>,
+        entry: Arc<LogEntryOf<C>>,
     ) -> Result<(), CommitError<S>> {
         #[cfg(feature = "tracer")]
         {

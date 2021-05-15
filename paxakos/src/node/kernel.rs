@@ -14,12 +14,12 @@ use crate::event::{Event, ShutdownEvent};
 use crate::state::{LogEntryOf, NodeIdOf, State};
 use crate::voting::Voter;
 
-use super::commits::Commits;
 use super::handle::{NodeHandleRequest, NodeHandleResponse};
 use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
 use super::snapshot::{Snapshot, SnapshotFor};
 use super::state_keeper::{EventStream, ProofOfLife, StateKeeper, StateKeeperHandle};
+use super::{commits::Commits, AppendResultFor};
 use super::{CommitFor, EventFor, Node, NodeHandle, NodeStatus, Participation, RequestHandler};
 
 /// The default [`Node`][crate::Node] implementation.
@@ -171,7 +171,7 @@ where
     pub(crate) async fn spawn<V>(
         id: NodeIdOf<S>,
         communicator: C,
-        args: super::SpawnArgs<S, V, RoundNumOf<C>, CoordNumOf<C>>,
+        args: super::SpawnArgs<S, C, V>,
     ) -> Result<(RequestHandler<S, C>, NodeKernel<S, C>), crate::error::SpawnError>
     where
         V: Voter<
@@ -239,8 +239,7 @@ where
     S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
     C: Communicator,
 {
-    append:
-        LocalBoxFuture<'static, Result<CommitFor<NodeKernel<S, C>, LogEntryOf<S>>, AppendError<C>>>,
+    append: LocalBoxFuture<'static, AppendResultFor<NodeKernel<S, C>, LogEntryOf<S>>>,
     send: Option<oneshot::Sender<NodeHandleResponse<S, C>>>,
 }
 

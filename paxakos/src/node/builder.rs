@@ -7,11 +7,9 @@ use crate::deco::Decoration;
 use crate::error::SpawnError;
 use crate::log::LogKeeping;
 use crate::node::{self, JustificationOf, Participation, RequestHandlerFor};
-#[cfg(feature = "tracer")]
-use crate::state::LogEntryIdOf;
 use crate::state::{ContextOf, NodeIdOf};
 #[cfg(feature = "tracer")]
-use crate::tracer::{Tracer, TracerFor};
+use crate::tracer::Tracer;
 use crate::voting::{IndiscriminateVoter, IndiscriminateVoterFor, Voter};
 use crate::{Identifier, Node, State};
 
@@ -272,7 +270,7 @@ pub struct NodeBuilderWithAll<N: Node, V = IndiscriminateVoterFor<N>> {
     finisher: Box<Finisher<N>>,
 
     #[cfg(feature = "tracer")]
-    tracer: Option<Box<TracerFor<CommunicatorOf<N>>>>,
+    tracer: Option<Box<dyn Tracer<CommunicatorOf<N>>>>,
 }
 
 impl<S, C, V> NodeBuilderWithAll<NodeKernel<S, C>, V>
@@ -295,10 +293,7 @@ where
     }
 
     #[cfg(feature = "tracer")]
-    pub fn traced_by(
-        mut self,
-        tracer: impl Into<Box<dyn Tracer<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<S>>>>,
-    ) -> Self {
+    pub fn traced_by(mut self, tracer: impl Into<Box<dyn Tracer<C>>>) -> Self {
         self.tracer = Some(tracer.into());
 
         self

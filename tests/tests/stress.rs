@@ -14,13 +14,15 @@ use uuid::Uuid;
 use paxakos::append::AppendArgs;
 use paxakos::deco::{EnsureLeadershipBuilderExt, FillGapsBuilderExt};
 use paxakos::deco::{SendHeartbeatsBuilderExt, TrackLeadershipBuilderExt};
-use paxakos::prototyping::{DirectCommunicators, PrototypingNode, RetryIndefinitely};
+use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
+use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
 use paxakos::{Node, NodeBuilder, NodeInfo, Shutdown};
 
 use calc_app::{CalcOp, CalcState};
 use tracer::StabilityChecker;
 
 type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !>;
+type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !>;
 
 #[test]
 fn stress_test() {
@@ -86,13 +88,14 @@ fn stress_test() {
         .expect("Expected checksum");
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_node(
     node_info: PrototypingNode,
     all_nodes: Vec<PrototypingNode>,
     communicators: CalcCommunicators,
     ops: impl std::iter::IntoIterator<Item = CalcOp> + Send + 'static,
     target: f64,
-    consistency_checker: &mut StabilityChecker<usize, u64, u32, Uuid>,
+    consistency_checker: &mut StabilityChecker<usize, CalcCommunicator>,
     target_reached_sender: oneshot::Sender<()>,
     mut done_receiver: oneshot::Receiver<()>,
 ) -> std::thread::JoinHandle<blake3::Hash> {
