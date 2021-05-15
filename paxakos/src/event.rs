@@ -142,6 +142,12 @@ pub enum ShutdownEvent<S: State, C: Communicator> {
     },
 }
 
+impl<S: State, C: Communicator> From<Event<S, C>> for ShutdownEvent<S, C> {
+    fn from(e: Event<S, C>) -> Self {
+        ShutdownEvent::Regular(e)
+    }
+}
+
 impl<S: State, C: Communicator> std::fmt::Debug for ShutdownEvent<S, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

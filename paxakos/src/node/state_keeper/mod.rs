@@ -152,7 +152,10 @@ where
     participation: Participation<RoundNumOf<C>, CoordNumOf<C>>,
     /// last status that was observable from the outside
     status: NodeStatus,
+
+    queued_events: VecDeque<ShutdownEvent<S, C>>,
     event_emitter: mpsc::Sender<ShutdownEvent<S, C>>,
+    warn_counter: u16,
 
     applied_entry_buffer: VecDeque<(CoordNumOf<C>, Arc<LogEntryOf<S>>)>,
 
@@ -311,7 +314,10 @@ where
 
                 participation: participation.into(),
                 status: initial_status,
+
+                queued_events: VecDeque::new(),
                 event_emitter,
+                warn_counter: 0,
 
                 // TODO the capacity should be configurable
                 applied_entry_buffer: VecDeque::with_capacity(1024),
@@ -325,14 +331,11 @@ where
     }
 
     fn init_and_run(mut self) {
-        crate::emit!(
-            self,
-            ShutdownEvent::Regular(Event::Init {
-                status: self.status,
-                round: self.state_round,
-                state: self.state.as_ref().map(Arc::clone),
-            })
-        );
+        self.emit(Event::Init {
+            status: self.status,
+            round: self.state_round,
+            state: self.state.as_ref().map(Arc::clone),
+        });
 
         self.run();
     }
@@ -342,26 +345,11 @@ where
             self.apply_commits();
             self.release_round_nums();
             self.hand_out_round_nums();
+            self.detect_and_emit_status_change();
 
-            let expected_status = match &self.state {
-                Some(state) => {
-                    if self
-                        .highest_observed_round_num
-                        .unwrap_or_else(Bounded::max_value)
-                        > self.state_round + into_round_num(state.concurrency())
-                    {
-                        NodeStatus::Lagging
-                    } else if self.highest_observed_coord_num == self.leadership.1 {
-                        NodeStatus::Leading
-                    } else {
-                        NodeStatus::Following
-                    }
-                }
-                None => NodeStatus::Disoriented,
-            };
-
-            if self.status != expected_status {
-                self.emit_status_change(expected_status);
+            if !self.flush_event_queue() {
+                tracing::warn!("Node was not properly shut down but simply dropped.");
+                return;
             }
         }
 
@@ -458,6 +446,53 @@ where
                 }
             }
         }
+    }
+
+    fn flush_event_queue(&mut self) -> bool {
+        while let Some(event) = self.queued_events.pop_front() {
+            let mut timeout = 1;
+
+            let mut send = self.event_emitter.send(event);
+
+            loop {
+                timeout *= 10;
+
+                let timeout = std::time::Duration::from_millis(timeout);
+                let delay = futures_timer::Delay::new(timeout);
+
+                match futures::executor::block_on(futures::future::select(send, delay)) {
+                    futures::future::Either::Left((Ok(_), _)) => break,
+                    futures::future::Either::Left((Err(_), _)) => return false,
+
+                    futures::future::Either::Right((_, s)) => {
+                        self.warn_counter += 1;
+
+                        const LIMIT: u16 = 10;
+
+                        if self.warn_counter <= LIMIT
+                            || std::time::Duration::from_secs(60) < timeout
+                        {
+                            tracing::warn!(
+                                "`{}` events have been queued for over `{:?}`.",
+                                self.queued_events.len() + 1,
+                                timeout
+                            );
+                        }
+
+                        if self.warn_counter == LIMIT {
+                            tracing::warn!(
+                                "Limit of `{}` warnings reached, further warnings will be suppressed.",
+                                LIMIT
+                            );
+                        }
+
+                        send = s;
+                    }
+                }
+            }
+        }
+
+        true
     }
 
     fn shut_down(mut self) {
@@ -681,29 +716,76 @@ where
         }
     }
 
+    fn detect_and_emit_status_change(&mut self) {
+        let expected_status = match &self.state {
+            Some(state) => {
+                if self
+                    .highest_observed_round_num
+                    .unwrap_or_else(Bounded::max_value)
+                    > self.state_round + into_round_num(state.concurrency())
+                {
+                    NodeStatus::Lagging
+                } else if self.highest_observed_coord_num == self.leadership.1 {
+                    NodeStatus::Leading
+                } else {
+                    NodeStatus::Following
+                }
+            }
+            None => NodeStatus::Disoriented,
+        };
+
+        if self.status != expected_status {
+            self.emit_status_change(expected_status);
+        }
+    }
+
     fn emit_status_change(&mut self, new_status: NodeStatus) {
         let old_status = self.status;
         self.status = new_status;
 
-        crate::emit!(
-            self,
-            ShutdownEvent::Regular(Event::StatusChange {
-                old_status,
-                new_status
-            })
-        );
+        self.emit(Event::StatusChange {
+            old_status,
+            new_status,
+        });
     }
 
     fn emit_directive(&mut self, round_num: RoundNumOf<C>, coord_num: CoordNumOf<C>) {
         if let Some(leader) = self.deduce_node(round_num, coord_num) {
-            crate::emit!(
-                self,
-                ShutdownEvent::Regular(Event::Directive {
-                    leader,
-                    round_num,
-                    coord_num
-                })
-            );
+            self.emit(Event::Directive {
+                leader,
+                round_num,
+                coord_num,
+            });
+        }
+    }
+
+    fn emit_gaps(&mut self, mut last_round: RoundNumOf<C>) {
+        let mut gaps = Vec::new();
+
+        for (&k, v) in self.pending_commits.iter() {
+            if k > last_round + One::one() {
+                gaps.push(crate::event::Gap {
+                    since: v.0,
+                    rounds: (last_round + One::one())..k,
+                });
+            }
+
+            last_round = k;
+        }
+
+        self.emit(Event::Gaps(gaps));
+    }
+
+    fn emit(&mut self, event: impl Into<ShutdownEvent<S, C>> + std::fmt::Debug) {
+        tracing::trace!("Emitting event {:?}.", event);
+
+        let event = event.into();
+
+        match self.event_emitter.try_send(event) {
+            Ok(_) => {}
+            Err(err) => {
+                self.queued_events.push_back(err.into_inner());
+            }
         }
     }
 
@@ -798,13 +880,10 @@ where
         self.promises = promises;
         self.accepted_entries = accepted_entries;
 
-        crate::emit!(
-            self,
-            ShutdownEvent::Regular(Event::Install {
-                round: state_round,
-                state
-            })
-        );
+        self.emit(Event::Install {
+            round: state_round,
+            state,
+        });
 
         let extraneous_commits: Vec<_> = self
             .pending_commits
@@ -1095,13 +1174,10 @@ where
             self.deduce_node(round_num, coord_num).as_ref(),
         );
 
-        crate::emit!(
-            self,
-            ShutdownEvent::Regular(Event::Commit {
-                round: round_num,
-                log_entry: Arc::clone(&entry),
-            })
-        );
+        self.emit(Event::Commit {
+            round: round_num,
+            log_entry: Arc::clone(&entry),
+        });
 
         // Make sure that a shrinking gap doesn't get younger.
         let gap_time = self
@@ -1117,7 +1193,7 @@ where
 
         // Are we missing commits between this one and the last one applied?
         if round_num > self.state_round + One::one() {
-            crate::emit_gaps!(self, self.state_round);
+            self.emit_gaps(self.state_round);
         }
 
         Ok(())
@@ -1172,10 +1248,7 @@ where
                     let first_active_round = round + into_round_num(state.concurrency());
                     self.participation = Participation::PartiallyActive(first_active_round);
 
-                    crate::emit!(
-                        self,
-                        ShutdownEvent::Regular(Event::Activate(first_active_round))
-                    );
+                    self.emit(Event::Activate(first_active_round));
                 }
             }
 
@@ -1210,20 +1283,17 @@ where
                 working_dir.log_entry_application(round, coord_num, &*entry);
             }
 
-            crate::emit!(
-                self,
-                ShutdownEvent::Regular(Event::Apply {
-                    round,
-                    log_entry: entry,
-                    result: event
-                })
-            );
+            self.emit(Event::Apply {
+                round,
+                log_entry: entry,
+                result: event,
+            });
         }
 
         self.clean_up_after_applies();
 
         if !self.pending_commits.is_empty() {
-            crate::emit_gaps!(self, round);
+            self.emit_gaps(round);
         }
 
         (round, Arc::new(state))
