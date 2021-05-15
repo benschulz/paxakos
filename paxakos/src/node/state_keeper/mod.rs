@@ -355,6 +355,7 @@ where
             }
         }
 
+        tracing::info!("Shutting down.");
         self.shut_down()
     }
 
@@ -1087,7 +1088,6 @@ where
         } = &mut self.participation
         {
             for r in entries.iter().map(|(r, _)| *r) {
-                println!("Adding {:?}", (r, coord_num));
                 observed_proposals.insert((r, coord_num));
             }
         }
