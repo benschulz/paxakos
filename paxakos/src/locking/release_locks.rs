@@ -12,20 +12,21 @@ use crate::applicable::ApplicableTo;
 use crate::deco::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
-use crate::node::AbstentionOf;
+use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventOf;
 use crate::node::LogEntryOf;
+use crate::node::NayOf;
 use crate::node::Node;
 use crate::node::NodeIdOf;
 use crate::node::Participation;
-use crate::node::RejectionOf;
 use crate::node::RoundNumOf;
 use crate::node::Snapshot;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
+use crate::node::YeaOf;
 use crate::voting::Voter;
 
 type LockOf<N> = <EventOf<N> as AsLockEvent>::Lock;
@@ -79,8 +80,9 @@ where
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
         CoordNum = CoordNumOf<N>,
-        Abstention = AbstentionOf<N>,
-        Rejection = RejectionOf<N>,
+        Abstain = AbstainOf<N>,
+        Yea = YeaOf<N>,
+        Nay = NayOf<N>,
     >,
 {
     type Node = N;

@@ -604,7 +604,7 @@ where
             pending_len -= 1;
 
             match response {
-                Ok(Acceptance::Given) => {
+                Ok(Acceptance::Given(_)) => {
                     accepted.insert(node_id);
 
                     if accepted.len() >= quorum {
@@ -632,7 +632,7 @@ where
                                 .or(Some(coord_num));
                         }
                         Ok(Acceptance::Refused(rejection)) => rejections.push(rejection),
-                        Ok(Acceptance::Given)
+                        Ok(Acceptance::Given(_))
                         | Ok(Acceptance::Conflicted(Conflict::Converged { .. })) => {
                             // covered in outer match
                             unreachable!()
@@ -713,7 +713,7 @@ where
                 let node = pending_nodes_by_id.remove(&node_id).expect("pending node");
 
                 match response {
-                    Ok(Acceptance::Given) => {
+                    Ok(Acceptance::Given(_)) => {
                         let commit = self
                             .communicator
                             .borrow_mut()

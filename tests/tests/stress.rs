@@ -30,8 +30,8 @@ use calc_app::CalcOp;
 use calc_app::CalcState;
 use tracer::StabilityChecker;
 
-type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !, !>;
-type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, !>;
+type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !, (), !>;
+type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, (), !>;
 
 static INIT: Once = Once::new();
 

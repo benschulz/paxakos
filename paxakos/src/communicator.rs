@@ -14,18 +14,19 @@ use crate::PrepareError;
 use crate::Promise;
 use crate::RoundNum;
 
-pub type AbstentionOf<C> = <C as Communicator>::Abstention;
+pub type AbstainOf<C> = <C as Communicator>::Abstain;
 pub type CoordNumOf<C> = <C as Communicator>::CoordNum;
 pub type ErrorOf<C> = <C as Communicator>::Error;
 pub type LogEntryOf<C> = <C as Communicator>::LogEntry;
 pub type LogEntryIdOf<C> = <LogEntryOf<C> as LogEntry>::Id;
+pub type NayOf<C> = <C as Communicator>::Nay;
 pub type NodeOf<C> = <C as Communicator>::Node;
-pub type RejectionOf<C> = <C as Communicator>::Rejection;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
+pub type YeaOf<C> = <C as Communicator>::Yea;
 
-pub type AcceptanceFor<C> = Acceptance<CoordNumOf<C>, LogEntryOf<C>, RejectionOf<C>>;
+pub type AcceptanceFor<C> = Acceptance<CoordNumOf<C>, LogEntryOf<C>, YeaOf<C>, NayOf<C>>;
 pub type PromiseFor<C> = Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>;
-pub type VoteFor<C> = Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstentionOf<C>>;
+pub type VoteFor<C> = Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstainOf<C>>;
 
 /// Defines how [`Node`][crate::Node]s call others'
 /// [`RequestHandler`][crate::RequestHandler]s.
@@ -52,11 +53,14 @@ pub trait Communicator: Sized + 'static {
     type LogEntry: LogEntry;
 
     type Error: std::fmt::Debug + Send + Sync + 'static;
-    type Abstention: std::fmt::Debug + Send + Sync + 'static;
-    type Rejection: std::fmt::Debug + Send + Sync + 'static;
 
     type SendPrepare: Future<Output = Result<VoteFor<Self>, Self::Error>>;
+    type Abstain: std::fmt::Debug + Send + Sync + 'static;
+
     type SendProposal: Future<Output = Result<AcceptanceFor<Self>, Self::Error>>;
+    type Yea: std::fmt::Debug + Send + Sync + 'static;
+    type Nay: std::fmt::Debug + Send + Sync + 'static;
+
     type SendCommit: Future<Output = Result<Committed, Self::Error>>;
     type SendCommitById: Future<Output = Result<Committed, Self::Error>>;
 
@@ -100,7 +104,7 @@ pub enum Vote<R, C, E, A> {
 }
 
 impl<C: Communicator> TryFrom<Result<PromiseFor<C>, PrepareError<C>>>
-    for Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstentionOf<C>>
+    for Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstainOf<C>>
 {
     type Error = PrepareError<C>;
 
@@ -136,20 +140,20 @@ impl<R, C, E, A> From<Result<Promise<R, C, E>, Conflict<C, E>>> for Vote<R, C, E
 }
 
 #[derive(Debug)]
-pub enum Acceptance<C, E, N> {
-    Given,
+pub enum Acceptance<C, E, Y, N> {
+    Given(Y),
     Conflicted(Conflict<C, E>),
     Refused(N),
 }
 
-impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>>
-    for Acceptance<CoordNumOf<C>, LogEntryOf<C>, RejectionOf<C>>
+impl<C: Communicator> TryFrom<Result<YeaOf<C>, AcceptError<C>>>
+    for Acceptance<CoordNumOf<C>, LogEntryOf<C>, YeaOf<C>, NayOf<C>>
 {
     type Error = AcceptError<C>;
 
-    fn try_from(result: Result<(), AcceptError<C>>) -> Result<Self, Self::Error> {
+    fn try_from(result: Result<YeaOf<C>, AcceptError<C>>) -> Result<Self, Self::Error> {
         result
-            .map(|_| Acceptance::Given)
+            .map(Acceptance::Given)
             .or_else(|err| err.try_into().map(Acceptance::Conflicted))
     }
 }
@@ -169,10 +173,10 @@ impl<C: Communicator> TryFrom<AcceptError<C>> for Conflict<CoordNumOf<C>, LogEnt
     }
 }
 
-impl<C, E, N> From<Result<(), Conflict<C, E>>> for Acceptance<C, E, N> {
-    fn from(result: Result<(), Conflict<C, E>>) -> Self {
+impl<C, E, Y, N> From<Result<Y, Conflict<C, E>>> for Acceptance<C, E, Y, N> {
+    fn from(result: Result<Y, Conflict<C, E>>) -> Self {
         result
-            .map(|_| Acceptance::Given)
+            .map(Acceptance::Given)
             .unwrap_or_else(Acceptance::Conflicted)
     }
 }

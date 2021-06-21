@@ -12,11 +12,12 @@ use num_traits::One;
 use crate::append::AppendArgs;
 use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
-use crate::communicator::AbstentionOf;
+use crate::communicator::AbstainOf;
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
-use crate::communicator::RejectionOf;
+use crate::communicator::NayOf;
 use crate::communicator::RoundNumOf;
+use crate::communicator::YeaOf;
 use crate::error::Disoriented;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
@@ -201,8 +202,9 @@ where
             State = S,
             RoundNum = RoundNumOf<C>,
             CoordNum = CoordNumOf<C>,
-            Abstention = AbstentionOf<C>,
-            Rejection = RejectionOf<C>,
+            Abstain = AbstainOf<C>,
+            Yea = YeaOf<C>,
+            Nay = NayOf<C>,
         >,
     {
         let (initial_status, initial_participation, events, state_keeper, proof_of_life) =

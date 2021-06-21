@@ -9,9 +9,9 @@ use crate::deco::Decoration;
 use crate::error::SpawnError;
 use crate::log::LogKeeping;
 use crate::node;
-use crate::node::AbstentionOf;
+use crate::node::AbstainOf;
+use crate::node::NayOf;
 use crate::node::Participation;
-use crate::node::RejectionOf;
 use crate::node::RequestHandlerFor;
 use crate::state::ContextOf;
 use crate::state::NodeIdOf;
@@ -29,6 +29,7 @@ use super::snapshot::SnapshotFor;
 use super::CommunicatorOf;
 use super::NodeKernel;
 use super::StateOf;
+use super::YeaOf;
 
 #[derive(Default)]
 pub struct NodeBuilderBlank;
@@ -311,8 +312,9 @@ where
         State = StateOf<N>,
         RoundNum = node::RoundNumOf<N>,
         CoordNum = node::CoordNumOf<N>,
-        Abstention = AbstentionOf<N>,
-        Rejection = RejectionOf<N>,
+        Abstain = AbstainOf<N>,
+        Yea = YeaOf<N>,
+        Nay = NayOf<N>,
     >,
 {
     pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V>

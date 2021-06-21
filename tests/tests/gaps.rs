@@ -24,7 +24,7 @@ use paxakos::State;
 use calc_app::CalcOp;
 use calc_app::CalcState;
 
-type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, !>;
+type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, (), !>;
 type CalcNode = NodeKernel<CalcState, CalcCommunicator>;
 
 #[test]
@@ -75,7 +75,7 @@ fn later_gap_is_younger() {
 #[test]
 fn auto_fill_gaps() {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, !>::new();
+    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
 
     use paxakos::deco::FillGapsBuilderExt;
 
@@ -116,11 +116,11 @@ fn auto_fill_gaps() {
 }
 
 fn setup_node() -> (
-    RequestHandler<CalcState, DirectCommunicator<CalcState, u64, u32, !, !>>,
+    RequestHandler<CalcState, DirectCommunicator<CalcState, u64, u32, !, (), !>>,
     CalcNode,
 ) {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, !>::new();
+    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
 
     let (req_handler, node) = futures::executor::block_on(
         paxakos::node_builder()

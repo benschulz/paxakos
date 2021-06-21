@@ -7,6 +7,7 @@ use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
 use crate::communicator::PromiseFor;
 use crate::communicator::RoundNumOf;
+use crate::communicator::YeaOf;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
@@ -117,8 +118,8 @@ pub enum Response<S: State, C: Communicator> {
 
     PrepareEntry(Result<PromiseFor<C>, PrepareError<C>>),
 
-    AcceptEntry(Result<(), AcceptError<C>>),
-    AcceptEntries(Result<usize, AcceptError<C>>),
+    AcceptEntry(Result<YeaOf<C>, AcceptError<C>>),
+    AcceptEntries(Result<(), AcceptError<C>>),
 
     CommitEntry(Result<(), CommitError<S>>),
 

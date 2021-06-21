@@ -12,6 +12,7 @@ use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
 use crate::communicator::PromiseFor;
 use crate::communicator::RoundNumOf;
+use crate::communicator::YeaOf;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
@@ -205,7 +206,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<S>>,
-    ) -> impl Future<Output = Result<(), AcceptError<C>>> {
+    ) -> impl Future<Output = Result<YeaOf<C>, AcceptError<C>>> {
         dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
     }
 
@@ -214,7 +215,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         entry: impl Into<Arc<LogEntryOf<S>>>,
-    ) -> impl Future<Output = Result<(), AcceptError<C>>> {
+    ) -> impl Future<Output = Result<YeaOf<C>, AcceptError<C>>> {
         let entry = entry.into();
         dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
     }
@@ -223,7 +224,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         &self,
         coord_num: CoordNumOf<C>,
         entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
-    ) -> impl Future<Output = Result<usize, AcceptError<C>>> {
+    ) -> impl Future<Output = Result<(), AcceptError<C>>> {
         dispatch_state_keeper_req!(self, AcceptEntries, { coord_num, entries })
     }
 

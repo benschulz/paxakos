@@ -5,10 +5,10 @@ use num_traits::Bounded;
 use num_traits::Zero;
 use thiserror::Error;
 
-use crate::communicator::AbstentionOf;
+use crate::communicator::AbstainOf;
 use crate::communicator::Communicator;
 use crate::communicator::ErrorOf;
-use crate::communicator::RejectionOf;
+use crate::communicator::NayOf;
 use crate::communicator::RoundNumOf;
 use crate::error::BoxError;
 
@@ -94,9 +94,9 @@ pub enum AppendError<C: Communicator> {
     /// Failed in achieving a quorum.
     #[error("node could not achieve a quorum")]
     NoQuorum {
-        abstentions: Vec<AbstentionOf<C>>,
+        abstentions: Vec<AbstainOf<C>>,
         communication_errors: Vec<ErrorOf<C>>,
-        rejections: Vec<RejectionOf<C>>,
+        rejections: Vec<NayOf<C>>,
     },
 
     /// Catch-all, this may be refined over time.

@@ -18,7 +18,7 @@ use calc_app::CalcState;
 #[test]
 fn clean_shutdown() {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, !>::new();
+    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
 
     let (_, node) = futures::executor::block_on(
         paxakos::node_builder()

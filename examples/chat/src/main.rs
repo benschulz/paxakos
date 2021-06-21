@@ -18,8 +18,8 @@ use paxakos::NodeInfo;
 use paxakos::State;
 use uuid::Uuid;
 
-type ChatCommunicator = DirectCommunicator<ChatState, u64, u32, !, !>;
-type ChatCommunicators = DirectCommunicators<ChatState, u64, u32, !, !>;
+type ChatCommunicator = DirectCommunicator<ChatState, u64, u32, !, (), !>;
+type ChatCommunicators = DirectCommunicators<ChatState, u64, u32, !, (), !>;
 
 fn main() {
     let node_a = PrototypingNode::new();

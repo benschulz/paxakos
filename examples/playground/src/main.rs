@@ -44,7 +44,7 @@ type R = u32;
 type C = u32;
 type PlaygroundNodeHandle = paxakos::NodeHandle<
     PlaygroundState,
-    DirectCommunicator<PlaygroundState, R, C, std::time::Duration, !>,
+    DirectCommunicator<PlaygroundState, R, C, std::time::Duration, (), !>,
 >;
 type Listener = mpsc::Sender<Cursor<Vec<u8>>>;
 
@@ -93,7 +93,7 @@ struct Clusters(Arc<Mutex<HashMap<String, Cluster>>>);
 struct Cluster {
     args: PostClusterArguments,
     nodes: Vec<PrototypingNode>,
-    communicators: DirectCommunicators<PlaygroundState, R, C, std::time::Duration, !>,
+    communicators: DirectCommunicators<PlaygroundState, R, C, std::time::Duration, (), !>,
     listeners: Arc<Mutex<Vec<Listener>>>,
     node_terminators: HashMap<usize, oneshot::Sender<Termination>>,
     node_handles: HashMap<usize, PlaygroundNodeHandle>,
@@ -283,7 +283,7 @@ async fn spawn_node(
     clusters: Arc<Mutex<HashMap<String, Cluster>>>,
     cluster_id: String,
     n: PrototypingNode,
-    communicators: DirectCommunicators<PlaygroundState, R, C, std::time::Duration, !>,
+    communicators: DirectCommunicators<PlaygroundState, R, C, std::time::Duration, (), !>,
     listeners: Arc<Mutex<Vec<Listener>>>,
     mut terminator: oneshot::Receiver<Termination>,
     snapshot: Snapshot<PlaygroundState, R, C>,

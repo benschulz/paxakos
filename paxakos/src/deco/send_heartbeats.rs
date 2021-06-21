@@ -12,19 +12,20 @@ use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
-use crate::node::AbstentionOf;
+use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventOf;
+use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeStatus;
 use crate::node::Participation;
-use crate::node::RejectionOf;
 use crate::node::RoundNumOf;
 use crate::node::Snapshot;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
+use crate::node::YeaOf;
 use crate::voting::Voter;
 use crate::Node;
 
@@ -125,8 +126,9 @@ where
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
         CoordNum = CoordNumOf<N>,
-        Abstention = AbstentionOf<N>,
-        Rejection = RejectionOf<N>,
+        Abstain = AbstainOf<N>,
+        Yea = YeaOf<N>,
+        Nay = NayOf<N>,
     >,
 {
     type Node = N;

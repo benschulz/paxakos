@@ -50,13 +50,14 @@ pub type CommunicatorOf<N> = <N as Node>::Communicator;
 pub type RoundNumOf<N> = communicator::RoundNumOf<CommunicatorOf<N>>;
 pub type CoordNumOf<N> = communicator::CoordNumOf<CommunicatorOf<N>>;
 
-pub type AbstentionOf<N> = communicator::AbstentionOf<CommunicatorOf<N>>;
+pub type AbstainOf<N> = communicator::AbstainOf<CommunicatorOf<N>>;
 pub type EventOf<N> = state::EventOf<StateOf<N>>;
 pub type LogEntryOf<N> = state::LogEntryOf<StateOf<N>>;
 pub type LogEntryIdOf<N> = state::LogEntryIdOf<StateOf<N>>;
+pub type NayOf<N> = communicator::NayOf<CommunicatorOf<N>>;
 pub type NodeOf<N> = state::NodeOf<StateOf<N>>;
 pub type NodeIdOf<N> = state::NodeIdOf<StateOf<N>>;
-pub type RejectionOf<N> = communicator::RejectionOf<CommunicatorOf<N>>;
+pub type YeaOf<N> = communicator::YeaOf<CommunicatorOf<N>>;
 
 pub type AppendResultFor<N, A> = Result<CommitFor<N, A>, AppendError<CommunicatorOf<N>>>;
 pub type CommitFor<N, A> = Commit<StateOf<N>, RoundNumOf<N>, ProjectionOf<A, StateOf<N>>>;

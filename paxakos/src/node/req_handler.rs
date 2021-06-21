@@ -5,6 +5,7 @@ use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
 use crate::communicator::PromiseFor;
 use crate::communicator::RoundNumOf;
+use crate::communicator::YeaOf;
 use crate::error::AcceptError;
 use crate::error::CommitError;
 use crate::error::PrepareError;
@@ -44,7 +45,7 @@ impl<S: State, C: Communicator> RequestHandler<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         entry: I,
-    ) -> impl Future<Output = Result<(), AcceptError<C>>> {
+    ) -> impl Future<Output = Result<YeaOf<C>, AcceptError<C>>> {
         let handle = self.0.clone();
         async move { handle.handle_proposal(round_num, coord_num, entry).await }
     }

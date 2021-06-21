@@ -27,13 +27,14 @@ use tracing::debug;
 use tracing::info;
 
 use crate::communicator;
-use crate::communicator::AbstentionOf;
+use crate::communicator::AbstainOf;
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
 use crate::communicator::LogEntryOf;
+use crate::communicator::NayOf;
 use crate::communicator::PromiseFor;
-use crate::communicator::RejectionOf;
 use crate::communicator::RoundNumOf;
+use crate::communicator::YeaOf;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
@@ -132,7 +133,9 @@ where
         State = S,
         RoundNum = RoundNumOf<C>,
         CoordNum = CoordNumOf<C>,
-        Abstention = AbstentionOf<C>,
+        Abstain = AbstainOf<C>,
+        Yea = YeaOf<C>,
+        Nay = NayOf<C>,
     >,
 {
     context: ContextOf<S>,
@@ -225,8 +228,9 @@ where
         State = S,
         RoundNum = RoundNumOf<C>,
         CoordNum = CoordNumOf<C>,
-        Abstention = AbstentionOf<C>,
-        Rejection = RejectionOf<C>,
+        Abstain = AbstainOf<C>,
+        Yea = YeaOf<C>,
+        Nay = NayOf<C>,
     >,
 {
     pub async fn spawn(
@@ -686,7 +690,7 @@ where
                     }
                 }
 
-                Response::AcceptEntries(result)
+                Response::AcceptEntries(result.map(|_| ()))
             }
 
             Request::CommitEntry {
@@ -1045,8 +1049,8 @@ where
 
             match voting_decision {
                 voting::Decision::Abstain(reason) => Err(PrepareError::Abstained(reason)),
-                voting::Decision::Reject(never) => assert_unreachable!(never),
-                voting::Decision::Vote => {
+                voting::Decision::Nay(never) => assert_unreachable!(never),
+                voting::Decision::Yea(_) => {
                     overriding_insert(&mut self.promises, round_num, coord_num);
 
                     let promise = self
@@ -1097,7 +1101,7 @@ where
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<C>>,
-    ) -> Result<(), AcceptError<C>> {
+    ) -> Result<YeaOf<C>, AcceptError<C>> {
         if round_num <= self.state_round {
             Err(AcceptError::Converged(
                 self.highest_observed_coord_num,
@@ -1123,7 +1127,11 @@ where
                     vec![(round_num, entry)],
                     AcceptPolicy::Rejectable(self.deduce_node(round_num, coord_num)),
                 )
-                .map(|n| assert!(n == 1))
+                .map(|ys| {
+                    assert!(ys.len() == 1);
+
+                    ys.into_iter().next().unwrap()
+                })
             }
         }
     }
@@ -1133,7 +1141,7 @@ where
         coord_num: CoordNumOf<C>,
         entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<C>>)>,
         policy: AcceptPolicy<C>,
-    ) -> Result<usize, AcceptError<C>> {
+    ) -> Result<Vec<YeaOf<C>>, AcceptError<C>> {
         let first_round = entries[0].0;
 
         if let Participation::Passive {
@@ -1149,8 +1157,6 @@ where
             debug!("In passive mode, rejecting accept request.");
             return Err(AcceptError::Passive);
         }
-
-        let mut accepted = 0;
 
         let round_range_start = self.state_round + One::one();
         let round_range_end = self
@@ -1168,6 +1174,8 @@ where
 
         let acceptable_entries = entries.into_iter().filter(|(r, _)| round_range.contains(r));
 
+        let mut yeas = Vec::new();
+
         for (round_num, log_entry) in acceptable_entries {
             if let AcceptPolicy::Rejectable(leader) = &policy {
                 match self.voter.contemplate_proposal(
@@ -1178,11 +1186,11 @@ where
                     self.state.as_deref(),
                 ) {
                     voting::Decision::Abstain(never) => assert_unreachable!(never),
-                    voting::Decision::Reject(rejection) => {
+                    voting::Decision::Nay(rejection) => {
                         return Err(AcceptError::Rejected(rejection))
                     }
-                    voting::Decision::Vote => {
-                        // keep going
+                    voting::Decision::Yea(yea) => {
+                        yeas.push(yea);
                     }
                 }
             }
@@ -1193,8 +1201,6 @@ where
                     tracer.record_accept(round_num, coord_num, log_entry.id());
                 }
             }
-
-            accepted += 1;
 
             match self.accepted_entries.entry(round_num) {
                 btree_map::Entry::Occupied(ref mut e) => {
@@ -1212,7 +1218,7 @@ where
             }
         }
 
-        Ok(accepted)
+        Ok(yeas)
     }
 
     fn commit_entry(

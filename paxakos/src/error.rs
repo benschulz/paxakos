@@ -3,11 +3,11 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::communicator::AbstentionOf;
+use crate::communicator::AbstainOf;
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
 use crate::communicator::LogEntryOf;
-use crate::communicator::RejectionOf;
+use crate::communicator::NayOf;
 use crate::state::LogEntryIdOf;
 use crate::state::State;
 
@@ -94,7 +94,7 @@ pub enum ReadStaleError {
 #[derive(Error)]
 pub enum PrepareError<C: Communicator> {
     #[error("promise war deliberately withheld")]
-    Abstained(AbstentionOf<C>),
+    Abstained(AbstainOf<C>),
 
     #[error("conflicting promise")]
     Supplanted(CoordNumOf<C>),
@@ -160,7 +160,7 @@ pub enum AcceptError<C: Communicator> {
     Passive,
 
     #[error("proposal was rejected")]
-    Rejected(RejectionOf<C>),
+    Rejected(NayOf<C>),
 
     #[error("node is shut down")]
     ShutDown,
