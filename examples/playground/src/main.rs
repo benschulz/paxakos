@@ -182,8 +182,8 @@ struct ClusterNode {
 #[post("/", data = "<args>")]
 async fn post_cluster(
     clusters: &rocket::State<Clusters>,
-    args: rocket_contrib::json::Json<PostClusterArguments>,
-) -> rocket_contrib::json::Json<PostClusterResult> {
+    args: rocket::serde::json::Json<PostClusterArguments>,
+) -> rocket::serde::json::Json<PostClusterResult> {
     let id = Uuid::new_v4();
 
     let nodes = (0..args.node_count)
@@ -237,7 +237,7 @@ async fn post_cluster(
     let mut clusters = clusters.inner().0.lock().await;
     clusters.insert(id.to_string(), cluster);
 
-    rocket_contrib::json::Json(PostClusterResult {
+    rocket::serde::json::Json(PostClusterResult {
         id: id.to_string(),
         nodes: nodes
             .into_iter()
@@ -572,7 +572,7 @@ enum ClusterPatch {
 async fn patch_cluster(
     clusters: &rocket::State<Clusters>,
     cluster_id: String,
-    patches: rocket_contrib::json::Json<Vec<ClusterPatch>>,
+    patches: rocket::serde::json::Json<Vec<ClusterPatch>>,
 ) {
     let mut clusters = clusters.0.lock().await;
     let cluster = clusters.get_mut(&cluster_id).unwrap();
@@ -741,8 +741,8 @@ async fn post_node_append(
     clusters: &rocket::State<Clusters>,
     cluster_id: String,
     node_id: usize,
-    args: rocket_contrib::json::Json<PostNodeAppendArguments>,
-) -> rocket_contrib::json::Json<PostNodeAppendResult> {
+    args: rocket::serde::json::Json<PostNodeAppendArguments>,
+) -> rocket::serde::json::Json<PostNodeAppendResult> {
     let clusters = clusters.inner().0.lock().await;
     let cluster = clusters.get(&cluster_id).unwrap();
     let node_handle = cluster.node_handles.get(&node_id).unwrap().clone();
@@ -781,7 +781,7 @@ async fn post_node_append(
         }
     });
 
-    rocket_contrib::json::Json(PostNodeAppendResult { id: id.to_string() })
+    rocket::serde::json::Json(PostNodeAppendResult { id: id.to_string() })
 }
 
 #[post("/<cluster_id>/node/<node_id>/crash")]
@@ -805,7 +805,7 @@ async fn post_node_recover(
     clusters_state: &rocket::State<Clusters>,
     cluster_id: String,
     node_id: usize,
-    args: rocket_contrib::json::Json<PostNodeRecoverArguments>,
+    args: rocket::serde::json::Json<PostNodeRecoverArguments>,
 ) {
     let mut clusters = clusters_state.inner().0.lock().await;
     let cluster = clusters.get_mut(&cluster_id).unwrap();
@@ -856,7 +856,7 @@ async fn post_node_resume(
     clusters_state: &rocket::State<Clusters>,
     cluster_id: String,
     node_id: usize,
-    args: rocket_contrib::json::Json<PostNodeResumeArguments>,
+    args: rocket::serde::json::Json<PostNodeResumeArguments>,
 ) {
     let mut clusters = clusters_state.inner().0.lock().await;
     let cluster = clusters.get_mut(&cluster_id).unwrap();
