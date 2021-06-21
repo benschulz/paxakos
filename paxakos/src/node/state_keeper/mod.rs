@@ -23,6 +23,7 @@ use num_traits::Bounded;
 use num_traits::One;
 use num_traits::Zero;
 use pin_project::pin_project;
+use smallvec::SmallVec;
 use tracing::debug;
 use tracing::info;
 
@@ -1128,7 +1129,7 @@ where
         coord_num: CoordNumOf<I>,
         entries: Vec<(RoundNumOf<I>, Arc<LogEntryOf<I>>)>,
         policy: AcceptPolicy<I>,
-    ) -> Result<Vec<YeaOf<I>>, AcceptError<I>> {
+    ) -> Result<SmallVec<[YeaOf<I>; 1]>, AcceptError<I>> {
         let first_round = entries[0].0;
 
         if let Participation::Passive {
@@ -1162,7 +1163,7 @@ where
 
         let acceptable_entries = entries.into_iter().filter(|(r, _)| round_range.contains(r));
 
-        let mut yeas = Vec::new();
+        let mut yeas = SmallVec::new();
 
         for (round_num, log_entry) in acceptable_entries {
             if let AcceptPolicy::Rejectable(leader) = &policy {
