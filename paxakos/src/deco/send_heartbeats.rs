@@ -8,203 +8,156 @@ use crate::append::{AppendArgs, DoNotRetry, Importance, Peeryness};
 use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
-use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, JustificationOf};
-use crate::node::{LogEntryOf, NodeIdOf, NodeStatus, Participation, RoundNumOf, Snapshot};
+use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, EventOf, JustificationOf};
+use crate::node::{NodeIdOf, NodeStatus, Participation, RoundNumOf, Snapshot};
 use crate::node::{SnapshotFor, StateOf};
 use crate::voting::Voter;
-use crate::{Node, RoundNum};
+use crate::Node;
 
+use super::track_leadership::MaybeLeadershipAwareNode;
 use super::Decoration;
-use super::{track_leadership::MaybeLeadershipAwareNode, LeadershipAwareNode};
 
-pub trait SendHeartbeatsBuilderExt<I>
-where
-    I: 'static,
-{
-    type Node: Node + 'static;
-    type Voter: Voter;
+pub trait Config {
+    type Node: Node;
+    type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
 
-    fn send_heartbeats<C, P>(
-        self,
-        configure: C,
-    ) -> NodeBuilder<SendHeartbeats<Self::Node, P, I>, Self::Voter>
-    where
-        Self::Node: MaybeLeadershipAwareNode<I>,
-        C: FnOnce(SendHeartbeatsBuilderBlank<Self::Node>) -> SendHeartbeatsBuilder<Self::Node, P>,
-        P: Fn() -> LogEntryOf<Self::Node> + 'static;
+    fn init(&mut self, state: &StateOf<Self::Node>);
+
+    fn update(&mut self, event: &EventOf<Self::Node>);
+
+    fn new_heartbeat(&self, node: &Self::Node) -> Self::Applicable;
+
+    fn interval(&self, node: &Self::Node) -> Option<Duration>;
 }
 
-pub struct SendHeartbeatsBuilder<N, P> {
-    entry_producer: P,
+pub struct StaticConfig<N, A, I = ()> {
     interval: Duration,
     leader_interval: Option<Duration>,
 
-    _node: std::marker::PhantomData<N>,
+    _p: std::marker::PhantomData<(N, A, I)>,
 }
 
-impl<N, V, I> SendHeartbeatsBuilderExt<I> for NodeBuilder<N, V>
+impl<N, A, I> StaticConfig<N, A, I>
 where
-    N: MaybeLeadershipAwareNode<I> + 'static,
+    N: Node + MaybeLeadershipAwareNode<I>,
+    A: ApplicableTo<StateOf<N>> + Default + 'static,
+{
+    pub fn with_interval(interval: Duration) -> Self {
+        Self {
+            interval,
+            leader_interval: None,
+
+            _p: std::marker::PhantomData,
+        }
+    }
+
+    pub fn when_leading(self, leader_interval: Duration) -> Self {
+        Self {
+            interval: self.interval,
+            leader_interval: Some(leader_interval),
+
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<N, A, I> Config for StaticConfig<N, A, I>
+where
+    N: Node + MaybeLeadershipAwareNode<I>,
+    A: ApplicableTo<StateOf<N>> + Default + 'static,
+{
+    type Node = N;
+    type Applicable = A;
+
+    fn init(&mut self, _state: &StateOf<Self::Node>) {}
+
+    fn update(&mut self, _event: &EventOf<Self::Node>) {}
+
+    fn new_heartbeat(&self, _node: &Self::Node) -> Self::Applicable {
+        Self::Applicable::default()
+    }
+
+    fn interval(&self, node: &Self::Node) -> Option<Duration> {
+        Some(if let Some(interval) = self.leader_interval {
+            let leadership = node.leadership().expect("leadership not tracked");
+
+            if leadership.first().map(|l| l.leader) == Some(node.id()) {
+                interval
+            } else {
+                self.interval
+            }
+        } else {
+            self.interval
+        })
+    }
+}
+
+pub trait SendHeartbeatsBuilderExt {
+    type Node: Node + 'static;
+    type Voter: Voter;
+
+    fn send_heartbeats<C>(
+        self,
+        config: C,
+    ) -> NodeBuilder<SendHeartbeats<Self::Node, C>, Self::Voter>
+    where
+        C: Config<Node = Self::Node> + 'static;
+}
+
+impl<N, V> SendHeartbeatsBuilderExt for NodeBuilder<N, V>
+where
+    N: Node + 'static,
     V: Voter<
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
         CoordNum = CoordNumOf<N>,
         Justification = JustificationOf<N>,
     >,
-    I: 'static,
 {
     type Node = N;
     type Voter = V;
 
-    fn send_heartbeats<C, P>(self, configure: C) -> NodeBuilder<SendHeartbeats<N, P, I>, V>
+    fn send_heartbeats<C>(
+        self,
+        config: C,
+    ) -> NodeBuilder<SendHeartbeats<Self::Node, C>, Self::Voter>
     where
-        C: FnOnce(SendHeartbeatsBuilderBlank<N>) -> SendHeartbeatsBuilder<N, P>,
-        P: Fn() -> LogEntryOf<N> + 'static,
+        C: Config<Node = Self::Node> + 'static,
     {
-        self.decorated_with(configure(SendHeartbeatsBuilderBlank::new()).build())
-    }
-}
-
-pub struct SendHeartbeatsBuilderBlank<N: Node>(std::marker::PhantomData<N>);
-
-impl<N: Node> SendHeartbeatsBuilderBlank<N> {
-    fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-
-    pub fn with_entry<P>(self, entry_producer: P) -> SendHeartbeatsBuilderWithEntry<N, P>
-    where
-        P: Fn() -> LogEntryOf<N>,
-    {
-        SendHeartbeatsBuilderWithEntry {
-            entry_producer,
-            _node: std::marker::PhantomData,
-        }
-    }
-}
-
-pub struct SendHeartbeatsBuilderWithEntry<N, P> {
-    entry_producer: P,
-
-    _node: std::marker::PhantomData<N>,
-}
-
-impl<N, P> SendHeartbeatsBuilderWithEntry<N, P>
-where
-    N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
-{
-    pub fn every(self, interval: Duration) -> SendHeartbeatsBuilder<N, P> {
-        SendHeartbeatsBuilder {
-            entry_producer: self.entry_producer,
-            interval,
-            leader_interval: None,
-
-            _node: std::marker::PhantomData,
-        }
-    }
-}
-
-// TODO enable something like on_converged().modulate_rate(0.5, 1.8)
-impl<N, P> SendHeartbeatsBuilder<N, P>
-where
-    N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
-{
-    pub fn when_leading_every<I>(mut self, interval: Duration) -> Self
-    where
-        N: LeadershipAwareNode<I>,
-    {
-        self.leader_interval = Some(interval);
-        self
-    }
-
-    fn build(self) -> SendHeartbeatsArgs<N, P> {
-        SendHeartbeatsArgs {
-            entry_producer: self.entry_producer,
-            interval: self.interval,
-            leader_interval: self.leader_interval,
-
-            _node: std::marker::PhantomData,
-        }
+        self.decorated_with(config)
     }
 }
 
 #[derive(Debug)]
-pub struct SendHeartbeatsArgs<N, P> {
-    entry_producer: P,
-    interval: Duration,
-    leader_interval: Option<Duration>,
-
-    _node: std::marker::PhantomData<N>,
-}
-
-#[derive(Debug)]
-pub struct SendHeartbeats<N, P, I>
+pub struct SendHeartbeats<N, C>
 where
     N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
+    C: Config<Node = N>,
 {
     decorated: N,
-    arguments: SendHeartbeatsArgs<N, P>,
+    config: C,
 
     timer: Option<futures_timer::Delay>,
 
     appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, ()>>,
-
-    _i: std::marker::PhantomData<I>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct QueuedGap<R: RoundNum> {
-    round: R,
-    due_time: std::time::Instant,
-}
-
-impl<R: RoundNum> Ord for QueuedGap<R> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.due_time
-            .cmp(&other.due_time)
-            .then_with(|| self.round.cmp(&other.round))
-            .reverse()
-    }
-}
-
-impl<R: RoundNum> PartialOrd for QueuedGap<R> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<N, P, I> SendHeartbeats<N, P, I>
+impl<N, C> SendHeartbeats<N, C>
 where
-    N: Node + MaybeLeadershipAwareNode<I> + 'static,
-    P: Fn() -> LogEntryOf<N> + 'static,
-    I: 'static,
+    N: Node + 'static,
+    C: Config<Node = N>,
 {
-    fn new_timer(&self) -> futures_timer::Delay {
-        let interval = if let Some(interval) = self.arguments.leader_interval {
-            let leadership = self.leadership().expect("leadership not tracked");
-
-            if leadership.first().map(|l| l.leader) == Some(self.id()) {
-                interval
-            } else {
-                self.arguments.interval
-            }
-        } else {
-            self.arguments.interval
-        };
-
-        futures_timer::Delay::new(interval)
+    fn new_timer(&self) -> Option<futures_timer::Delay> {
+        self.config
+            .interval(&self.decorated)
+            .map(futures_timer::Delay::new)
     }
 
     fn send_heartbeat(&mut self) {
-        let log_entry = (self.arguments.entry_producer)();
-
         let append = self
             .decorated
             .append(
-                log_entry,
+                self.config.new_heartbeat(&self.decorated),
                 AppendArgs {
                     importance: Importance::MaintainLeadership(Peeryness::Peery),
                     retry_policy: Box::new(DoNotRetry::new()),
@@ -218,13 +171,12 @@ where
     }
 }
 
-impl<N, P, I> Decoration for SendHeartbeats<N, P, I>
+impl<N, C> Decoration for SendHeartbeats<N, C>
 where
-    N: Node + MaybeLeadershipAwareNode<I> + 'static,
-    P: Fn() -> LogEntryOf<N> + 'static,
-    I: 'static,
+    N: Node + 'static,
+    C: Config<Node = N> + 'static,
 {
-    type Arguments = SendHeartbeatsArgs<N, P>;
+    type Arguments = C;
     type Decorated = N;
 
     fn wrap(
@@ -233,13 +185,11 @@ where
     ) -> Result<Self, crate::error::SpawnError> {
         Ok(Self {
             decorated,
-            arguments,
+            config: arguments,
 
             timer: None,
 
             appends: futures::stream::FuturesUnordered::new(),
-
-            _i: std::marker::PhantomData,
         })
     }
 
@@ -252,11 +202,10 @@ where
     }
 }
 
-impl<N, F, I> Node for SendHeartbeats<N, F, I>
+impl<N, C> Node for SendHeartbeats<N, C>
 where
-    N: Node + MaybeLeadershipAwareNode<I> + 'static,
-    F: Fn() -> LogEntryOf<N> + 'static,
-    I: 'static,
+    N: Node + 'static,
+    C: Config<Node = N>,
 {
     type State = StateOf<N>;
     type Communicator = CommunicatorOf<N>;
@@ -288,12 +237,12 @@ where
                 | crate::Event::StatusChange { new_status, .. } => {
                     self.timer = match new_status {
                         NodeStatus::Disoriented => None,
-                        _ => Some(self.new_timer()),
+                        _ => self.new_timer(),
                     };
                 }
 
                 crate::Event::Install { .. } | crate::Event::Apply { .. } => {
-                    self.timer = Some(self.new_timer());
+                    self.timer = self.new_timer();
                 }
 
                 _ => {}
@@ -307,7 +256,7 @@ where
 
             self.send_heartbeat();
 
-            self.timer = Some(self.new_timer());
+            self.timer = self.new_timer();
         }
 
         let _ = self.appends.poll_next_unpin(cx);

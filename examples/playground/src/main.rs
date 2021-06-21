@@ -316,26 +316,7 @@ async fn spawn_node(
                     .after(std::time::Duration::from_millis(1000))
                     .retry_every(std::time::Duration::from_millis(2000))
                 })
-                .send_heartbeats(|c| {
-                    c.with_entry(move || {
-                        let listeners = listeners_heartbeat.clone();
-
-                        rt_heartbeat.spawn(async move {
-                            emit_event(
-                                &*listeners,
-                                Action {
-                                    node: node_id.to_string(),
-                                    action: "heartbeat",
-                                },
-                            )
-                            .await
-                        });
-
-                        PlaygroundLogEntry::Heartbeat(Uuid::new_v4())
-                    })
-                    .every(std::time::Duration::from_secs(5))
-                    .when_leading_every(std::time::Duration::from_secs(3))
-                })
+                .send_heartbeats(HeartbeatConfig::new(rt_heartbeat, listeners_heartbeat))
                 .ensure_leadership(|c| {
                     c.with_entry(move || {
                         let listeners = listeners_ensure.clone();
@@ -500,6 +481,65 @@ async fn spawn_node(
     });
 
     node_handle_recv.await.unwrap()
+}
+
+struct HeartbeatConfig<N, I> {
+    runtime: rocket::tokio::runtime::Handle,
+    listeners: Arc<Mutex<Vec<mpsc::Sender<Cursor<Vec<u8>>>>>>,
+
+    _p: std::marker::PhantomData<(N, I)>,
+}
+
+impl<N, I> HeartbeatConfig<N, I> {
+    fn new(
+        runtime: rocket::tokio::runtime::Handle,
+        listeners: Arc<Mutex<Vec<mpsc::Sender<Cursor<Vec<u8>>>>>>,
+    ) -> Self {
+        Self {
+            runtime,
+            listeners,
+
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<N, I> paxakos::deco::send_heartbeats::Config for HeartbeatConfig<N, I>
+where
+    N: LeadershipAwareNode<I, State = PlaygroundState>,
+{
+    type Node = N;
+    type Applicable = PlaygroundLogEntry;
+
+    fn init(&mut self, _state: &paxakos::node::StateOf<Self::Node>) {}
+
+    fn update(&mut self, _event: &paxakos::node::EventOf<Self::Node>) {}
+
+    fn new_heartbeat(&self, node: &Self::Node) -> Self::Applicable {
+        let node_id = node.id();
+        let listeners = Arc::clone(&self.listeners);
+
+        self.runtime.spawn(async move {
+            emit_event(
+                &*listeners,
+                Action {
+                    node: node_id.to_string(),
+                    action: "heartbeat",
+                },
+            )
+            .await
+        });
+
+        PlaygroundLogEntry::Heartbeat(Uuid::new_v4())
+    }
+
+    fn interval(&self, node: &Self::Node) -> Option<std::time::Duration> {
+        if node.leadership().first().map(|l| l.leader) == Some(node.id()) {
+            Some(Duration::from_secs(3))
+        } else {
+            Some(Duration::from_secs(5))
+        }
+    }
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

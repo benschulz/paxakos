@@ -102,8 +102,6 @@ fn spawn_node(
     let tracer = consistency_checker.tracer(node_info.id());
 
     std::thread::spawn(move || {
-        let node_id = node_info.id();
-
         let (handler, node) = futures::executor::block_on(
             paxakos::node_builder()
                 .for_node(node_info.id())
@@ -116,12 +114,7 @@ fn spawn_node(
                         .after(std::time::Duration::from_millis(50))
                         .retry_every(std::time::Duration::from_millis(20))
                 })
-                .send_heartbeats(|c| {
-                    tracing::info!("Node {:?} is sending a heartbeat.", node_id);
-
-                    c.with_entry(|| CalcOp::Mul(1.0, Uuid::new_v4()))
-                        .every(std::time::Duration::from_millis(200))
-                })
+                .send_heartbeats(HeartbeatConfig::new())
                 .track_leadership()
                 .ensure_leadership(|c| {
                     c.with_entry(|| CalcOp::Div(1.0, Uuid::new_v4()))
@@ -223,4 +216,34 @@ fn spawn_node(
 
         hash_at_target.unwrap()
     })
+}
+
+struct HeartbeatConfig<N>(std::marker::PhantomData<N>);
+
+impl<N> HeartbeatConfig<N> {
+    fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<N> paxakos::deco::send_heartbeats::Config for HeartbeatConfig<N>
+where
+    N: Node<State = CalcState>,
+{
+    type Node = N;
+    type Applicable = CalcOp;
+
+    fn init(&mut self, _state: &paxakos::node::StateOf<Self::Node>) {}
+
+    fn update(&mut self, _event: &paxakos::node::EventOf<Self::Node>) {}
+
+    fn new_heartbeat(&self, node: &Self::Node) -> Self::Applicable {
+        tracing::info!("Node {:?} is sending a heartbeat.", node.id());
+
+        CalcOp::Mul(1.0, Uuid::new_v4())
+    }
+
+    fn interval(&self, _node: &Self::Node) -> Option<std::time::Duration> {
+        Some(std::time::Duration::from_millis(200))
+    }
 }

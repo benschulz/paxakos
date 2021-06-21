@@ -1,6 +1,6 @@
 mod ensure_leadership;
 mod fill_gaps;
-mod send_heartbeats;
+pub mod send_heartbeats;
 mod track_leadership;
 
 use crate::error::SpawnError;
