@@ -3,6 +3,7 @@
 mod calc_app;
 mod tracer;
 
+use std::sync::Once;
 use std::task::Poll;
 
 use futures::channel::oneshot;
@@ -24,18 +25,68 @@ use tracer::StabilityChecker;
 type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !, !>;
 type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, !>;
 
+static INIT: Once = Once::new();
+
+pub fn initialize() {
+    INIT.call_once(|| {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .init();
+    });
+}
+
 #[test]
-fn stress_test() {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+fn stress_test_1_node() {
+    perform_stress_test(1, 10000, 0.0);
+}
 
+#[test]
+fn stress_test_2_nodes() {
+    perform_stress_test(2, 500, 0.1);
+}
+
+#[test]
+fn stress_test_3_nodes() {
+    perform_stress_test(3, 300, 0.1);
+}
+
+#[test]
+fn stress_test_4_nodes() {
+    perform_stress_test(4, 100, 0.1);
+}
+
+#[test]
+fn stress_test_5_nodes() {
+    perform_stress_test(5, 70, 0.1);
+}
+
+#[test]
+fn stress_test_6_nodes() {
+    perform_stress_test(6, 50, 0.05);
+}
+
+#[test]
+fn stress_test_7_nodes() {
+    perform_stress_test(7, 30, 0.05);
+}
+
+#[test]
+fn stress_test_8_nodes() {
+    perform_stress_test(8, 30, 0.05);
+}
+
+#[test]
+fn stress_test_9_nodes() {
+    perform_stress_test(9, 20, 0.05);
+}
+
+fn perform_stress_test(node_count: u16, ops_per_node: u16, packet_loss: f32) {
     let mut consistency_checker = StabilityChecker::new();
-    let communicators =
-        DirectCommunicators::with_characteristics(0.1, rand_distr::Normal::new(5.0, 3.0).unwrap());
+    let communicators = DirectCommunicators::with_characteristics(
+        packet_loss,
+        rand_distr::Normal::new(5.0, 3.0).unwrap(),
+    );
 
-    let node_count = 5;
-    let ops_per_node = 70;
     let target =
         f64::from(node_count) * f64::from(ops_per_node) * (f64::from(ops_per_node) + 1.0) / 2.0;
 
