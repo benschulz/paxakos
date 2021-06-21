@@ -466,8 +466,8 @@ where
                     }
                 }
 
-                Ok(Vote::Abstained(justification)) => {
-                    abstentions.push(justification);
+                Ok(Vote::Abstained(abstention)) => {
+                    abstentions.push(abstention);
                 }
 
                 Ok(Vote::Rejected(rejection)) => {

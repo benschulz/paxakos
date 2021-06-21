@@ -2,13 +2,13 @@ use crate::node::{self, CoordNumOf, NodeInfo, RoundNumOf, StateOf};
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf, State};
 use crate::{CoordNum, RoundNum};
 
-pub type JustificationOf<V> = <V as Voter>::Justification;
+pub type AbstentionOf<V> = <V as Voter>::Abstention;
 
 pub trait Voter: Send + 'static {
     type State: State;
     type RoundNum: RoundNum;
     type CoordNum: CoordNum;
-    type Justification: std::fmt::Debug + Send + Sync;
+    type Abstention: std::fmt::Debug + Send + Sync;
 
     /// *Careful*: `state` is the current applied state and independent of
     /// `round_num`.
@@ -18,7 +18,7 @@ pub trait Voter: Send + 'static {
         coord_num: Self::CoordNum,
         candidate: Option<&NodeOf<Self::State>>,
         state: Option<&Self::State>,
-    ) -> Decision<Self::Justification>;
+    ) -> Decision<Self::Abstention>;
 
     #[allow(unused_variables)]
     fn observe_accept(
@@ -47,28 +47,28 @@ pub enum Decision<J> {
 }
 
 pub type IndiscriminateVoterFor<N> =
-    IndiscriminateVoter<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>, node::JustificationOf<N>>;
+    IndiscriminateVoter<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>, node::AbstentionOf<N>>;
 
 #[derive(Default)]
-pub struct IndiscriminateVoter<S, R, C, J>(std::marker::PhantomData<(S, R, C, J)>);
+pub struct IndiscriminateVoter<S, R, C, A>(std::marker::PhantomData<(S, R, C, A)>);
 
-impl<S, R, C, J> IndiscriminateVoter<S, R, C, J> {
+impl<S, R, C, A> IndiscriminateVoter<S, R, C, A> {
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
     }
 }
 
-impl<S, R, C, J> Voter for IndiscriminateVoter<S, R, C, J>
+impl<S, R, C, A> Voter for IndiscriminateVoter<S, R, C, A>
 where
     S: State,
     R: RoundNum,
     C: CoordNum,
-    J: std::fmt::Debug + Send + Sync + 'static,
+    A: std::fmt::Debug + Send + Sync + 'static,
 {
     type State = S;
     type RoundNum = R;
     type CoordNum = C;
-    type Justification = J;
+    type Abstention = A;
 
     fn contemplate(
         &self,
@@ -76,7 +76,7 @@ where
         _coord_num: Self::CoordNum,
         _candidate: Option<&NodeOf<Self::State>>,
         _state: Option<&Self::State>,
-    ) -> Decision<Self::Justification> {
+    ) -> Decision<Self::Abstention> {
         Decision::Vote
     }
 }
@@ -109,7 +109,7 @@ where
     type State = S;
     type RoundNum = R;
     type CoordNum = C;
-    type Justification = std::time::Duration;
+    type Abstention = std::time::Duration;
 
     fn contemplate(
         &self,
@@ -117,7 +117,7 @@ where
         _coord_num: Self::CoordNum,
         candidate: Option<&NodeOf<Self::State>>,
         _state: Option<&Self::State>,
-    ) -> Decision<Self::Justification> {
+    ) -> Decision<Self::Abstention> {
         if candidate.map(|c| c.id()) == self.last_commit.map(|c| c.0) {
             Decision::Vote
         } else if let Some((_, t)) = self.last_commit {

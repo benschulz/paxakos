@@ -40,7 +40,7 @@ pub type CommunicatorOf<N> = <N as Node>::Communicator;
 pub type RoundNumOf<N> = communicator::RoundNumOf<CommunicatorOf<N>>;
 pub type CoordNumOf<N> = communicator::CoordNumOf<CommunicatorOf<N>>;
 
-pub type JustificationOf<N> = communicator::JustificationOf<CommunicatorOf<N>>;
+pub type AbstentionOf<N> = communicator::AbstentionOf<CommunicatorOf<N>>;
 pub type LogEntryOf<N> = state::LogEntryOf<StateOf<N>>;
 pub type LogEntryIdOf<N> = state::LogEntryIdOf<StateOf<N>>;
 pub type NodeOf<N> = state::NodeOf<StateOf<N>>;

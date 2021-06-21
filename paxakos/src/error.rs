@@ -3,7 +3,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::communicator::{Communicator, CoordNumOf, JustificationOf, LogEntryOf};
+use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, LogEntryOf};
 use crate::state::{LogEntryIdOf, State};
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -89,7 +89,7 @@ pub enum ReadStaleError {
 #[derive(Error)]
 pub enum PrepareError<C: Communicator> {
     #[error("promise war deliberately withheld")]
-    Abstained(JustificationOf<C>),
+    Abstained(AbstentionOf<C>),
 
     #[error("conflicting promise")]
     Conflict(CoordNumOf<C>),
@@ -107,9 +107,9 @@ pub enum PrepareError<C: Communicator> {
 impl<C: Communicator> std::fmt::Debug for PrepareError<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PrepareError::Abstained(justification) => f
+            PrepareError::Abstained(abstention) => f
                 .debug_tuple("PrepareError::Abstained")
-                .field(justification)
+                .field(abstention)
                 .finish(),
             PrepareError::Conflict(coord_num) => f
                 .debug_tuple("PrepareError::Conflict")

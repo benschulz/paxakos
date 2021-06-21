@@ -8,7 +8,7 @@ use crate::append::{AppendArgs, DoNotRetry, Importance, Peeryness};
 use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
-use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, EventOf, JustificationOf};
+use crate::node::{AbstentionOf, AppendResultFor, CommunicatorOf, CoordNumOf, EventOf};
 use crate::node::{NodeIdOf, NodeStatus, Participation, RoundNumOf, Snapshot};
 use crate::node::{SnapshotFor, StateOf};
 use crate::voting::Voter;
@@ -111,7 +111,7 @@ where
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
         CoordNum = CoordNumOf<N>,
-        Justification = JustificationOf<N>,
+        Abstention = AbstentionOf<N>,
     >,
 {
     type Node = N;

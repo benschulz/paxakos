@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use num_traits::{Bounded, Zero};
 use thiserror::Error;
 
-use crate::communicator::{Communicator, ErrorOf, JustificationOf, RoundNumOf};
+use crate::communicator::{AbstentionOf, Communicator, ErrorOf, RoundNumOf};
 use crate::error::BoxError;
 
 pub struct AppendArgs<C: Communicator> {
@@ -89,7 +89,7 @@ pub enum AppendError<C: Communicator> {
     /// Failed in achieving a quorum.
     #[error("node could not achieve a quorum")]
     NoQuorum {
-        abstentions: Vec<JustificationOf<C>>,
+        abstentions: Vec<AbstentionOf<C>>,
         communication_errors: Vec<ErrorOf<C>>,
     },
 

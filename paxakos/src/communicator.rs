@@ -7,9 +7,9 @@ use crate::state::State;
 use crate::{AcceptError, CommitError, CoordNum, NodeInfo};
 use crate::{PrepareError, Promise, Rejection, RoundNum};
 
+pub type AbstentionOf<C> = <C as Communicator>::Abstention;
 pub type CoordNumOf<C> = <C as Communicator>::CoordNum;
 pub type ErrorOf<C> = <C as Communicator>::Error;
-pub type JustificationOf<C> = <C as Communicator>::Justification;
 pub type LogEntryOf<C> = <C as Communicator>::LogEntry;
 pub type LogEntryIdOf<C> = <LogEntryOf<C> as LogEntry>::Id;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
@@ -39,7 +39,7 @@ pub trait Communicator: Sized + 'static {
     type LogEntry: LogEntry;
 
     type Error: std::fmt::Debug + Send + Sync + 'static;
-    type Justification: std::fmt::Debug + Send + Sync + 'static;
+    type Abstention: std::fmt::Debug + Send + Sync + 'static;
 
     type SendPrepare: Future<Output = Result<Vote<Self>, Self::Error>>;
     type SendProposal: Future<Output = Result<Acceptance<Self>, Self::Error>>;
@@ -82,7 +82,7 @@ pub trait Communicator: Sized + 'static {
 pub enum Vote<C: Communicator> {
     Given(Promise<C>),
     Rejected(Rejection<C>),
-    Abstained(JustificationOf<C>),
+    Abstained(AbstentionOf<C>),
 }
 
 impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for Vote<C> {

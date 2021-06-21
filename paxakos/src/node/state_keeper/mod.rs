@@ -19,7 +19,7 @@ use num_traits::{Bounded, One, Zero};
 use pin_project::pin_project;
 use tracing::{debug, info};
 
-use crate::communicator::{Communicator, CoordNumOf, JustificationOf, LogEntryOf, RoundNumOf};
+use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, LogEntryOf, RoundNumOf};
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError, SpawnError};
 use crate::event::{Event, ShutdownEvent};
@@ -82,7 +82,7 @@ where
         State = S,
         RoundNum = RoundNumOf<C>,
         CoordNum = CoordNumOf<C>,
-        Justification = JustificationOf<C>,
+        Abstention = AbstentionOf<C>,
     >,
 {
     context: ContextOf<S>,
@@ -175,7 +175,7 @@ where
         State = S,
         RoundNum = RoundNumOf<C>,
         CoordNum = CoordNumOf<C>,
-        Justification = JustificationOf<C>,
+        Abstention = AbstentionOf<C>,
     >,
 {
     pub async fn spawn(

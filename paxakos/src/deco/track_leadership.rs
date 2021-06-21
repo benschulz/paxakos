@@ -10,7 +10,7 @@ use crate::applicable::ApplicableTo;
 use crate::communicator::Communicator;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
-use crate::node::{AppendResultFor, CommunicatorOf, CoordNumOf, JustificationOf};
+use crate::node::{AbstentionOf, AppendResultFor, CommunicatorOf, CoordNumOf};
 use crate::node::{Node, NodeIdOf, NodeInfo, NodeKernel, NodeStatus, Participation};
 use crate::node::{RoundNumOf, Snapshot, SnapshotFor, StateOf};
 use crate::state::State;
@@ -52,7 +52,7 @@ where
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
         CoordNum = CoordNumOf<N>,
-        Justification = JustificationOf<N>,
+        Abstention = AbstentionOf<N>,
     >,
 {
     type Node = N;
