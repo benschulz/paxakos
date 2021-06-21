@@ -18,7 +18,7 @@ use crate::applicable::{ApplicableTo, ProjectionOf};
 use crate::communicator::{Acceptance, Communicator, CoordNumOf, ErrorOf};
 use crate::communicator::{RoundNumOf, Vote};
 use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
-use crate::{LogEntry, Promise, Rejection, State};
+use crate::{Conflict, LogEntry, Promise, State};
 
 use super::commits::{Commit, Commits};
 use super::state_keeper::StateKeeperHandle;
@@ -318,12 +318,12 @@ where
                         .collect::<FuturesUnordered<_>>();
 
                     while let Some(response) = pending_responses.next().await {
-                        if let Ok(Vote::Rejected(rejection)) = response {
+                        if let Ok(Vote::Conflicted(rejection)) = response {
                             self.state_keeper
                                 .observe_coord_num(rejection.coord_num())
                                 .await?;
 
-                            if let Rejection::Converged {
+                            if let Conflict::Converged {
                                 log_entry: Some((coord_num, entry)),
                                 ..
                             } = &rejection
@@ -362,7 +362,7 @@ where
             .map(|(_node, fut)| fut.map(|x| x));
 
         let promise_or_rejection = self
-            .await_promise_quorum_or_first_rejection(
+            .await_promise_quorum_or_first_conflict(
                 round_num,
                 quorum_prime,
                 pending_responses,
@@ -404,12 +404,12 @@ where
                 Ok(converged_log_entry)
             }
 
-            Vote::Rejected(rejection) => {
+            Vote::Conflicted(rejection) => {
                 self.state_keeper
                     .observe_coord_num(rejection.coord_num())
                     .await?;
 
-                if let Rejection::Converged {
+                if let Conflict::Converged {
                     log_entry: Some((coord_num, entry)),
                     ..
                 } = rejection
@@ -429,7 +429,7 @@ where
         }
     }
 
-    async fn await_promise_quorum_or_first_rejection(
+    async fn await_promise_quorum_or_first_conflict(
         &self,
         round_num: RoundNumOf<C>,
         quorum: usize,
@@ -470,12 +470,12 @@ where
                     abstentions.push(abstention);
                 }
 
-                Ok(Vote::Rejected(rejection)) => {
+                Ok(Vote::Conflicted(rejection)) => {
                     self.state_keeper
                         .observe_coord_num(rejection.coord_num())
                         .await?;
 
-                    if let Rejection::Converged {
+                    if let Conflict::Converged {
                         log_entry: Some((coord_num, entry)),
                         ..
                     } = &rejection
@@ -485,7 +485,7 @@ where
                             .await?;
                     }
 
-                    return Ok(Vote::Rejected(rejection));
+                    return Ok(Vote::Conflicted(rejection));
                 }
 
                 Ok(Vote::Given(promise)) => {
@@ -587,7 +587,7 @@ where
                         return Ok((accepted, rejected_or_failed, pending_responses));
                     }
                 }
-                Ok(Acceptance::Rejected(Rejection::Converged {
+                Ok(Acceptance::Conflicted(Conflict::Converged {
                     log_entry: Some((coord_num, entry)),
                     ..
                 })) => {
@@ -602,13 +602,13 @@ where
                         Err(err) => {
                             communication_errors.push(err);
                         }
-                        Ok(Acceptance::Rejected(Rejection::Conflict { coord_num })) => {
+                        Ok(Acceptance::Conflicted(Conflict::Supplanted { coord_num })) => {
                             conflict = conflict
                                 .map(|c| std::cmp::max(c, coord_num))
                                 .or(Some(coord_num));
                         }
                         Ok(Acceptance::Given)
-                        | Ok(Acceptance::Rejected(Rejection::Converged { .. })) => {
+                        | Ok(Acceptance::Conflicted(Conflict::Converged { .. })) => {
                             // covered in outer match
                             unreachable!()
                         }

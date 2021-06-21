@@ -982,7 +982,7 @@ where
         // constraint here, these attempts would fail. That would prevent the node from
         // making progress and thereby break liveness.
         if coord_num < strongest_promise {
-            Err(PrepareError::Conflict(strongest_promise))
+            Err(PrepareError::Supplanted(strongest_promise))
         } else {
             let voting_decision = self.voter.contemplate(
                 round_num,
@@ -1063,7 +1063,7 @@ where
                 overridable_lookup(&self.promises, round_num, "relevant promise");
 
             if relevant_promise > coord_num {
-                Err(AcceptError::Conflict(relevant_promise))
+                Err(AcceptError::Supplanted(relevant_promise))
             } else {
                 self.accept_entries(
                     coord_num,

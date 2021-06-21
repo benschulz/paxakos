@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::log::LogEntry;
 use crate::state::State;
 use crate::{AcceptError, CommitError, CoordNum, NodeInfo};
-use crate::{PrepareError, Promise, Rejection, RoundNum};
+use crate::{Conflict, PrepareError, Promise, RoundNum};
 
 pub type AbstentionOf<C> = <C as Communicator>::Abstention;
 pub type CoordNumOf<C> = <C as Communicator>::CoordNum;
@@ -81,7 +81,7 @@ pub trait Communicator: Sized + 'static {
 #[derive(Debug)]
 pub enum Vote<C: Communicator> {
     Given(Promise<C>),
-    Rejected(Rejection<C>),
+    Conflicted(Conflict<C>),
     Abstained(AbstentionOf<C>),
 }
 
@@ -91,17 +91,17 @@ impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for Vote<C> {
     fn try_from(result: Result<Promise<C>, PrepareError<C>>) -> Result<Self, Self::Error> {
         result
             .map(Vote::Given)
-            .or_else(|err| err.try_into().map(Vote::Rejected))
+            .or_else(|err| err.try_into().map(Vote::Conflicted))
     }
 }
 
-impl<C: Communicator> TryFrom<PrepareError<C>> for Rejection<C> {
+impl<C: Communicator> TryFrom<PrepareError<C>> for Conflict<C> {
     type Error = PrepareError<C>;
 
     fn try_from(error: PrepareError<C>) -> Result<Self, Self::Error> {
         match error {
-            PrepareError::Conflict(coord_num) => Ok(Rejection::Conflict { coord_num }),
-            PrepareError::Converged(coord_num, log_entry) => Ok(Rejection::Converged {
+            PrepareError::Supplanted(coord_num) => Ok(Conflict::Supplanted { coord_num }),
+            PrepareError::Converged(coord_num, log_entry) => Ok(Conflict::Converged {
                 coord_num,
                 log_entry,
             }),
@@ -110,11 +110,11 @@ impl<C: Communicator> TryFrom<PrepareError<C>> for Rejection<C> {
     }
 }
 
-impl<C: Communicator> From<Result<Promise<C>, Rejection<C>>> for Vote<C> {
-    fn from(result: Result<Promise<C>, Rejection<C>>) -> Self {
+impl<C: Communicator> From<Result<Promise<C>, Conflict<C>>> for Vote<C> {
+    fn from(result: Result<Promise<C>, Conflict<C>>) -> Self {
         match result {
             Ok(promise) => Vote::Given(promise),
-            Err(rejection) => Vote::Rejected(rejection),
+            Err(rejection) => Vote::Conflicted(rejection),
         }
     }
 }
@@ -122,7 +122,7 @@ impl<C: Communicator> From<Result<Promise<C>, Rejection<C>>> for Vote<C> {
 #[derive(Clone, Debug)]
 pub enum Acceptance<C: Communicator> {
     Given,
-    Rejected(Rejection<C>),
+    Conflicted(Conflict<C>),
 }
 
 impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>> for Acceptance<C> {
@@ -131,17 +131,17 @@ impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>> for Acceptance<C> {
     fn try_from(result: Result<(), AcceptError<C>>) -> Result<Self, Self::Error> {
         result
             .map(|_| Acceptance::Given)
-            .or_else(|err| err.try_into().map(Acceptance::Rejected))
+            .or_else(|err| err.try_into().map(Acceptance::Conflicted))
     }
 }
 
-impl<C: Communicator> TryFrom<AcceptError<C>> for Rejection<C> {
+impl<C: Communicator> TryFrom<AcceptError<C>> for Conflict<C> {
     type Error = AcceptError<C>;
 
     fn try_from(error: AcceptError<C>) -> Result<Self, Self::Error> {
         match error {
-            AcceptError::Conflict(coord_num) => Ok(Rejection::Conflict { coord_num }),
-            AcceptError::Converged(coord_num, log_entry) => Ok(Rejection::Converged {
+            AcceptError::Supplanted(coord_num) => Ok(Conflict::Supplanted { coord_num }),
+            AcceptError::Converged(coord_num, log_entry) => Ok(Conflict::Converged {
                 coord_num,
                 log_entry,
             }),
@@ -150,11 +150,11 @@ impl<C: Communicator> TryFrom<AcceptError<C>> for Rejection<C> {
     }
 }
 
-impl<C: Communicator> From<Result<(), Rejection<C>>> for Acceptance<C> {
-    fn from(result: Result<(), Rejection<C>>) -> Self {
+impl<C: Communicator> From<Result<(), Conflict<C>>> for Acceptance<C> {
+    fn from(result: Result<(), Conflict<C>>) -> Self {
         match result {
             Ok(_) => Acceptance::Given,
-            Err(rejection) => Acceptance::Rejected(rejection),
+            Err(rejection) => Acceptance::Conflicted(rejection),
         }
     }
 }

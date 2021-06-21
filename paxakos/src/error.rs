@@ -92,7 +92,7 @@ pub enum PrepareError<C: Communicator> {
     Abstained(AbstentionOf<C>),
 
     #[error("conflicting promise")]
-    Conflict(CoordNumOf<C>),
+    Supplanted(CoordNumOf<C>),
 
     #[error("round already converged")]
     Converged(CoordNumOf<C>, Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>),
@@ -111,7 +111,7 @@ impl<C: Communicator> std::fmt::Debug for PrepareError<C> {
                 .debug_tuple("PrepareError::Abstained")
                 .field(abstention)
                 .finish(),
-            PrepareError::Conflict(coord_num) => f
+            PrepareError::Supplanted(coord_num) => f
                 .debug_tuple("PrepareError::Conflict")
                 .field(coord_num)
                 .finish(),
@@ -133,7 +133,7 @@ impl<C: Communicator> From<PrepareError<C>> for AppendError<C> {
                 abstentions: vec![reason],
                 communication_errors: Vec::new(),
             },
-            PrepareError::Conflict(_) => AppendError::Lost,
+            PrepareError::Supplanted(_) => AppendError::Lost,
             PrepareError::Converged(_, _) => AppendError::Converged,
             PrepareError::Passive => AppendError::Passive,
             PrepareError::ShutDown => AppendError::ShutDown,
@@ -145,7 +145,7 @@ impl<C: Communicator> From<PrepareError<C>> for AppendError<C> {
 #[derive(Error)]
 pub enum AcceptError<C: Communicator> {
     #[error("conflicting promise")]
-    Conflict(CoordNumOf<C>),
+    Supplanted(CoordNumOf<C>),
 
     #[error("round already converged")]
     Converged(CoordNumOf<C>, Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>),
@@ -160,7 +160,7 @@ pub enum AcceptError<C: Communicator> {
 impl<C: Communicator> std::fmt::Debug for AcceptError<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AcceptError::Conflict(coord_num) => f
+            AcceptError::Supplanted(coord_num) => f
                 .debug_tuple("AcceptError::Conflict")
                 .field(coord_num)
                 .finish(),
@@ -178,7 +178,7 @@ impl<C: Communicator> std::fmt::Debug for AcceptError<C> {
 impl<C: Communicator> From<AcceptError<C>> for AppendError<C> {
     fn from(e: AcceptError<C>) -> Self {
         match e {
-            AcceptError::Conflict(_) => AppendError::Lost,
+            AcceptError::Supplanted(_) => AppendError::Lost,
             AcceptError::Converged(_, _) => AppendError::Converged,
             AcceptError::Passive => AppendError::Passive,
             AcceptError::ShutDown => AppendError::ShutDown,

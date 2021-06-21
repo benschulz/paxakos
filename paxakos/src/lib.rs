@@ -620,7 +620,7 @@ impl<C: Communicator> Promise<C> {
     }
 }
 
-/// Rejection of a prepare request or a proposal.
+/// Conflict to a prepare request or a proposal.
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -628,8 +628,8 @@ impl<C: Communicator> Promise<C> {
     serialize = "C::LogEntry: Serialize",
     deserialize = "C::LogEntry: Deserialize<'de>"
 ))]
-pub enum Rejection<C: Communicator> {
-    Conflict {
+pub enum Conflict<C: Communicator> {
+    Supplanted {
         coord_num: CoordNumOf<C>,
     },
     Converged {
@@ -638,11 +638,11 @@ pub enum Rejection<C: Communicator> {
     },
 }
 
-impl<C: Communicator> Rejection<C> {
+impl<C: Communicator> Conflict<C> {
     pub(crate) fn coord_num(&self) -> CoordNumOf<C> {
         match *self {
-            Rejection::Conflict { coord_num } => coord_num,
-            Rejection::Converged { coord_num, .. } => coord_num,
+            Conflict::Supplanted { coord_num } => coord_num,
+            Conflict::Converged { coord_num, .. } => coord_num,
         }
     }
 }
