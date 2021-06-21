@@ -34,6 +34,7 @@ type PlaygroundNodeHandle = paxakos::NodeHandle<
     PlaygroundState,
     DirectCommunicator<PlaygroundState, R, C, std::time::Duration, !>,
 >;
+type Listener = mpsc::Sender<Cursor<Vec<u8>>>;
 
 struct Reaper {
     clusters: Arc<Mutex<HashMap<String, Cluster>>>,
@@ -81,7 +82,7 @@ struct Cluster {
     args: PostClusterArguments,
     nodes: Vec<PrototypingNode>,
     communicators: DirectCommunicators<PlaygroundState, R, C, std::time::Duration, !>,
-    listeners: Arc<Mutex<Vec<mpsc::Sender<Cursor<Vec<u8>>>>>>,
+    listeners: Arc<Mutex<Vec<Listener>>>,
     node_terminators: HashMap<usize, oneshot::Sender<Termination>>,
     node_handles: HashMap<usize, PlaygroundNodeHandle>,
     snapshots: HashMap<String, PlaygroundSnapshot>,
@@ -265,12 +266,13 @@ async fn post_cluster_start(clusters_state: &rocket::State<Clusters>, cluster_id
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn spawn_node(
     clusters: Arc<Mutex<HashMap<String, Cluster>>>,
     cluster_id: String,
     n: PrototypingNode,
     communicators: DirectCommunicators<PlaygroundState, R, C, std::time::Duration, !>,
-    listeners: Arc<Mutex<Vec<mpsc::Sender<Cursor<Vec<u8>>>>>>,
+    listeners: Arc<Mutex<Vec<Listener>>>,
     mut terminator: oneshot::Receiver<Termination>,
     snapshot: Snapshot<PlaygroundState, R, C>,
     participation: Participation<R>,
@@ -484,16 +486,13 @@ async fn spawn_node(
 
 struct HeartbeatConfig<N, I> {
     runtime: rocket::tokio::runtime::Handle,
-    listeners: Arc<Mutex<Vec<mpsc::Sender<Cursor<Vec<u8>>>>>>,
+    listeners: Arc<Mutex<Vec<Listener>>>,
 
     _p: std::marker::PhantomData<(N, I)>,
 }
 
 impl<N, I> HeartbeatConfig<N, I> {
-    fn new(
-        runtime: rocket::tokio::runtime::Handle,
-        listeners: Arc<Mutex<Vec<mpsc::Sender<Cursor<Vec<u8>>>>>>,
-    ) -> Self {
+    fn new(runtime: rocket::tokio::runtime::Handle, listeners: Arc<Mutex<Vec<Listener>>>) -> Self {
         Self {
             runtime,
             listeners,
@@ -958,10 +957,7 @@ async fn get_events(
     )
 }
 
-async fn emit_event<E: serde::Serialize>(
-    listeners: &Mutex<Vec<mpsc::Sender<Cursor<Vec<u8>>>>>,
-    event: E,
-) {
+async fn emit_event<E: serde::Serialize>(listeners: &Mutex<Vec<Listener>>, event: E) {
     let event = serde_json::to_string(&event).unwrap();
     let event = format!("data: {}\n\n", event);
     let event = event.into_bytes();
