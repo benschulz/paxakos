@@ -4,6 +4,7 @@ mod calc_app;
 
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
+use paxakos::invocation::Invocation;
 use uuid::Uuid;
 
 use paxakos::append::AppendArgs;
@@ -15,6 +16,7 @@ use paxakos::Event;
 use paxakos::Node;
 use paxakos::NodeInfo;
 
+use calc_app::CalcInvocation;
 use calc_app::CalcOp;
 use calc_app::CalcState;
 
@@ -101,13 +103,12 @@ fn multiple_concurrent_appends() {
     assert!((target - state.value()).abs() < f64::EPSILON);
 }
 
-fn setup_node() -> paxakos::NodeKernel<CalcState, DirectCommunicator<CalcState, u64, u32, !, (), !>>
-{
+fn setup_node() -> paxakos::NodeKernel<CalcInvocation, DirectCommunicator<CalcInvocation>> {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
+    let communicators = DirectCommunicators::<CalcInvocation>::new();
 
     let (_, node) = futures::executor::block_on(
-        paxakos::node_builder()
+        CalcInvocation::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))

@@ -12,7 +12,7 @@ use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 
 use crate::applicable::ProjectedOf;
-use crate::communicator::Communicator;
+use crate::invocation::Invocation;
 use crate::node::StateOf;
 
 pub type Result<T> = std::result::Result<T, LockError>;
@@ -104,11 +104,8 @@ pub enum LockError {
     Generic,
 }
 
-impl<C> From<crate::append::AppendError<C>> for LockError
-where
-    C: Communicator,
-{
-    fn from(_: crate::append::AppendError<C>) -> Self {
+impl<I: Invocation> From<crate::append::AppendError<I>> for LockError {
+    fn from(_: crate::append::AppendError<I>) -> Self {
         LockError::Generic
     }
 }

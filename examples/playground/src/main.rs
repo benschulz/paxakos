@@ -19,9 +19,10 @@ use paxakos::deco::FillGapsBuilderExt;
 use paxakos::deco::LeadershipAwareNode;
 use paxakos::deco::SendHeartbeatsBuilderExt;
 use paxakos::deco::TrackLeadershipBuilderExt;
+use paxakos::invocation::Invocation;
 use paxakos::node::Participation;
 use paxakos::node::Snapshot;
-use paxakos::prototyping::DirectCommunicator;
+use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::DirectCommunicatorPayload;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
@@ -42,10 +43,8 @@ use uuid::Uuid;
 
 type R = u32;
 type C = u32;
-type PlaygroundNodeHandle = paxakos::NodeHandle<
-    PlaygroundState,
-    DirectCommunicator<PlaygroundState, R, C, std::time::Duration, (), !>,
->;
+type PlaygroundCommunicators = DirectCommunicators<PlaygroundInvocation>;
+type PlaygroundNodeHandle = paxakos::NodeHandle<PlaygroundInvocation>;
 type Listener = mpsc::Sender<Cursor<Vec<u8>>>;
 
 struct Reaper {
@@ -93,7 +92,7 @@ struct Clusters(Arc<Mutex<HashMap<String, Cluster>>>);
 struct Cluster {
     args: PostClusterArguments,
     nodes: Vec<PrototypingNode>,
-    communicators: DirectCommunicators<PlaygroundState, R, C, std::time::Duration, (), !>,
+    communicators: PlaygroundCommunicators,
     listeners: Arc<Mutex<Vec<Listener>>>,
     node_terminators: HashMap<usize, oneshot::Sender<Termination>>,
     node_handles: HashMap<usize, PlaygroundNodeHandle>,
@@ -283,7 +282,7 @@ async fn spawn_node(
     clusters: Arc<Mutex<HashMap<String, Cluster>>>,
     cluster_id: String,
     n: PrototypingNode,
-    communicators: DirectCommunicators<PlaygroundState, R, C, std::time::Duration, (), !>,
+    communicators: PlaygroundCommunicators,
     listeners: Arc<Mutex<Vec<Listener>>>,
     mut terminator: oneshot::Receiver<Termination>,
     snapshot: Snapshot<PlaygroundState, R, C>,
@@ -302,7 +301,7 @@ async fn spawn_node(
 
     std::thread::spawn(move || {
         let (handler, mut node) = futures::executor::block_on(
-            paxakos::node_builder()
+            PlaygroundInvocation::node_builder()
                 .for_node(n.id())
                 .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(n.id()))
@@ -516,7 +515,7 @@ impl<N, I> HeartbeatConfig<N, I> {
 
 impl<N, I> paxakos::deco::send_heartbeats::Config for HeartbeatConfig<N, I>
 where
-    N: LeadershipAwareNode<I, State = PlaygroundState>,
+    N: LeadershipAwareNode<I, Invocation = PlaygroundInvocation>,
 {
     type Node = N;
     type Applicable = PlaygroundLogEntry;
@@ -945,7 +944,7 @@ async fn get_events(
     clusters: &rocket::State<Clusters>,
     cluster_id: String,
 ) -> rocket::response::content::Custom<
-    rocket::response::stream::ReaderStream<rocket::response::stream::Once<impl AsyncRead>>,
+    rocket::response::stream::ReaderStream<rocket::response::stream::One<impl AsyncRead>>,
 > {
     let mut clusters = clusters.inner().0.lock().await;
 
@@ -979,6 +978,21 @@ async fn emit_event<E: serde::Serialize>(listeners: &Mutex<Vec<Listener>>, event
     for listener in listeners.iter_mut().filter(|l| !l.is_closed()) {
         let _ = listener.send(Cursor::new(event.clone())).await;
     }
+}
+
+pub struct PlaygroundInvocation;
+
+impl Invocation for PlaygroundInvocation {
+    type RoundNum = u32;
+    type CoordNum = u32;
+
+    type State = PlaygroundState;
+
+    type Yea = Duration;
+    type Nay = ();
+    type Abstain = Duration;
+
+    type CommunicationError = DirectCommunicatorError;
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

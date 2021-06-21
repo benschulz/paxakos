@@ -2,43 +2,33 @@ use futures::future::FutureExt;
 use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 
-use crate::communicator::Communicator;
-use crate::event::ShutdownEventFor;
-use crate::state::State;
+use crate::event::ShutdownEvent;
+use crate::invocation::Invocation;
 
 use super::commits::Commits;
 use super::state_keeper::EventStream;
 
 /// A `Node` that is being [`shut_down`][crate::Node::shut_down].
 pub trait Shutdown {
-    type State: State;
-    type Communicator: Communicator;
+    type Invocation: Invocation;
 
     /// Polls the node's event stream, driving the shutdown to conclusion.
     fn poll_shutdown(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<ShutdownEventFor<Self>>;
+    ) -> std::task::Poll<ShutdownEvent<Self::Invocation>>;
 }
 
-pub struct DefaultShutdown<S, C>
-where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
-{
+pub struct DefaultShutdown<I: Invocation> {
     trigger: LocalBoxFuture<'static, ()>,
-    events: EventStream<S, C>,
+    events: EventStream<I>,
     commits: Commits,
 }
 
-impl<S, C> DefaultShutdown<S, C>
-where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
-{
+impl<I: Invocation> DefaultShutdown<I> {
     pub(crate) fn new(
         trigger: LocalBoxFuture<'static, ()>,
-        events: EventStream<S, C>,
+        events: EventStream<I>,
         commits: Commits,
     ) -> Self {
         Self {
@@ -49,18 +39,13 @@ where
     }
 }
 
-impl<S, C> super::Shutdown for DefaultShutdown<S, C>
-where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
-{
-    type State = S;
-    type Communicator = C;
+impl<I: Invocation> super::Shutdown for DefaultShutdown<I> {
+    type Invocation = I;
 
     fn poll_shutdown(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<ShutdownEventFor<Self>> {
+    ) -> std::task::Poll<ShutdownEvent<Self::Invocation>> {
         let _ = self.trigger.poll_unpin(cx);
 
         while let std::task::Poll::Ready(Some(())) = self.commits.poll_next(cx) {

@@ -3,52 +3,55 @@ use futures::future::LocalBoxFuture;
 use futures::future::TryFutureExt;
 
 use crate::communicator::Communicator;
-use crate::communicator::CoordNumOf;
-use crate::communicator::RoundNumOf;
 use crate::deco::Decoration;
 use crate::error::SpawnError;
+use crate::invocation::AbstainOf;
+use crate::invocation::CommunicationErrorOf;
+use crate::invocation::CoordNumOf;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryOf;
+use crate::invocation::NayOf;
+use crate::invocation::NodeIdOf;
+use crate::invocation::NodeOf;
+use crate::invocation::RoundNumOf;
+use crate::invocation::SnapshotFor;
+use crate::invocation::StateOf;
+use crate::invocation::YeaOf;
 use crate::log::LogKeeping;
 use crate::node;
-use crate::node::AbstainOf;
-use crate::node::NayOf;
 use crate::node::Participation;
-use crate::node::RequestHandlerFor;
-use crate::state::ContextOf;
-use crate::state::NodeIdOf;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::voting::IndiscriminateVoter;
 use crate::voting::IndiscriminateVoterFor;
 use crate::voting::Voter;
-use crate::Identifier;
 use crate::Node;
 use crate::State;
 
 use super::snapshot::Snapshot;
-use super::snapshot::SnapshotFor;
 use super::CommunicatorOf;
+use super::InvocationOf;
 use super::NodeKernel;
-use super::StateOf;
-use super::YeaOf;
+use super::RequestHandlerFor;
 
 #[derive(Default)]
-pub struct NodeBuilderBlank;
+pub struct NodeBuilderBlank<I>(std::marker::PhantomData<I>);
 
-impl NodeBuilderBlank {
+impl<I: Invocation> NodeBuilderBlank<I> {
     pub fn new() -> Self {
-        Self
+        Self(std::marker::PhantomData)
     }
 
-    pub fn for_node<I: Identifier>(self, node_id: I) -> NodeBuilderWithNodeId<I> {
+    pub fn for_node(self, node_id: NodeIdOf<I>) -> NodeBuilderWithNodeId<I> {
         NodeBuilderWithNodeId { node_id }
     }
 }
 
-pub struct NodeBuilderWithNodeId<I: Identifier> {
-    node_id: I,
+pub struct NodeBuilderWithNodeId<I: Invocation> {
+    node_id: NodeIdOf<I>,
 }
 
-impl<I: Identifier> NodeBuilderWithNodeId<I> {
+impl<I: Invocation> NodeBuilderWithNodeId<I> {
     pub fn working_in(
         self,
         dir: impl AsRef<std::path::Path>,
@@ -67,19 +70,27 @@ impl<I: Identifier> NodeBuilderWithNodeId<I> {
     }
 }
 
-pub struct NodeBuilderWithNodeIdAndWorkingDir<I: Identifier> {
+pub struct NodeBuilderWithNodeIdAndWorkingDir<I: Invocation> {
     working_dir: Option<std::path::PathBuf>,
-    node_id: I,
+    node_id: NodeIdOf<I>,
 }
 
-impl<I: Identifier> NodeBuilderWithNodeIdAndWorkingDir<I> {
+impl<I: Invocation> NodeBuilderWithNodeIdAndWorkingDir<I> {
     pub fn communicating_via<C>(
         self,
         communicator: C,
-    ) -> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C>
+    ) -> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<I, C>
     where
-        C: Communicator,
-        <C as Communicator>::Node: crate::NodeInfo<Id = I>,
+        C: Communicator<
+            Node = NodeOf<I>,
+            RoundNum = RoundNumOf<I>,
+            CoordNum = CoordNumOf<I>,
+            LogEntry = LogEntryOf<I>,
+            Error = CommunicationErrorOf<I>,
+            Yea = YeaOf<I>,
+            Nay = NayOf<I>,
+            Abstain = AbstainOf<I>,
+        >,
     {
         NodeBuilderWithNodeIdAndWorkingDirAndCommunicator {
             working_dir: self.working_dir,
@@ -89,31 +100,38 @@ impl<I: Identifier> NodeBuilderWithNodeIdAndWorkingDir<I> {
     }
 }
 
-pub struct NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C: Communicator> {
+pub struct NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<I: Invocation, C: Communicator> {
     working_dir: Option<std::path::PathBuf>,
-    node_id: <<C as Communicator>::Node as crate::NodeInfo>::Id,
+    node_id: NodeIdOf<I>,
     communicator: C,
 }
 
-impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
+impl<I, C> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<I, C>
+where
+    I: Invocation,
+    C: Communicator<
+        Node = NodeOf<I>,
+        RoundNum = RoundNumOf<I>,
+        CoordNum = CoordNumOf<I>,
+        LogEntry = LogEntryOf<I>,
+        Error = CommunicationErrorOf<I>,
+        Yea = YeaOf<I>,
+        Nay = NayOf<I>,
+        Abstain = AbstainOf<I>,
+    >,
+{
     /// Starts the node without any state and in passive mode.
-    pub fn without<S>(self) -> NodeBuilder<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    {
+    pub fn without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
         self.with_snapshot_and_participation(None, Participation::Passive)
     }
 
     /// Starts a new cluster with the given initial state.
     ///
     /// The round number will be [zero](num_traits::Zero).
-    pub fn with_initial_state<S>(
+    pub fn with_initial_state<S: Into<Option<StateOf<I>>>>(
         self,
-        initial_state: impl Into<Option<S>>,
-    ) -> NodeBuilder<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    {
+        initial_state: S,
+    ) -> NodeBuilder<NodeKernel<I, C>> {
         self.with_snapshot_and_participation(
             initial_state.into().map(Snapshot::initial),
             Participation::Active,
@@ -134,13 +152,10 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     /// [`Last`]: crate::event::ShutdownEvent::Last
     /// [recovering_with]:
     /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_with
-    pub fn resuming_from<S>(
+    pub fn resuming_from<S: Into<Option<SnapshotFor<I>>>>(
         self,
-        snapshot: impl Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
-    ) -> NodeBuilder<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    {
+        snapshot: S,
+    ) -> NodeBuilder<NodeKernel<I, C>> {
         self.with_snapshot_and_participation(snapshot, Participation::Active)
     }
 
@@ -148,13 +163,10 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     ///
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
-    pub fn recovering_with<S>(
+    pub fn recovering_with<S: Into<Option<SnapshotFor<I>>>>(
         self,
-        snapshot: impl Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
-    ) -> NodeBuilder<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    {
+        snapshot: S,
+    ) -> NodeBuilder<NodeKernel<I, C>> {
         self.with_snapshot_and_participation(snapshot, Participation::Passive)
     }
 
@@ -162,10 +174,7 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     ///
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
-    pub fn recovering_without<S>(self) -> NodeBuilder<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    {
+    pub fn recovering_without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
         self.with_snapshot_and_participation(None, Participation::Passive)
     }
 
@@ -183,13 +192,10 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     ///
     /// [recovering_with]:
     /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_with
-    pub fn joining_with<S>(
+    pub fn joining_with<S: Into<Option<SnapshotFor<I>>>>(
         self,
-        snapshot: impl Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
-    ) -> NodeBuilder<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    {
+        snapshot: S,
+    ) -> NodeBuilder<NodeKernel<I, C>> {
         self.with_snapshot_and_participation(snapshot, Participation::Active)
     }
 
@@ -207,23 +213,16 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     ///
     /// [recovering_without]:
     /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_without
-    pub fn joining_without<S>(self) -> NodeBuilder<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    {
+    pub fn joining_without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
         self.with_snapshot_and_participation(None, Participation::Active)
     }
 
     #[doc(hidden)]
-    pub fn with_snapshot_and_participation<S, I>(
+    pub fn with_snapshot_and_participation<S: Into<Option<SnapshotFor<I>>>>(
         self,
-        snapshot: I,
-        participation: Participation<RoundNumOf<C>>,
-    ) -> NodeBuilder<NodeKernel<S, C>>
-    where
-        S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-        I: Into<Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>>,
-    {
+        snapshot: S,
+        participation: Participation<RoundNumOf<I>>,
+    ) -> NodeBuilder<NodeKernel<I, C>> {
         if matches!(participation, Participation::PartiallyActive(_)) {
             panic!("Unsupported: {:?}", participation);
         }
@@ -246,26 +245,36 @@ impl<C: Communicator> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<C> {
     }
 }
 
-type Finisher<N> = dyn FnOnce(NodeKernel<StateOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
+type Finisher<N> =
+    dyn FnOnce(NodeKernel<InvocationOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
 
 pub struct NodeBuilder<N: Node, V = IndiscriminateVoterFor<N>> {
     working_dir: Option<std::path::PathBuf>,
-    node_id: NodeIdOf<StateOf<N>>,
+    node_id: node::NodeIdOf<N>,
     voter: V,
     communicator: CommunicatorOf<N>,
-    snapshot: Option<SnapshotFor<N>>,
+    snapshot: Option<node::SnapshotFor<N>>,
     participation: Participation<node::RoundNumOf<N>>,
     log_keeping: LogKeeping,
     finisher: Box<Finisher<N>>,
 
     #[cfg(feature = "tracer")]
-    tracer: Option<Box<dyn Tracer<CommunicatorOf<N>>>>,
+    tracer: Option<Box<dyn Tracer<InvocationOf<N>>>>,
 }
 
-impl<S, C, V> NodeBuilder<NodeKernel<S, C>, V>
+impl<I, C, V> NodeBuilder<NodeKernel<I, C>, V>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = NodeOf<I>,
+        RoundNum = RoundNumOf<I>,
+        CoordNum = CoordNumOf<I>,
+        LogEntry = LogEntryOf<I>,
+        Error = CommunicationErrorOf<I>,
+        Yea = YeaOf<I>,
+        Nay = NayOf<I>,
+        Abstain = AbstainOf<I>,
+    >,
 {
     pub fn limiting_applied_entry_logs_to(mut self, limit: usize) -> Self {
         self.log_keeping.logs_kept = limit;
@@ -282,13 +291,13 @@ where
     }
 
     #[cfg(feature = "tracer")]
-    pub fn traced_by(mut self, tracer: impl Into<Box<dyn Tracer<C>>>) -> Self {
+    pub fn traced_by<T: Into<Box<dyn Tracer<I>>>>(mut self, tracer: T) -> Self {
         self.tracer = Some(tracer.into());
 
         self
     }
 
-    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<NodeKernel<S, C>, T> {
+    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<NodeKernel<I, C>, T> {
         NodeBuilder {
             working_dir: self.working_dir,
             node_id: self.node_id,
@@ -309,17 +318,21 @@ impl<N, V> NodeBuilder<N, V>
 where
     N: Node + 'static,
     V: Voter<
-        State = StateOf<N>,
+        State = node::StateOf<N>,
         RoundNum = node::RoundNumOf<N>,
         CoordNum = node::CoordNumOf<N>,
-        Abstain = AbstainOf<N>,
-        Yea = YeaOf<N>,
-        Nay = NayOf<N>,
+        Abstain = node::AbstainOf<N>,
+        Yea = node::YeaOf<N>,
+        Nay = node::NayOf<N>,
     >,
 {
     pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V>
     where
-        D: Decoration<Decorated = N, State = StateOf<N>, Communicator = CommunicatorOf<N>>,
+        D: Decoration<
+            Decorated = N,
+            Invocation = InvocationOf<N>,
+            Communicator = CommunicatorOf<N>,
+        >,
     {
         let finisher = self.finisher;
 
@@ -340,14 +353,14 @@ where
 
     pub fn spawn(self) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>>
     where
-        StateOf<N>: State<Context = ()>,
+        node::StateOf<N>: State<Context = ()>,
     {
         self.spawn_in(())
     }
 
     pub fn spawn_in(
         self,
-        context: ContextOf<StateOf<N>>,
+        context: node::ContextOf<N>,
     ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>> {
         let finisher = self.finisher;
 

@@ -21,9 +21,11 @@ use crate::communicator::YeaOf;
 use crate::error::Disoriented;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
-use crate::state::LogEntryOf;
-use crate::state::NodeIdOf;
-use crate::state::State;
+use crate::invocation;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryOf;
+use crate::invocation::NodeIdOf;
+use crate::invocation::StateOf;
 use crate::voting::Voter;
 
 use super::commits::Commits;
@@ -31,8 +33,6 @@ use super::handle::NodeHandleRequest;
 use super::handle::NodeHandleResponse;
 use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
-use super::snapshot::Snapshot;
-use super::snapshot::SnapshotFor;
 use super::state_keeper::EventStream;
 use super::state_keeper::ProofOfLife;
 use super::state_keeper::StateKeeper;
@@ -45,37 +45,56 @@ use super::NodeHandle;
 use super::NodeStatus;
 use super::Participation;
 use super::RequestHandler;
+use super::SnapshotFor;
 
 /// The default [`Node`][crate::Node] implementation.
 // TODO a better name may be needed…
-pub struct NodeKernel<S, C>
+pub struct NodeKernel<I, C>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = invocation::NodeOf<I>,
+        RoundNum = invocation::RoundNumOf<I>,
+        CoordNum = invocation::CoordNumOf<I>,
+        LogEntry = invocation::LogEntryOf<I>,
+        Error = invocation::CommunicationErrorOf<I>,
+        Yea = invocation::YeaOf<I>,
+        Nay = invocation::NayOf<I>,
+        Abstain = invocation::AbstainOf<I>,
+    >,
 {
-    inner: Rc<NodeInner<S, C>>,
-    state_keeper: StateKeeperHandle<S, C>,
+    inner: Rc<NodeInner<I, C>>,
+    state_keeper: StateKeeperHandle<I>,
     proof_of_life: ProofOfLife,
     commits: Commits,
-    events: EventStream<S, C>,
+    events: EventStream<I>,
     status: NodeStatus,
     participation: Participation<RoundNumOf<C>>,
-    handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<S, C>>,
-    handle_recv: mpsc::Receiver<super::handle::RequestAndResponseSender<S, C>>,
-    handle_appends: FuturesUnordered<HandleAppend<S, C>>,
+    handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<I>>,
+    handle_recv: mpsc::Receiver<super::handle::RequestAndResponseSender<I>>,
+    handle_appends: FuturesUnordered<HandleAppend<I, C>>,
 }
 
-impl<S, C> Node for NodeKernel<S, C>
+impl<I, C> Node for NodeKernel<I, C>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = invocation::NodeOf<I>,
+        RoundNum = invocation::RoundNumOf<I>,
+        CoordNum = invocation::CoordNumOf<I>,
+        LogEntry = invocation::LogEntryOf<I>,
+        Error = invocation::CommunicationErrorOf<I>,
+        Yea = invocation::YeaOf<I>,
+        Nay = invocation::NayOf<I>,
+        Abstain = invocation::AbstainOf<I>,
+    >,
 {
-    type State = S;
+    type Invocation = I;
     type Communicator = C;
 
-    type Shutdown = DefaultShutdown<S, C>;
+    type Shutdown = DefaultShutdown<I>;
 
-    fn id(&self) -> NodeIdOf<S> {
+    fn id(&self) -> NodeIdOf<I> {
         self.inner.id()
     }
 
@@ -134,7 +153,7 @@ where
         result
     }
 
-    fn handle(&self) -> NodeHandle<S, C> {
+    fn handle(&self) -> NodeHandle<I> {
         NodeHandle::new(self.handle_send.clone(), self.state_keeper.clone())
     }
 
@@ -147,29 +166,29 @@ where
 
     fn affirm_snapshot(
         &self,
-        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
+        snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
         self.state_keeper.affirm_snapshot(snapshot).boxed_local()
     }
 
     fn install_snapshot(
         &self,
-        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
+        snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
         self.state_keeper.install_snapshot(snapshot).boxed_local()
     }
 
-    fn append<A: ApplicableTo<Self::State> + 'static>(
+    fn append<A: ApplicableTo<StateOf<I>> + 'static>(
         &self,
         applicable: A,
-        args: AppendArgs<C>,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError<C>>> {
+        args: AppendArgs<I>,
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError<I>>> {
         Rc::clone(&self.inner)
             .append(applicable, args)
             .boxed_local()
     }
 
-    fn read_stale(&self) -> LocalBoxFuture<'static, Result<Arc<S>, Disoriented>> {
+    fn read_stale(&self) -> LocalBoxFuture<'static, Result<Arc<StateOf<I>>, Disoriented>> {
         self.state_keeper
             .read_stale(&self.proof_of_life)
             .boxed_local()
@@ -187,19 +206,28 @@ where
     }
 }
 
-impl<S, C> NodeKernel<S, C>
+impl<I, C> NodeKernel<I, C>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = invocation::NodeOf<I>,
+        RoundNum = invocation::RoundNumOf<I>,
+        CoordNum = invocation::CoordNumOf<I>,
+        LogEntry = invocation::LogEntryOf<I>,
+        Error = invocation::CommunicationErrorOf<I>,
+        Yea = invocation::YeaOf<I>,
+        Nay = invocation::NayOf<I>,
+        Abstain = invocation::AbstainOf<I>,
+    >,
 {
     pub(crate) async fn spawn<V>(
-        id: NodeIdOf<S>,
+        id: NodeIdOf<I>,
         communicator: C,
-        args: super::SpawnArgs<S, C, V>,
-    ) -> Result<(RequestHandler<S, C>, NodeKernel<S, C>), crate::error::SpawnError>
+        args: super::SpawnArgs<I, V>,
+    ) -> Result<(RequestHandler<I>, NodeKernel<I, C>), crate::error::SpawnError>
     where
         V: Voter<
-            State = S,
+            State = StateOf<I>,
             RoundNum = RoundNumOf<C>,
             CoordNum = CoordNumOf<C>,
             Abstain = AbstainOf<C>,
@@ -243,8 +271,8 @@ where
 
     fn process_handle_req(
         &mut self,
-        req: NodeHandleRequest<C>,
-        send: oneshot::Sender<NodeHandleResponse<S, C>>,
+        req: NodeHandleRequest<I>,
+        send: oneshot::Sender<NodeHandleResponse<I>>,
     ) {
         match req {
             NodeHandleRequest::Status => {
@@ -260,19 +288,37 @@ where
     }
 }
 
-struct HandleAppend<S, C>
+struct HandleAppend<I, C>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = invocation::NodeOf<I>,
+        RoundNum = invocation::RoundNumOf<I>,
+        CoordNum = invocation::CoordNumOf<I>,
+        LogEntry = invocation::LogEntryOf<I>,
+        Error = invocation::CommunicationErrorOf<I>,
+        Yea = invocation::YeaOf<I>,
+        Nay = invocation::NayOf<I>,
+        Abstain = invocation::AbstainOf<I>,
+    >,
 {
-    append: LocalBoxFuture<'static, AppendResultFor<NodeKernel<S, C>, LogEntryOf<S>>>,
-    send: Option<oneshot::Sender<NodeHandleResponse<S, C>>>,
+    append: LocalBoxFuture<'static, AppendResultFor<NodeKernel<I, C>, LogEntryOf<I>>>,
+    send: Option<oneshot::Sender<NodeHandleResponse<I>>>,
 }
 
-impl<S, C> std::future::Future for HandleAppend<S, C>
+impl<I, C> std::future::Future for HandleAppend<I, C>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = invocation::NodeOf<I>,
+        RoundNum = invocation::RoundNumOf<I>,
+        CoordNum = invocation::CoordNumOf<I>,
+        LogEntry = invocation::LogEntryOf<I>,
+        Error = invocation::CommunicationErrorOf<I>,
+        Yea = invocation::YeaOf<I>,
+        Nay = invocation::NayOf<I>,
+        Abstain = invocation::AbstainOf<I>,
+    >,
 {
     type Output = ();
 

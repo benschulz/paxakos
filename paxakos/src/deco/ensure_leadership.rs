@@ -14,13 +14,14 @@ use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
+use crate::node::EventFor;
+use crate::node::InvocationOf;
 use crate::node::LogEntryOf;
 use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeStatus;
 use crate::node::Participation;
 use crate::node::RoundNumOf;
-use crate::node::Snapshot;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::YeaOf;
@@ -234,7 +235,7 @@ where
     N: Node + 'static,
     F: Fn() -> LogEntryOf<N> + 'static,
 {
-    type State = StateOf<N>;
+    type Invocation = InvocationOf<N>;
     type Communicator = CommunicatorOf<N>;
     type Shutdown = <N as Node>::Shutdown;
 
@@ -250,10 +251,7 @@ where
         self.decorated.participation()
     }
 
-    fn poll_events(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<crate::Event<Self::State, Self::Communicator>> {
+    fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> Poll<EventFor<Self>> {
         let event = self.decorated.poll_events(cx);
 
         if let Poll::Ready(event) = &event {
@@ -304,28 +302,29 @@ where
 
     fn affirm_snapshot(
         &self,
-        snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
+        snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
         self.decorated.affirm_snapshot(snapshot)
     }
 
     fn install_snapshot(
         &self,
-        snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
+        snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
         self.decorated.install_snapshot(snapshot)
     }
 
     fn read_stale(
         &self,
-    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<Self::State>, Disoriented>> {
+    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<StateOf<Self>>, Disoriented>>
+    {
         self.decorated.read_stale()
     }
 
-    fn append<A: ApplicableTo<Self::State> + 'static>(
+    fn append<A: ApplicableTo<StateOf<Self>> + 'static>(
         &self,
         applicable: A,
-        args: AppendArgs<Self::Communicator>,
+        args: AppendArgs<Self::Invocation>,
     ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
         self.decorated.append(applicable, args)
     }

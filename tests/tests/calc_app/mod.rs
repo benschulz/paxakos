@@ -3,11 +3,28 @@ use std::convert::Infallible;
 
 use async_trait::async_trait;
 use futures::io::AsyncRead;
+use paxakos::invocation::Invocation;
+use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::LogEntry;
 use paxakos::State;
 use serde::Serialize;
 use uuid::Uuid;
+
+pub struct CalcInvocation;
+
+impl Invocation for CalcInvocation {
+    type RoundNum = u64;
+    type CoordNum = u32;
+
+    type State = CalcState;
+
+    type Yea = ();
+    type Nay = !;
+    type Abstain = !;
+
+    type CommunicationError = DirectCommunicatorError;
+}
 
 #[derive(Clone, Copy, Debug, Serialize)]
 #[allow(dead_code)]

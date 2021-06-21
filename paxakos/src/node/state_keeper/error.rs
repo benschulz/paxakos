@@ -1,8 +1,6 @@
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::communicator::Communicator;
-use crate::communicator::RoundNumOf;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
@@ -10,7 +8,8 @@ use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
 use crate::error::PrepareSnapshotError;
 use crate::error::ReadStaleError;
-use crate::state::State;
+use crate::invocation::Invocation;
+use crate::invocation::RoundNumOf;
 use crate::RoundNum;
 
 pub use crate::error::ShutDown;
@@ -21,7 +20,7 @@ impl ShutDown {
     }
 }
 
-impl<C: Communicator> From<ShutDown> for AppendError<C> {
+impl<I: Invocation> From<ShutDown> for AppendError<I> {
     fn from(_: ShutDown) -> Self {
         AppendError::ShutDown
     }
@@ -33,19 +32,19 @@ impl From<ShutDown> for ReadStaleError {
     }
 }
 
-impl<C: Communicator> From<ShutDown> for PrepareError<C> {
+impl<I: Invocation> From<ShutDown> for PrepareError<I> {
     fn from(_: ShutDown) -> Self {
         Self::ShutDown
     }
 }
 
-impl<C: Communicator> From<ShutDown> for AcceptError<C> {
+impl<I: Invocation> From<ShutDown> for AcceptError<I> {
     fn from(_: ShutDown) -> Self {
         Self::ShutDown
     }
 }
 
-impl<S: State> From<ShutDown> for CommitError<S> {
+impl<I: Invocation> From<ShutDown> for CommitError<I> {
     fn from(_: ShutDown) -> Self {
         Self::ShutDown
     }
@@ -93,7 +92,7 @@ pub enum AcquireRoundNumError {
     ShutDown,
 }
 
-impl<C: Communicator> From<AcquireRoundNumError> for AppendError<C> {
+impl<I: Invocation> From<AcquireRoundNumError> for AppendError<I> {
     fn from(e: AcquireRoundNumError) -> Self {
         match e {
             AcquireRoundNumError::Converged => AppendError::Converged,
@@ -115,8 +114,8 @@ pub enum ClusterError<R: RoundNum> {
     ShutDown,
 }
 
-impl<C: Communicator> From<ClusterError<RoundNumOf<C>>> for AppendError<C> {
-    fn from(e: ClusterError<RoundNumOf<C>>) -> Self {
+impl<I: Invocation> From<ClusterError<RoundNumOf<I>>> for AppendError<I> {
+    fn from(e: ClusterError<RoundNumOf<I>>) -> Self {
         match e {
             ClusterError::Disoriented => AppendError::Disoriented,
             ClusterError::Converged(_) => AppendError::Converged,

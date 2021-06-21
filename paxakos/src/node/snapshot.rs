@@ -11,15 +11,10 @@ use num_traits::Zero;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::node::CoordNumOf;
-use crate::node::RoundNumOf;
-use crate::node::StateOf;
 use crate::state::LogEntryOf;
 use crate::state::State;
 use crate::CoordNum;
 use crate::RoundNum;
-
-pub type SnapshotFor<N> = Snapshot<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(

@@ -10,6 +10,7 @@ use futures::channel::oneshot;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use paxakos::invocation::Invocation;
 use rand::seq::SliceRandom;
 use uuid::Uuid;
 
@@ -18,7 +19,6 @@ use paxakos::deco::EnsureLeadershipBuilderExt;
 use paxakos::deco::FillGapsBuilderExt;
 use paxakos::deco::SendHeartbeatsBuilderExt;
 use paxakos::deco::TrackLeadershipBuilderExt;
-use paxakos::prototyping::DirectCommunicator;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::prototyping::RetryIndefinitely;
@@ -26,12 +26,12 @@ use paxakos::Node;
 use paxakos::NodeInfo;
 use paxakos::Shutdown;
 
+use calc_app::CalcInvocation;
 use calc_app::CalcOp;
 use calc_app::CalcState;
 use tracer::StabilityChecker;
 
-type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !, (), !>;
-type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, (), !>;
+type CalcCommunicators = DirectCommunicators<CalcInvocation>;
 
 static INIT: Once = Once::new();
 
@@ -154,7 +154,7 @@ fn spawn_node(
     communicators: CalcCommunicators,
     ops: impl std::iter::IntoIterator<Item = CalcOp> + Send + 'static,
     target: f64,
-    consistency_checker: &mut StabilityChecker<usize, CalcCommunicator>,
+    consistency_checker: &mut StabilityChecker<CalcInvocation>,
     target_reached_sender: oneshot::Sender<()>,
     mut done_receiver: oneshot::Receiver<()>,
 ) -> std::thread::JoinHandle<blake3::Hash> {
@@ -162,7 +162,7 @@ fn spawn_node(
 
     std::thread::spawn(move || {
         let (handler, node) = futures::executor::block_on(
-            paxakos::node_builder()
+            CalcInvocation::node_builder()
                 .for_node(node_info.id())
                 .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(node_info.id()))
@@ -287,7 +287,7 @@ impl<N> HeartbeatConfig<N> {
 
 impl<N> paxakos::deco::send_heartbeats::Config for HeartbeatConfig<N>
 where
-    N: Node<State = CalcState>,
+    N: Node<Invocation = CalcInvocation>,
 {
     type Node = N;
     type Applicable = CalcOp;

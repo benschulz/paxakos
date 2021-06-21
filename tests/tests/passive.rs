@@ -7,6 +7,7 @@ use std::task::Poll;
 
 use futures::channel::oneshot;
 use futures::future::Either;
+use paxakos::invocation::Invocation;
 use rand::Rng;
 use uuid::Uuid;
 
@@ -21,11 +22,12 @@ use paxakos::NodeInfo;
 use paxakos::NodeKernel;
 use paxakos::PrepareError;
 
+use calc_app::CalcInvocation;
 use calc_app::CalcOp;
 use calc_app::CalcState;
 
-type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, (), !>;
-type CalcNode = NodeKernel<CalcState, CalcCommunicator>;
+type CalcCommunicator = DirectCommunicator<CalcInvocation>;
+type CalcNode = NodeKernel<CalcInvocation, CalcCommunicator>;
 
 #[test]
 fn worst_case() {
@@ -43,12 +45,11 @@ fn worst_case() {
     let initial_state = CalcState::new(nodes, concurrency);
     let initial_snapshot = Snapshot::<CalcState, u64, u32>::initial(initial_state);
     let (req_handler, mut node) = futures::executor::block_on(
-        paxakos::node_builder()
+        CalcInvocation::node_builder()
             .for_node(node_id)
             .working_ephemerally()
             .communicating_via(
-                DirectCommunicators::<CalcState, u64, u32, !, (), !>::new()
-                    .create_communicator_for(node_id),
+                DirectCommunicators::<CalcInvocation>::new().create_communicator_for(node_id),
             )
             .resuming_from(initial_snapshot)
             .spawn_in(()),
@@ -90,12 +91,11 @@ fn worst_case() {
     //
     // …n1 crahes and must be restarted from our previous snapshot.
     let (req_handler, mut node) = futures::executor::block_on(
-        paxakos::node_builder()
+        CalcInvocation::node_builder()
             .for_node(node_id)
             .working_ephemerally()
             .communicating_via(
-                DirectCommunicators::<CalcState, u64, u32, !, (), !>::new()
-                    .create_communicator_for(node_id),
+                DirectCommunicators::<CalcInvocation>::new().create_communicator_for(node_id),
             )
             .recovering_with(snapshot)
             .spawn_in(()),
@@ -183,7 +183,7 @@ fn worst_case() {
 #[test]
 fn become_active() {
     let concurrency = 5;
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
+    let communicators = DirectCommunicators::<CalcInvocation>::new();
 
     let nodes = vec![
         PrototypingNode::new(),
@@ -266,7 +266,7 @@ fn setup_node(
     node_id: usize,
     active: bool,
     nodes: Vec<PrototypingNode>,
-    communicators: DirectCommunicators<CalcState, u64, u32, !, (), !>,
+    communicators: DirectCommunicators<CalcInvocation>,
     concurrency: usize,
 ) -> CalcNode {
     let initial_state = CalcState::new(nodes, concurrency);
@@ -274,7 +274,7 @@ fn setup_node(
 
     let (req_handler, node) = if active {
         futures::executor::block_on(
-            paxakos::node_builder()
+            CalcInvocation::node_builder()
                 .for_node(node_id)
                 .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(node_id))
@@ -284,7 +284,7 @@ fn setup_node(
         .unwrap()
     } else {
         futures::executor::block_on(
-            paxakos::node_builder()
+            CalcInvocation::node_builder()
                 .for_node(node_id)
                 .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(node_id))

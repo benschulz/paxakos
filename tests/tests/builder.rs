@@ -2,6 +2,7 @@
 
 mod calc_app;
 
+use paxakos::invocation::Invocation;
 use paxakos::node::Snapshot;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
@@ -11,18 +12,20 @@ use paxakos::NodeStatus;
 
 use calc_app::CalcState;
 
+use crate::calc_app::CalcInvocation;
+
 #[test]
 fn node_without_state_starts_as_lost() {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
+    let communicators = DirectCommunicators::<CalcInvocation>::new();
 
     let (_, node) = futures::executor::block_on(
-        paxakos::node_builder()
+        CalcInvocation::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
-            .without::<CalcState>()
-            .spawn_in(()),
+            .without_state()
+            .spawn(),
     )
     .unwrap();
 
@@ -32,15 +35,15 @@ fn node_without_state_starts_as_lost() {
 #[test]
 fn node_given_immediately_ready_snapshot_starts_as_lagging() {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
+    let communicators = DirectCommunicators::<CalcInvocation>::new();
 
     let (_, node) = futures::executor::block_on(
-        paxakos::node_builder()
+        CalcInvocation::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .joining_with(Snapshot::initial(CalcState::new(vec![node_info], 1)))
-            .spawn_in(()),
+            .spawn(),
     )
     .unwrap();
 

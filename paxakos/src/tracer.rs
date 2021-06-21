@@ -1,24 +1,22 @@
-use crate::communicator::CoordNumOf;
-use crate::communicator::LogEntryIdOf;
-use crate::communicator::RoundNumOf;
+use crate::invocation::CoordNumOf;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryIdOf;
+use crate::invocation::RoundNumOf;
 
-pub trait Tracer<C>: Send
-where
-    C: crate::communicator::Communicator,
-{
+pub trait Tracer<I: Invocation>: Send {
     fn record_promise(
         &mut self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        promise: Vec<(RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>)>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        promise: Vec<(RoundNumOf<I>, CoordNumOf<I>, LogEntryIdOf<I>)>,
     );
 
     fn record_accept(
         &mut self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        log_entry_id: LogEntryIdOf<C>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        log_entry_id: LogEntryIdOf<I>,
     );
 
-    fn record_commit(&mut self, round_num: RoundNumOf<C>, log_entry_id: LogEntryIdOf<C>);
+    fn record_commit(&mut self, round_num: RoundNumOf<I>, log_entry_id: LogEntryIdOf<I>);
 }

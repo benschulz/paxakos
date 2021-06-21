@@ -8,11 +8,6 @@ use futures::channel::oneshot;
 use futures::future::FutureExt;
 use futures::sink::SinkExt;
 
-use crate::communicator::Communicator;
-use crate::communicator::CoordNumOf;
-use crate::communicator::PromiseFor;
-use crate::communicator::RoundNumOf;
-use crate::communicator::YeaOf;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
@@ -21,13 +16,19 @@ use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
 use crate::error::PrepareSnapshotError;
 use crate::error::ReadStaleError;
+use crate::invocation::CommitFor;
+use crate::invocation::CoordNumOf;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryIdOf;
+use crate::invocation::LogEntryOf;
+use crate::invocation::NodeOf;
+use crate::invocation::OutcomeOf;
+use crate::invocation::PromiseFor;
+use crate::invocation::RoundNumOf;
+use crate::invocation::SnapshotFor;
+use crate::invocation::StateOf;
+use crate::invocation::YeaOf;
 use crate::node::Commit;
-use crate::node::Snapshot;
-use crate::state::LogEntryIdOf;
-use crate::state::LogEntryOf;
-use crate::state::NodeOf;
-use crate::state::OutcomeOf;
-use crate::state::State;
 use crate::LogEntry;
 
 use super::error::AcquireRoundNumError;
@@ -76,15 +77,11 @@ macro_rules! dispatch_state_keeper_req {
 }
 
 #[derive(Debug)]
-pub struct StateKeeperHandle<S: State, C: Communicator> {
-    sender: mpsc::Sender<super::RequestAndResponseSender<S, C>>,
+pub struct StateKeeperHandle<I: Invocation> {
+    sender: mpsc::Sender<super::RequestAndResponseSender<I>>,
 }
 
-impl<S, C> Clone for StateKeeperHandle<S, C>
-where
-    S: State,
-    C: Communicator,
-{
+impl<I: Invocation> Clone for StateKeeperHandle<I> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
@@ -92,28 +89,27 @@ where
     }
 }
 
-impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
-    pub(super) fn new(sender: mpsc::Sender<super::RequestAndResponseSender<S, C>>) -> Self {
+impl<I: Invocation> StateKeeperHandle<I> {
+    pub(super) fn new(sender: mpsc::Sender<super::RequestAndResponseSender<I>>) -> Self {
         Self { sender }
     }
 
     pub fn prepare_snapshot(
         &self,
-    ) -> impl Future<Output = Result<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>, PrepareSnapshotError>>
-    {
+    ) -> impl Future<Output = Result<SnapshotFor<I>, PrepareSnapshotError>> {
         dispatch_state_keeper_req!(self, PrepareSnapshot)
     }
 
     pub fn affirm_snapshot(
         &self,
-        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
+        snapshot: SnapshotFor<I>,
     ) -> impl Future<Output = Result<(), AffirmSnapshotError>> {
         dispatch_state_keeper_req!(self, AffirmSnapshot, { snapshot })
     }
 
     pub fn install_snapshot(
         &self,
-        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
+        snapshot: SnapshotFor<I>,
     ) -> impl Future<Output = Result<(), InstallSnapshotError>> {
         dispatch_state_keeper_req!(self, InstallSnapshot, { snapshot })
     }
@@ -121,7 +117,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
     pub fn read_stale(
         &self,
         _proof_of_life: &ProofOfLife,
-    ) -> impl Future<Output = Result<Arc<S>, Disoriented>> {
+    ) -> impl Future<Output = Result<Arc<StateOf<I>>, Disoriented>> {
         self.try_read_stale().map(|r| {
             r.map_err(|e| match e {
                 ReadStaleError::ShutDown => unreachable!("proof of life given"),
@@ -130,30 +126,30 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         })
     }
 
-    pub fn try_read_stale(&self) -> impl Future<Output = Result<Arc<S>, ReadStaleError>> {
+    pub fn try_read_stale(&self) -> impl Future<Output = Result<Arc<StateOf<I>>, ReadStaleError>> {
         dispatch_state_keeper_req!(self, ReadStale)
     }
 
     pub fn await_commit_of(
         &self,
-        entry_id: LogEntryIdOf<S>,
-    ) -> impl Future<Output = Result<oneshot::Receiver<(RoundNumOf<C>, OutcomeOf<S>)>, ShutDown>>
+        entry_id: LogEntryIdOf<I>,
+    ) -> impl Future<Output = Result<oneshot::Receiver<(RoundNumOf<I>, OutcomeOf<I>)>, ShutDown>>
     {
         dispatch_state_keeper_req!(self, AwaitCommitOf, { entry_id })
     }
 
     pub fn reserve_round_num(
         &self,
-        range: RangeInclusive<RoundNumOf<C>>,
-    ) -> impl Future<Output = Result<RoundNumReservation<RoundNumOf<C>>, AcquireRoundNumError>>
+        range: RangeInclusive<RoundNumOf<I>>,
+    ) -> impl Future<Output = Result<RoundNumReservation<RoundNumOf<I>>, AcquireRoundNumError>>
     {
         dispatch_state_keeper_req!(self, AcquireRoundNum, { range })
     }
 
     pub fn accepted_entry_of(
         &self,
-        round_num: RoundNumOf<C>,
-    ) -> impl Future<Output = Result<Option<Arc<LogEntryOf<S>>>, ShutDown>> {
+        round_num: RoundNumOf<I>,
+    ) -> impl Future<Output = Result<Option<Arc<LogEntryOf<I>>>, ShutDown>> {
         dispatch_state_keeper_req!(self, AcceptedEntryOf, { round_num })
     }
 
@@ -164,37 +160,37 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
     /// be consistent for the same round number, across the whole network.
     pub fn cluster_for(
         &self,
-        round_num: RoundNumOf<C>,
-    ) -> impl Future<Output = Result<Vec<NodeOf<S>>, ClusterError<RoundNumOf<C>>>> {
+        round_num: RoundNumOf<I>,
+    ) -> impl Future<Output = Result<Vec<NodeOf<I>>, ClusterError<RoundNumOf<I>>>> {
         dispatch_state_keeper_req!(self, Cluster, { round_num })
     }
 
     pub fn observe_coord_num(
         &self,
-        coord_num: CoordNumOf<C>,
+        coord_num: CoordNumOf<I>,
     ) -> impl Future<Output = Result<(), ShutDown>> {
         dispatch_state_keeper_req!(self, ObservedCoordNum, { coord_num })
     }
 
     pub fn highest_observed_coord_num(
         &self,
-    ) -> impl Future<Output = Result<CoordNumOf<C>, ShutDown>> {
+    ) -> impl Future<Output = Result<CoordNumOf<I>, ShutDown>> {
         dispatch_state_keeper_req!(self, HighestObservedCoordNum)
     }
 
     pub fn prepare_entry(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-    ) -> impl Future<Output = Result<PromiseFor<C>, PrepareError<C>>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+    ) -> impl Future<Output = Result<PromiseFor<I>, PrepareError<I>>> {
         self.handle_prepare(round_num, coord_num)
     }
 
     pub fn handle_prepare(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-    ) -> impl Future<Output = Result<PromiseFor<C>, PrepareError<C>>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+    ) -> impl Future<Output = Result<PromiseFor<I>, PrepareError<I>>> {
         dispatch_state_keeper_req!(self, PrepareEntry, {
             round_num,
             coord_num,
@@ -203,37 +199,37 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
 
     pub fn accept_entry(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        entry: Arc<LogEntryOf<S>>,
-    ) -> impl Future<Output = Result<YeaOf<C>, AcceptError<C>>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        entry: Arc<LogEntryOf<I>>,
+    ) -> impl Future<Output = Result<YeaOf<I>, AcceptError<I>>> {
         dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
     }
 
     pub fn handle_proposal(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        entry: impl Into<Arc<LogEntryOf<S>>>,
-    ) -> impl Future<Output = Result<YeaOf<C>, AcceptError<C>>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        entry: impl Into<Arc<LogEntryOf<I>>>,
+    ) -> impl Future<Output = Result<YeaOf<I>, AcceptError<I>>> {
         let entry = entry.into();
         dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
     }
 
     pub fn accept_entries(
         &self,
-        coord_num: CoordNumOf<C>,
-        entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
-    ) -> impl Future<Output = Result<(), AcceptError<C>>> {
+        coord_num: CoordNumOf<I>,
+        entries: Vec<(RoundNumOf<I>, Arc<LogEntryOf<I>>)>,
+    ) -> impl Future<Output = Result<(), AcceptError<I>>> {
         dispatch_state_keeper_req!(self, AcceptEntries, { coord_num, entries })
     }
 
     pub fn commit_entry(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        entry: Arc<LogEntryOf<S>>,
-    ) -> impl Future<Output = Result<Commit<S, RoundNumOf<C>>, CommitError<S>>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        entry: Arc<LogEntryOf<I>>,
+    ) -> impl Future<Output = Result<CommitFor<I>, CommitError<I>>> {
         let recv = self.await_commit_of(entry.id());
         let commit = self.handle_commit(round_num, coord_num, entry);
 
@@ -246,10 +242,10 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
 
     pub fn handle_commit(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        entry: impl Into<Arc<LogEntryOf<S>>>,
-    ) -> impl Future<Output = Result<(), CommitError<S>>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        entry: impl Into<Arc<LogEntryOf<I>>>,
+    ) -> impl Future<Output = Result<(), CommitError<I>>> {
         dispatch_state_keeper_req!(self, CommitEntry, {
             round_num,
             coord_num,
@@ -259,10 +255,10 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
 
     pub fn handle_commit_by_id(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        entry_id: <LogEntryOf<S> as LogEntry>::Id,
-    ) -> impl Future<Output = Result<(), CommitError<S>>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        entry_id: <LogEntryOf<I> as LogEntry>::Id,
+    ) -> impl Future<Output = Result<(), CommitError<I>>> {
         dispatch_state_keeper_req!(self, CommitEntryById, {
             round_num,
             coord_num,
@@ -272,8 +268,8 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
 
     pub fn assume_leadership(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
     ) -> impl Future<Output = Result<(), ShutDown>> {
         dispatch_state_keeper_req!(
             self,

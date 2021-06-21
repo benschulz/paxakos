@@ -7,19 +7,17 @@ use std::convert::Infallible;
 use async_trait::async_trait;
 use futures::io::AsyncRead;
 use paxakos::append::AppendArgs;
-use paxakos::prototyping::DirectCommunicator;
+use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::prototyping::RetryIndefinitely;
+use paxakos::Invocation;
 use paxakos::LogEntry;
 use paxakos::Node;
 use paxakos::NodeHandle;
 use paxakos::NodeInfo;
 use paxakos::State;
 use uuid::Uuid;
-
-type ChatCommunicator = DirectCommunicator<ChatState, u64, u32, !, (), !>;
-type ChatCommunicators = DirectCommunicators<ChatState, u64, u32, !, (), !>;
 
 fn main() {
     let node_a = PrototypingNode::new();
@@ -28,7 +26,7 @@ fn main() {
 
     let nodes = vec![node_a, node_b, node_c];
 
-    let communicators = ChatCommunicators::new();
+    let communicators = DirectCommunicators::new();
 
     let node_a = spawn_node(node_a, nodes.clone(), communicators.clone());
     let node_b = spawn_node(node_b, nodes.clone(), communicators.clone());
@@ -76,13 +74,13 @@ fn main() {
 fn spawn_node(
     node_info: PrototypingNode,
     all_nodes: Vec<PrototypingNode>,
-    communicators: ChatCommunicators,
-) -> NodeHandle<ChatState, ChatCommunicator> {
+    communicators: DirectCommunicators<ChatInvocation>,
+) -> NodeHandle<ChatInvocation> {
     let (send, recv) = futures::channel::oneshot::channel();
 
     std::thread::spawn(move || {
         let (handler, mut node) = futures::executor::block_on(
-            paxakos::node_builder()
+            ChatInvocation::node_builder()
                 .for_node(node_info.id())
                 .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(node_info.id()))
@@ -113,11 +111,26 @@ fn msg(sender: &str, message: &str) -> ChatMessage {
     }
 }
 
-fn always_retry() -> AppendArgs<ChatCommunicator> {
+fn always_retry() -> AppendArgs<ChatInvocation> {
     AppendArgs {
         retry_policy: Box::new(RetryIndefinitely::without_pausing()),
         ..Default::default()
     }
+}
+
+pub struct ChatInvocation;
+
+impl Invocation for ChatInvocation {
+    type RoundNum = u32;
+    type CoordNum = u32;
+
+    type State = ChatState;
+
+    type Yea = ();
+    type Nay = !;
+    type Abstain = !;
+
+    type CommunicationError = DirectCommunicatorError;
 }
 
 #[derive(Clone, Debug)]

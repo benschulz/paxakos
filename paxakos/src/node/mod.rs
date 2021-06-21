@@ -16,20 +16,16 @@ use futures::future::BoxFuture;
 use futures::future::LocalBoxFuture;
 
 use crate::append::AppendArgs;
-use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
-use crate::applicable::ProjectionOf;
-use crate::communicator;
 use crate::communicator::Communicator;
 use crate::error::Disoriented;
 use crate::error::ShutDown;
+use crate::invocation;
+use crate::invocation::Invocation;
 use crate::log::LogKeeping;
-use crate::state;
-use crate::state::ContextOf;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::Event;
-use crate::State;
 
 pub use builder::NodeBuilder;
 pub use commits::Commit;
@@ -37,45 +33,52 @@ pub use handle::NodeHandle;
 pub use info::NodeInfo;
 pub use kernel::NodeKernel;
 pub use req_handler::RequestHandler;
-pub use req_handler::RequestHandlerFor;
 pub use shutdown::DefaultShutdown;
 pub use shutdown::Shutdown;
 pub use snapshot::Snapshot;
-pub use snapshot::SnapshotFor;
 pub use status::NodeStatus;
 
-pub type StateOf<N> = <N as Node>::State;
+pub type AbstainOf<N> = invocation::AbstainOf<InvocationOf<N>>;
+pub type CommunicationErrorOf<N> = invocation::CommunicationErrorOf<InvocationOf<N>>;
 pub type CommunicatorOf<N> = <N as Node>::Communicator;
+pub type ContextOf<N> = invocation::ContextOf<InvocationOf<N>>;
+pub type CoordNumOf<N> = invocation::CoordNumOf<InvocationOf<N>>;
+pub type EventOf<N> = invocation::EventOf<InvocationOf<N>>;
+pub type InvocationOf<N> = <N as Node>::Invocation;
+pub type LogEntryOf<N> = invocation::LogEntryOf<InvocationOf<N>>;
+pub type LogEntryIdOf<N> = invocation::LogEntryIdOf<InvocationOf<N>>;
+pub type NayOf<N> = invocation::NayOf<InvocationOf<N>>;
+pub type NodeOf<N> = invocation::NodeOf<InvocationOf<N>>;
+pub type NodeIdOf<N> = invocation::NodeIdOf<InvocationOf<N>>;
+pub type OutcomeOf<N> = invocation::OutcomeOf<InvocationOf<N>>;
+pub type RoundNumOf<N> = invocation::RoundNumOf<InvocationOf<N>>;
+pub type StateOf<N> = invocation::StateOf<InvocationOf<N>>;
+pub type YeaOf<N> = invocation::YeaOf<InvocationOf<N>>;
 
-pub type RoundNumOf<N> = communicator::RoundNumOf<CommunicatorOf<N>>;
-pub type CoordNumOf<N> = communicator::CoordNumOf<CommunicatorOf<N>>;
-
-pub type AbstainOf<N> = communicator::AbstainOf<CommunicatorOf<N>>;
-pub type EventOf<N> = state::EventOf<StateOf<N>>;
-pub type LogEntryOf<N> = state::LogEntryOf<StateOf<N>>;
-pub type LogEntryIdOf<N> = state::LogEntryIdOf<StateOf<N>>;
-pub type NayOf<N> = communicator::NayOf<CommunicatorOf<N>>;
-pub type NodeOf<N> = state::NodeOf<StateOf<N>>;
-pub type NodeIdOf<N> = state::NodeIdOf<StateOf<N>>;
-pub type YeaOf<N> = communicator::YeaOf<CommunicatorOf<N>>;
-
-pub type AppendResultFor<N, A> = Result<CommitFor<N, A>, AppendError<CommunicatorOf<N>>>;
-pub type CommitFor<N, A> = Commit<StateOf<N>, RoundNumOf<N>, ProjectionOf<A, StateOf<N>>>;
-pub type EventFor<N> = Event<StateOf<N>, CommunicatorOf<N>>;
-pub type HandleFor<N> = NodeHandle<StateOf<N>, CommunicatorOf<N>>;
-
-pub fn builder() -> builder::NodeBuilderBlank {
-    builder::NodeBuilderBlank::new()
-}
+pub type AcceptanceFor<N> = invocation::AcceptanceFor<InvocationOf<N>>;
+pub type AppendResultFor<N, A = LogEntryOf<N>> = invocation::AppendResultFor<InvocationOf<N>, A>;
+pub type CommitFor<N, A = LogEntryOf<N>> = invocation::CommitFor<InvocationOf<N>, A>;
+pub type ConflictFor<N> = invocation::ConflictFor<InvocationOf<N>>;
+pub type EventFor<N> = Event<InvocationOf<N>>;
+pub type HandleFor<N> = NodeHandle<InvocationOf<N>>;
+pub type PromiseFor<N> = invocation::PromiseFor<InvocationOf<N>>;
+pub type RequestHandlerFor<N> = RequestHandler<InvocationOf<N>>;
+pub type SnapshotFor<N> = invocation::SnapshotFor<InvocationOf<N>>;
+pub type VoteFor<N> = invocation::VoteFor<InvocationOf<N>>;
 
 pub trait Node: Sized {
-    type State: State<
-        LogEntry = <Self::Communicator as Communicator>::LogEntry,
-        Node = <Self::Communicator as Communicator>::Node,
+    type Invocation: Invocation;
+    type Communicator: Communicator<
+        Node = invocation::NodeOf<Self::Invocation>,
+        RoundNum = invocation::RoundNumOf<Self::Invocation>,
+        CoordNum = invocation::CoordNumOf<Self::Invocation>,
+        LogEntry = invocation::LogEntryOf<Self::Invocation>,
+        Error = invocation::CommunicationErrorOf<Self::Invocation>,
+        Yea = invocation::YeaOf<Self::Invocation>,
+        Nay = invocation::NayOf<Self::Invocation>,
+        Abstain = invocation::AbstainOf<Self::Invocation>,
     >;
-    type Communicator: Communicator;
-
-    type Shutdown: Shutdown;
+    type Shutdown: Shutdown<Invocation = Self::Invocation>;
 
     fn id(&self) -> NodeIdOf<Self>;
 
@@ -93,7 +96,7 @@ pub trait Node: Sized {
         NextEvent(self)
     }
 
-    fn handle(&self) -> NodeHandle<Self::State, Self::Communicator>;
+    fn handle(&self) -> NodeHandle<Self::Invocation>;
 
     fn prepare_snapshot(
         &self,
@@ -101,20 +104,20 @@ pub trait Node: Sized {
 
     fn affirm_snapshot(
         &self,
-        snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
+        snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>>;
 
     fn install_snapshot(
         &self,
-        snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
+        snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>>;
 
-    fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<Self::State>, Disoriented>>;
+    fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<StateOf<Self>>, Disoriented>>;
 
-    fn append<A: ApplicableTo<Self::State> + 'static>(
+    fn append<A: ApplicableTo<StateOf<Self>> + 'static>(
         &self,
         applicable: A,
-        args: AppendArgs<Self::Communicator>,
+        args: AppendArgs<Self::Invocation>,
     ) -> LocalBoxFuture<'static, AppendResultFor<Self, A>>;
 
     fn shut_down(self) -> Self::Shutdown;
@@ -151,16 +154,16 @@ pub trait Admin {
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 
-pub struct SpawnArgs<S: State, C: Communicator, V> {
-    pub context: ContextOf<S>,
+pub struct SpawnArgs<I: Invocation, V> {
+    pub context: invocation::ContextOf<I>,
     pub working_dir: Option<std::path::PathBuf>,
-    pub node_id: state::NodeIdOf<S>,
+    pub node_id: invocation::NodeIdOf<I>,
     pub voter: V,
-    pub snapshot: Option<Snapshot<S, communicator::RoundNumOf<C>, communicator::CoordNumOf<C>>>,
-    pub participation: Participation<communicator::RoundNumOf<C>>,
+    pub snapshot: Option<invocation::SnapshotFor<I>>,
+    pub participation: Participation<invocation::RoundNumOf<I>>,
     pub log_keeping: LogKeeping,
     #[cfg(feature = "tracer")]
-    pub tracer: Option<Box<dyn Tracer<C>>>,
+    pub tracer: Option<Box<dyn Tracer<I>>>,
 }
 
 /// Reflects a [`Node`]'s possible modes of participation.

@@ -5,30 +5,27 @@ use std::io::Write;
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
+use paxakos::invocation::CoordNumOf;
+use paxakos::invocation::Invocation;
+use paxakos::invocation::LogEntryIdOf;
+use paxakos::invocation::NodeIdOf;
+use paxakos::invocation::RoundNumOf;
 use streamunordered::StreamUnordered;
 
-use paxakos::communicator::Communicator;
-use paxakos::communicator::CoordNumOf;
-use paxakos::communicator::LogEntryIdOf;
-use paxakos::communicator::RoundNumOf;
 use paxakos::CoordNum;
 use paxakos::Identifier;
 use paxakos::RoundNum;
 
-type EventFor<C> = Event<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>>;
+type EventFor<I> = Event<RoundNumOf<I>, CoordNumOf<I>, LogEntryIdOf<I>>;
 
-pub struct StabilityChecker<N, C>
-where
-    N: Identifier,
-    C: Communicator,
-{
-    receivers: HashMap<N, mpsc::UnboundedReceiver<EventFor<C>>>,
+pub struct StabilityChecker<I: Invocation> {
+    receivers: HashMap<NodeIdOf<I>, mpsc::UnboundedReceiver<EventFor<I>>>,
 }
 
-impl<N, C> StabilityChecker<N, C>
+impl<I> StabilityChecker<I>
 where
-    N: Identifier + Ord,
-    C: Communicator,
+    I: Invocation,
+    NodeIdOf<I>: Ord,
 {
     pub fn new() -> Self {
         Self {
@@ -36,7 +33,7 @@ where
         }
     }
 
-    pub fn tracer(&mut self, node: N) -> Box<dyn paxakos::tracer::Tracer<C>> {
+    pub fn tracer(&mut self, node: NodeIdOf<I>) -> Box<dyn paxakos::tracer::Tracer<I>> {
         let (send, recv) = mpsc::unbounded();
 
         assert!(self.receivers.insert(node, recv).is_none());
@@ -52,8 +49,10 @@ where
             nodes.sort();
 
             let mut received_events = Vec::new();
-            let mut received_events_indexed: BTreeMap<RoundNumOf<C>, BTreeMap<N, Vec<_>>> =
-                BTreeMap::new();
+            let mut received_events_indexed: BTreeMap<
+                RoundNumOf<I>,
+                BTreeMap<NodeIdOf<I>, Vec<_>>,
+            > = BTreeMap::new();
 
             let event_stream = receivers
                 .into_iter()
@@ -191,22 +190,16 @@ where
 }
 
 #[derive(Debug)]
-struct Tracer<C>
-where
-    C: Communicator,
-{
-    sender: mpsc::UnboundedSender<Event<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>>>,
+struct Tracer<I: Invocation> {
+    sender: mpsc::UnboundedSender<Event<RoundNumOf<I>, CoordNumOf<I>, LogEntryIdOf<I>>>,
 }
 
-impl<C> paxakos::tracer::Tracer<C> for Tracer<C>
-where
-    C: Communicator,
-{
+impl<I: Invocation> paxakos::tracer::Tracer<I> for Tracer<I> {
     fn record_promise(
         &mut self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        promise: Vec<(RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>)>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        promise: Vec<(RoundNumOf<I>, CoordNumOf<I>, LogEntryIdOf<I>)>,
     ) {
         let _ = self
             .sender
@@ -215,16 +208,16 @@ where
 
     fn record_accept(
         &mut self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        log_entry_id: LogEntryIdOf<C>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        log_entry_id: LogEntryIdOf<I>,
     ) {
         let _ = self
             .sender
             .unbounded_send(Event::Accept(round_num, coord_num, log_entry_id));
     }
 
-    fn record_commit(&mut self, round_num: RoundNumOf<C>, log_entry_id: LogEntryIdOf<C>) {
+    fn record_commit(&mut self, round_num: RoundNumOf<I>, log_entry_id: LogEntryIdOf<I>) {
         let _ = self
             .sender
             .unbounded_send(Event::Commit(round_num, log_entry_id));

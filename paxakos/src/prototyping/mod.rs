@@ -20,15 +20,18 @@ use crate::communicator::Communicator;
 use crate::communicator::Vote;
 use crate::communicator::VoteFor;
 use crate::error::BoxError;
-use crate::state::LogEntryOf;
-use crate::state::NodeIdOf;
-use crate::state::NodeOf;
-use crate::CoordNum;
+use crate::invocation::AbstainOf;
+use crate::invocation::CoordNumOf;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryOf;
+use crate::invocation::NayOf;
+use crate::invocation::NodeIdOf;
+use crate::invocation::NodeOf;
+use crate::invocation::RoundNumOf;
+use crate::invocation::YeaOf;
 use crate::LogEntry;
 use crate::NodeInfo;
 use crate::RequestHandler;
-use crate::RoundNum;
-use crate::State;
 
 /// A `NodeInfo` implementation for prototyping.
 #[derive(Clone, Copy, Debug, Default)]
@@ -55,9 +58,9 @@ impl NodeInfo for PrototypingNode {
 }
 
 #[derive(Debug)]
-pub struct RetryIndefinitely<C>(u64, crate::util::PhantomSend<C>);
+pub struct RetryIndefinitely<I>(u64, crate::util::PhantomSend<I>);
 
-impl<C> RetryIndefinitely<C> {
+impl<I> RetryIndefinitely<I> {
     pub fn without_pausing() -> Self {
         Self(0, crate::util::PhantomSend::new())
     }
@@ -68,13 +71,10 @@ impl<C> RetryIndefinitely<C> {
 }
 
 #[async_trait]
-impl<C> RetryPolicy for RetryIndefinitely<C>
-where
-    C: Communicator,
-{
-    type Communicator = C;
+impl<I: Invocation> RetryPolicy for RetryIndefinitely<I> {
+    type Invocation = I;
 
-    async fn eval(&mut self, _err: AppendError<Self::Communicator>) -> Result<(), BoxError> {
+    async fn eval(&mut self, _err: AppendError<Self::Invocation>) -> Result<(), BoxError> {
         if self.0 > 0 {
             use rand::Rng;
 
@@ -88,42 +88,23 @@ where
     }
 }
 
-type RequestHandlers<S, R, C, A, Y, N> =
-    HashMap<NodeIdOf<S>, RequestHandler<S, DirectCommunicator<S, R, C, A, Y, N>>>;
-type EventListeners<S, R, C> = Vec<mpsc::Sender<DirectCommunicatorEvent<S, R, C>>>;
-type PacketLossRates<S> = HashMap<(NodeIdOf<S>, NodeIdOf<S>), f32>;
-type E2eDelays<S> = HashMap<(NodeIdOf<S>, NodeIdOf<S>), rand_distr::Normal<f32>>;
+type RequestHandlers<I> = HashMap<NodeIdOf<I>, RequestHandler<I>>;
+type EventListeners<I> = Vec<mpsc::Sender<DirectCommunicatorEvent<I>>>;
+type PacketLossRates<I> = HashMap<(NodeIdOf<I>, NodeIdOf<I>), f32>;
+type E2eDelays<I> = HashMap<(NodeIdOf<I>, NodeIdOf<I>), rand_distr::Normal<f32>>;
 
 #[derive(Debug)]
-pub struct DirectCommunicators<S, R, C, A, Y, N>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    A: std::fmt::Debug + Send + Sync + 'static,
-    Y: std::fmt::Debug + Send + Sync + 'static,
-    N: std::fmt::Debug + Send + Sync + 'static,
-{
+pub struct DirectCommunicators<I: Invocation> {
     #[allow(clippy::type_complexity)]
-    request_handlers: Arc<Mutex<RequestHandlers<S, R, C, A, Y, N>>>,
+    request_handlers: Arc<Mutex<RequestHandlers<I>>>,
     default_packet_loss: f32,
     default_e2e_delay: rand_distr::Normal<f32>,
-    packet_loss: Arc<Mutex<PacketLossRates<S>>>,
-    e2e_delay: Arc<Mutex<E2eDelays<S>>>,
-    event_listeners: Arc<Mutex<EventListeners<S, R, C>>>,
-    _p: std::marker::PhantomData<A>,
+    packet_loss: Arc<Mutex<PacketLossRates<I>>>,
+    e2e_delay: Arc<Mutex<E2eDelays<I>>>,
+    event_listeners: Arc<Mutex<EventListeners<I>>>,
 }
 
-impl<S, R, C, A, Y, N> DirectCommunicators<S, R, C, A, Y, N>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    A: std::fmt::Debug + Send + Sync + 'static,
-    Y: std::fmt::Debug + Send + Sync + 'static,
-    N: std::fmt::Debug + Send + Sync + 'static,
-{
-    #[allow(dead_code)]
+impl<I: Invocation> DirectCommunicators<I> {
     pub fn new() -> Self {
         Self::with_characteristics(0.0, rand_distr::Normal::new(0.0, 0.0).unwrap())
     }
@@ -136,41 +117,32 @@ where
             packet_loss: Arc::new(Mutex::new(HashMap::new())),
             e2e_delay: Arc::new(Mutex::new(HashMap::new())),
             event_listeners: Arc::new(Mutex::new(Vec::new())),
-            _p: std::marker::PhantomData,
         }
     }
 
-    #[allow(dead_code)]
-    pub async fn set_packet_loss(&mut self, from: NodeIdOf<S>, to: NodeIdOf<S>, packet_loss: f32) {
+    pub async fn set_packet_loss(&mut self, from: NodeIdOf<I>, to: NodeIdOf<I>, packet_loss: f32) {
         let mut link = self.packet_loss.lock().await;
         link.insert((from, to), packet_loss);
     }
 
-    #[allow(dead_code)]
     pub async fn set_delay(
         &mut self,
-        from: NodeIdOf<S>,
-        to: NodeIdOf<S>,
+        from: NodeIdOf<I>,
+        to: NodeIdOf<I>,
         delay: rand_distr::Normal<f32>,
     ) {
         let mut link = self.e2e_delay.lock().await;
         link.insert((from, to), delay);
     }
 
-    #[allow(dead_code)]
-    pub fn register(
-        &self,
-        node_id: NodeIdOf<S>,
-        handler: RequestHandler<S, DirectCommunicator<S, R, C, A, Y, N>>,
-    ) {
+    pub fn register(&self, node_id: NodeIdOf<I>, handler: RequestHandler<I>) {
         futures::executor::block_on(async {
             let mut handlers = self.request_handlers.lock().await;
             handlers.insert(node_id, handler);
         });
     }
 
-    #[allow(dead_code)]
-    pub fn events(&self) -> impl Stream<Item = DirectCommunicatorEvent<S, R, C>> {
+    pub fn events(&self) -> impl Stream<Item = DirectCommunicatorEvent<I>> {
         let (send, recv) = mpsc::channel(16);
 
         futures::executor::block_on(async {
@@ -181,10 +153,7 @@ where
         recv
     }
 
-    pub fn create_communicator_for(
-        &self,
-        node_id: NodeIdOf<S>,
-    ) -> DirectCommunicator<S, R, C, A, Y, N> {
+    pub fn create_communicator_for(&self, node_id: NodeIdOf<I>) -> DirectCommunicator<I> {
         DirectCommunicator {
             set: self.clone(),
             node_id,
@@ -192,15 +161,7 @@ where
     }
 }
 
-impl<S, R, C, A, Y, N> Clone for DirectCommunicators<S, R, C, A, Y, N>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    A: std::fmt::Debug + Send + Sync + 'static,
-    Y: std::fmt::Debug + Send + Sync + 'static,
-    N: std::fmt::Debug + Send + Sync + 'static,
-{
+impl<I: Invocation> Clone for DirectCommunicators<I> {
     fn clone(&self) -> Self {
         Self {
             request_handlers: Arc::clone(&self.request_handlers),
@@ -209,55 +170,46 @@ where
             packet_loss: Arc::clone(&self.packet_loss),
             e2e_delay: Arc::clone(&self.e2e_delay),
             event_listeners: Arc::clone(&self.event_listeners),
-            _p: std::marker::PhantomData,
         }
     }
 }
 
-impl<S, R, C, A, Y, N> Default for DirectCommunicators<S, R, C, A, Y, N>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    A: std::fmt::Debug + Send + Sync + 'static,
-    Y: std::fmt::Debug + Send + Sync + 'static,
-    N: std::fmt::Debug + Send + Sync + 'static,
-{
+impl<I: Invocation> Default for DirectCommunicators<I> {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct DirectCommunicatorEvent<S: State, R: RoundNum, C: CoordNum> {
-    pub sender: NodeIdOf<S>,
-    pub receiver: NodeIdOf<S>,
+pub struct DirectCommunicatorEvent<I: Invocation> {
+    pub sender: NodeIdOf<I>,
+    pub receiver: NodeIdOf<I>,
     pub e2e_delay: std::time::Duration,
     pub dropped: bool,
-    pub payload: DirectCommunicatorPayload<S, R, C>,
+    pub payload: DirectCommunicatorPayload<I>,
 }
 
 #[derive(Clone, Debug)]
-pub enum DirectCommunicatorPayload<S: State, R: RoundNum, C: CoordNum> {
+pub enum DirectCommunicatorPayload<I: Invocation> {
     Prepare {
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
     },
     Promise(bool),
     Propose {
-        round_num: R,
-        coord_num: C,
-        log_entry: Arc<LogEntryOf<S>>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        log_entry: Arc<LogEntryOf<I>>,
     },
     Accept(bool),
     Commit {
-        round_num: R,
-        coord_num: C,
-        log_entry: Arc<LogEntryOf<S>>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        log_entry: Arc<LogEntryOf<I>>,
     },
     CommitById {
-        round_num: R,
-        coord_num: C,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
     },
     Committed(bool),
 }
@@ -272,28 +224,12 @@ pub enum DirectCommunicatorError {
 }
 
 #[derive(Debug)]
-pub struct DirectCommunicator<S, R, C, A, Y, N>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    A: std::fmt::Debug + Send + Sync + 'static,
-    Y: std::fmt::Debug + Send + Sync + 'static,
-    N: std::fmt::Debug + Send + Sync + 'static,
-{
-    set: DirectCommunicators<S, R, C, A, Y, N>,
-    node_id: NodeIdOf<S>,
+pub struct DirectCommunicator<I: Invocation> {
+    set: DirectCommunicators<I>,
+    node_id: NodeIdOf<I>,
 }
 
-impl<S, R, C, A, Y, N> Clone for DirectCommunicator<S, R, C, A, Y, N>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    A: std::fmt::Debug + Send + Sync + 'static,
-    Y: std::fmt::Debug + Send + Sync + 'static,
-    N: std::fmt::Debug + Send + Sync + 'static,
-{
+impl<I: Invocation> Clone for DirectCommunicator<I> {
     fn clone(&self) -> Self {
         Self {
             set: self.set.clone(),
@@ -414,30 +350,22 @@ macro_rules! send_fn {
     }
 }
 
-impl<S, R, C, A, Y, N> Communicator for DirectCommunicator<S, R, C, A, Y, N>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-    A: std::fmt::Debug + Send + Sync + 'static,
-    Y: std::fmt::Debug + Send + Sync + 'static,
-    N: std::fmt::Debug + Send + Sync + 'static,
-{
-    type Node = NodeOf<S>;
+impl<I: Invocation + 'static> Communicator for DirectCommunicator<I> {
+    type Node = NodeOf<I>;
 
-    type RoundNum = R;
-    type CoordNum = C;
+    type RoundNum = RoundNumOf<I>;
+    type CoordNum = CoordNumOf<I>;
 
-    type LogEntry = LogEntryOf<S>;
+    type LogEntry = LogEntryOf<I>;
 
     type Error = DirectCommunicatorError;
 
     type SendPrepare = LocalBoxFuture<'static, Result<VoteFor<Self>, Self::Error>>;
-    type Abstain = A;
+    type Abstain = AbstainOf<I>;
 
     type SendProposal = LocalBoxFuture<'static, Result<AcceptanceFor<Self>, Self::Error>>;
-    type Yea = Y;
-    type Nay = N;
+    type Yea = YeaOf<I>;
+    type Nay = NayOf<I>;
 
     type SendCommit = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
     type SendCommitById = LocalBoxFuture<'static, Result<Committed, Self::Error>>;

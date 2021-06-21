@@ -3,29 +3,29 @@
 mod calc_app;
 
 use futures::stream::StreamExt;
+use paxakos::invocation::Invocation;
 use uuid::Uuid;
 
 use paxakos::communicator::Communicator;
-use paxakos::communicator::CoordNumOf;
-use paxakos::communicator::RoundNumOf;
 use paxakos::event::Gap;
+use paxakos::invocation::CoordNumOf;
+use paxakos::invocation::LogEntryOf;
+use paxakos::invocation::RoundNumOf;
 use paxakos::node::EventFor;
 use paxakos::prototyping::DirectCommunicator;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
-use paxakos::state::LogEntryOf;
 use paxakos::Event;
 use paxakos::Node;
 use paxakos::NodeInfo;
 use paxakos::NodeKernel;
 use paxakos::RequestHandler;
-use paxakos::State;
 
+use calc_app::CalcInvocation;
 use calc_app::CalcOp;
 use calc_app::CalcState;
 
-type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, (), !>;
-type CalcNode = NodeKernel<CalcState, CalcCommunicator>;
+type CalcNode = NodeKernel<CalcInvocation, DirectCommunicator<CalcInvocation>>;
 
 #[test]
 fn emit_gaps_event_when_it_first_appears() {
@@ -75,12 +75,12 @@ fn later_gap_is_younger() {
 #[test]
 fn auto_fill_gaps() {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
+    let communicators = DirectCommunicators::<CalcInvocation>::new();
 
     use paxakos::deco::FillGapsBuilderExt;
 
     let (req_handler, mut node) = futures::executor::block_on(
-        paxakos::node_builder()
+        CalcInvocation::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
@@ -115,15 +115,12 @@ fn auto_fill_gaps() {
     );
 }
 
-fn setup_node() -> (
-    RequestHandler<CalcState, DirectCommunicator<CalcState, u64, u32, !, (), !>>,
-    CalcNode,
-) {
+fn setup_node() -> (RequestHandler<CalcInvocation>, CalcNode) {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
+    let communicators = DirectCommunicators::<CalcInvocation>::new();
 
     let (req_handler, node) = futures::executor::block_on(
-        paxakos::node_builder()
+        CalcInvocation::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
@@ -135,19 +132,18 @@ fn setup_node() -> (
     (req_handler, node)
 }
 
-fn commit<S: State, C: Communicator>(
-    req_handler: &RequestHandler<S, C>,
-    round_num: RoundNumOf<C>,
-    coord_num: CoordNumOf<C>,
-    log_entry: LogEntryOf<S>,
+fn commit<I: Invocation>(
+    req_handler: &RequestHandler<I>,
+    round_num: RoundNumOf<I>,
+    coord_num: CoordNumOf<I>,
+    log_entry: LogEntryOf<I>,
 ) {
     let _ = futures::executor::block_on(req_handler.handle_commit(round_num, coord_num, log_entry));
 }
 
-fn next_gaps_event<N, S, C>(node: &mut N) -> EventFor<N>
+fn next_gaps_event<N, C>(node: &mut N) -> EventFor<N>
 where
-    N: Node<State = S, Communicator = C>,
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
+    N: Node<Invocation = CalcInvocation, Communicator = C>,
     C: Communicator,
 {
     futures::executor::block_on(
@@ -159,14 +155,14 @@ where
     .unwrap()
 }
 
-fn gaps_of<S: State, C: Communicator>(e: &Event<S, C>) -> Vec<Gap<RoundNumOf<C>>> {
+fn gaps_of<I: Invocation>(e: &Event<I>) -> Vec<Gap<RoundNumOf<I>>> {
     match e {
         Event::Gaps(gs) => gs.clone(),
         _ => panic!("Expected Event::Gaps{{..}}, got {:?}.", e),
     }
 }
 
-fn ranges_of<S: State, C: Communicator>(e: &Event<S, C>) -> Vec<std::ops::Range<RoundNumOf<C>>> {
+fn ranges_of<I: Invocation>(e: &Event<I>) -> Vec<std::ops::Range<RoundNumOf<I>>> {
     match e {
         Event::Gaps(gs) => gs.iter().map(|g| g.rounds.clone()).collect(),
         _ => panic!("Expected Event::Gaps{{..}}, got {:?}.", e),

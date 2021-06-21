@@ -26,15 +26,6 @@ use pin_project::pin_project;
 use tracing::debug;
 use tracing::info;
 
-use crate::communicator;
-use crate::communicator::AbstainOf;
-use crate::communicator::Communicator;
-use crate::communicator::CoordNumOf;
-use crate::communicator::LogEntryOf;
-use crate::communicator::NayOf;
-use crate::communicator::PromiseFor;
-use crate::communicator::RoundNumOf;
-use crate::communicator::YeaOf;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
@@ -45,13 +36,23 @@ use crate::error::ReadStaleError;
 use crate::error::SpawnError;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
+use crate::invocation::AbstainOf;
+use crate::invocation::ContextOf;
+use crate::invocation::CoordNumOf;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryIdOf;
+use crate::invocation::LogEntryOf;
+use crate::invocation::NayOf;
+use crate::invocation::NodeIdOf;
+use crate::invocation::NodeOf;
+use crate::invocation::OutcomeOf;
+use crate::invocation::PromiseFor;
+use crate::invocation::RoundNumOf;
+use crate::invocation::SnapshotFor;
+use crate::invocation::StateOf;
+use crate::invocation::YeaOf;
 use crate::log::LogEntry;
 use crate::node::NodeInfo;
-use crate::state::ContextOf;
-use crate::state::LogEntryIdOf;
-use crate::state::NodeIdOf;
-use crate::state::NodeOf;
-use crate::state::OutcomeOf;
 use crate::state::State;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
@@ -75,9 +76,9 @@ use msg::Request;
 use msg::Response;
 use working_dir::WorkingDir;
 
-type RequestAndResponseSender<S, C> = (Request<S, C>, ResponseSender<S, C>);
-type ResponseSender<S, C> = oneshot::Sender<Response<S, C>>;
-type Awaiter<S, R> = oneshot::Sender<(R, OutcomeOf<S>)>;
+type RequestAndResponseSender<I> = (Request<I>, ResponseSender<I>);
+type ResponseSender<I> = oneshot::Sender<Response<I>>;
+type Awaiter<I> = oneshot::Sender<(RoundNumOf<I>, OutcomeOf<I>)>;
 
 // this should become unnecessary with stabilization of `!`
 macro_rules! assert_unreachable {
@@ -115,42 +116,41 @@ impl<R, C> From<super::Participation<R>> for Participation<R, C> {
     }
 }
 
-enum AcceptPolicy<C: Communicator> {
+enum AcceptPolicy<I: Invocation> {
     Irrejectable,
-    Rejectable(Option<communicator::NodeOf<C>>),
+    Rejectable(Option<NodeOf<I>>),
 }
 
-type SpawnResult<C> = Result<(NodeStatus, super::Participation<RoundNumOf<C>>), SpawnError>;
-type RoundNumRequest<S, C> = (RangeInclusive<RoundNumOf<C>>, ResponseSender<S, C>);
-type AcceptedEntry<C> = (CoordNumOf<C>, Arc<LogEntryOf<C>>);
-type PendingCommit<C> = (Instant, CoordNumOf<C>, Arc<LogEntryOf<C>>);
+type SpawnResult<I> = Result<(NodeStatus, super::Participation<RoundNumOf<I>>), SpawnError>;
+type RoundNumRequest<I> = (RangeInclusive<RoundNumOf<I>>, ResponseSender<I>);
+type AcceptedEntry<I> = (CoordNumOf<I>, Arc<LogEntryOf<I>>);
+type PendingCommit<I> = (Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
 
-pub struct StateKeeper<S, C, V>
+pub struct StateKeeper<I, V>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
     V: Voter<
-        State = S,
-        RoundNum = RoundNumOf<C>,
-        CoordNum = CoordNumOf<C>,
-        Abstain = AbstainOf<C>,
-        Yea = YeaOf<C>,
-        Nay = NayOf<C>,
+        State = StateOf<I>,
+        RoundNum = RoundNumOf<I>,
+        CoordNum = CoordNumOf<I>,
+        Yea = YeaOf<I>,
+        Nay = NayOf<I>,
+        Abstain = AbstainOf<I>,
     >,
 {
-    context: ContextOf<S>,
-    working_dir: Option<WorkingDir<RoundNumOf<C>>>,
+    context: ContextOf<I>,
+    working_dir: Option<WorkingDir<RoundNumOf<I>>>,
 
-    node_id: NodeIdOf<S>,
+    node_id: NodeIdOf<I>,
     voter: V,
 
-    receiver: mpsc::Receiver<RequestAndResponseSender<S, C>>,
+    receiver: mpsc::Receiver<RequestAndResponseSender<I>>,
 
-    release_sender: mpsc::UnboundedSender<Release<RoundNumOf<C>>>,
-    release_receiver: mpsc::UnboundedReceiver<Release<RoundNumOf<C>>>,
+    release_sender: mpsc::UnboundedSender<Release<RoundNumOf<I>>>,
+    release_receiver: mpsc::UnboundedReceiver<Release<RoundNumOf<I>>>,
 
     // TODO persist in snapshots
-    highest_observed_round_num: Option<RoundNumOf<C>>,
+    highest_observed_round_num: Option<RoundNumOf<I>>,
 
     /// The highest coordination _observed_ number so far.
     ///
@@ -160,7 +160,7 @@ where
     /// bid for leader. This coordination number will then be compared against
     /// the _strongest_ promise (see prepare_entry). Therefore it makes no sense
     /// to track observations by round number.
-    highest_observed_coord_num: CoordNumOf<C>,
+    highest_observed_coord_num: CoordNumOf<I>,
 
     /// If promises were made, promises will be kept.
     ///
@@ -190,57 +190,56 @@ where
     /// enforcing the invariant above.
     ///
     /// [concurrency]: crate::state::State::concurrency
-    promises: BTreeMap<RoundNumOf<C>, CoordNumOf<C>>,
-    accepted_entries: BTreeMap<RoundNumOf<C>, AcceptedEntry<C>>,
-    leadership: (RoundNumOf<C>, CoordNumOf<C>),
+    promises: BTreeMap<RoundNumOf<I>, CoordNumOf<I>>,
+    accepted_entries: BTreeMap<RoundNumOf<I>, AcceptedEntry<I>>,
+    leadership: (RoundNumOf<I>, CoordNumOf<I>),
 
     /// Round number of the last applied log entry, initially `Zero::zero()`.
-    state_round: RoundNumOf<C>,
+    state_round: RoundNumOf<I>,
     /// Current state or `None` iff the node is `Disoriented`.
-    state: Option<Arc<S>>,
+    state: Option<Arc<StateOf<I>>>,
 
-    round_num_requests: VecDeque<RoundNumRequest<S, C>>,
-    acquired_round_nums: HashSet<RoundNumOf<C>>,
+    round_num_requests: VecDeque<RoundNumRequest<I>>,
+    acquired_round_nums: HashSet<RoundNumOf<I>>,
 
-    pending_commits: BTreeMap<RoundNumOf<C>, PendingCommit<C>>,
-    awaiters: HashMap<LogEntryIdOf<S>, Vec<Awaiter<S, RoundNumOf<C>>>>,
+    pending_commits: BTreeMap<RoundNumOf<I>, PendingCommit<I>>,
+    awaiters: HashMap<LogEntryIdOf<I>, Vec<Awaiter<I>>>,
 
     // TODO persist in snapshots
-    participation: Participation<RoundNumOf<C>, CoordNumOf<C>>,
+    participation: Participation<RoundNumOf<I>, CoordNumOf<I>>,
     /// last status that was observable from the outside
     status: NodeStatus,
 
-    queued_events: VecDeque<ShutdownEvent<S, C>>,
-    event_emitter: mpsc::Sender<ShutdownEvent<S, C>>,
+    queued_events: VecDeque<ShutdownEvent<I>>,
+    event_emitter: mpsc::Sender<ShutdownEvent<I>>,
     warn_counter: u16,
 
-    applied_entry_buffer: VecDeque<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>,
+    applied_entry_buffer: VecDeque<(CoordNumOf<I>, Arc<LogEntryOf<I>>)>,
 
     #[cfg(feature = "tracer")]
-    tracer: Option<Box<dyn Tracer<C>>>,
+    tracer: Option<Box<dyn Tracer<I>>>,
 }
 
-impl<S, C, V> StateKeeper<S, C, V>
+impl<I, V> StateKeeper<I, V>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
     V: Voter<
-        State = S,
-        RoundNum = RoundNumOf<C>,
-        CoordNum = CoordNumOf<C>,
-        Abstain = AbstainOf<C>,
-        Yea = YeaOf<C>,
-        Nay = NayOf<C>,
+        State = StateOf<I>,
+        RoundNum = RoundNumOf<I>,
+        CoordNum = CoordNumOf<I>,
+        Yea = YeaOf<I>,
+        Nay = NayOf<I>,
+        Abstain = AbstainOf<I>,
     >,
 {
     pub async fn spawn(
-        args: SpawnArgs<S, C, V>,
+        args: SpawnArgs<I, V>,
     ) -> Result<
         (
             NodeStatus,
-            super::Participation<RoundNumOf<C>>,
-            EventStream<S, C>,
-            StateKeeperHandle<S, C>,
+            super::Participation<RoundNumOf<I>>,
+            EventStream<I>,
+            StateKeeperHandle<I>,
             ProofOfLife,
         ),
         SpawnError,
@@ -269,10 +268,10 @@ where
     }
 
     fn start_and_run_new(
-        spawn_args: SpawnArgs<S, C, V>,
-        start_result_sender: oneshot::Sender<SpawnResult<C>>,
-        receiver: mpsc::Receiver<RequestAndResponseSender<S, C>>,
-        event_emitter: mpsc::Sender<ShutdownEvent<S, C>>,
+        spawn_args: SpawnArgs<I, V>,
+        start_result_sender: oneshot::Sender<SpawnResult<I>>,
+        receiver: mpsc::Receiver<RequestAndResponseSender<I>>,
+        event_emitter: mpsc::Sender<ShutdownEvent<I>>,
     ) {
         std::thread::spawn(move || {
             let context = spawn_args.context;
@@ -560,11 +559,7 @@ where
         let _ = futures::executor::block_on(emitter.send(ShutdownEvent::Last { snapshot }));
     }
 
-    fn handle_request_msg(
-        &mut self,
-        req: Request<S, C>,
-        resp_sender: oneshot::Sender<Response<S, C>>,
-    ) {
+    fn handle_request_msg(&mut self, req: Request<I>, resp_sender: oneshot::Sender<Response<I>>) {
         let resp = match req {
             Request::PrepareSnapshot => Response::PrepareSnapshot(self.prepare_snapshot()),
 
@@ -766,7 +761,7 @@ where
         self.participation = Participation::passive();
     }
 
-    fn passive_for(&self, round_num: RoundNumOf<C>) -> bool {
+    fn passive_for(&self, round_num: RoundNumOf<I>) -> bool {
         match self.participation {
             Participation::Active => false,
             Participation::PartiallyActive(r) => round_num < r,
@@ -807,7 +802,7 @@ where
         });
     }
 
-    fn emit_directive(&mut self, round_num: RoundNumOf<C>, coord_num: CoordNumOf<C>) {
+    fn emit_directive(&mut self, round_num: RoundNumOf<I>, coord_num: CoordNumOf<I>) {
         if let Some(leader) = self.deduce_node(round_num, coord_num) {
             self.emit(Event::Directive {
                 leader,
@@ -818,7 +813,7 @@ where
         }
     }
 
-    fn emit_gaps(&mut self, mut last_round: RoundNumOf<C>) {
+    fn emit_gaps(&mut self, mut last_round: RoundNumOf<I>) {
         let mut gaps = Vec::new();
 
         for (&k, v) in self.pending_commits.iter() {
@@ -835,7 +830,7 @@ where
         self.emit(Event::Gaps(gaps));
     }
 
-    fn emit(&mut self, event: impl Into<ShutdownEvent<S, C>> + std::fmt::Debug) {
+    fn emit(&mut self, event: impl Into<ShutdownEvent<I>> + std::fmt::Debug) {
         tracing::trace!("Emitting event {:?}.", event);
 
         let event = event.into();
@@ -848,7 +843,7 @@ where
         }
     }
 
-    fn deduce_node(&self, round_num: RoundNumOf<C>, coord_num: CoordNumOf<C>) -> Option<NodeOf<S>> {
+    fn deduce_node(&self, round_num: RoundNumOf<I>, coord_num: CoordNumOf<I>) -> Option<NodeOf<I>> {
         self.state.as_ref().and_then(|state| {
             if round_num > self.state_round
                 && round_num <= self.state_round + into_round_num(state.concurrency())
@@ -859,7 +854,7 @@ where
                     .expect("Zero was ruled out via equality check");
 
                 let cluster = state.cluster_at(round_offset);
-                let cluster_size = CoordNumOf::<C>::try_from(cluster.len()).unwrap_or_else(|_| {
+                let cluster_size = CoordNumOf::<I>::try_from(cluster.len()).unwrap_or_else(|_| {
                     panic!(
                         "Cannot convert cluster size `{}` into a coordination number.",
                         cluster.len()
@@ -879,20 +874,18 @@ where
         })
     }
 
-    fn observe_round_num(&mut self, round_num: RoundNumOf<C>) {
+    fn observe_round_num(&mut self, round_num: RoundNumOf<I>) {
         self.highest_observed_round_num = self
             .highest_observed_round_num
             .map(|r| std::cmp::max(r, round_num))
             .or(Some(round_num));
     }
 
-    fn observe_coord_num(&mut self, coord_num: CoordNumOf<C>) {
+    fn observe_coord_num(&mut self, coord_num: CoordNumOf<I>) {
         self.highest_observed_coord_num = std::cmp::max(self.highest_observed_coord_num, coord_num);
     }
 
-    fn prepare_snapshot(
-        &mut self,
-    ) -> Result<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>, PrepareSnapshotError> {
+    fn prepare_snapshot(&mut self) -> Result<SnapshotFor<I>, PrepareSnapshotError> {
         let state = self
             .state
             .as_ref()
@@ -908,17 +901,11 @@ where
     }
 
     // TODO this doesn't do anything and probably never will, consider removal
-    fn affirm_snapshot(
-        &mut self,
-        _snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
-    ) -> Result<(), AffirmSnapshotError> {
+    fn affirm_snapshot(&mut self, _snapshot: SnapshotFor<I>) -> Result<(), AffirmSnapshotError> {
         Ok(())
     }
 
-    fn install_snapshot(
-        &mut self,
-        snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
-    ) -> Result<(), InstallSnapshotError> {
+    fn install_snapshot(&mut self, snapshot: SnapshotFor<I>) -> Result<(), InstallSnapshotError> {
         if self.state_round > snapshot.round() {
             return Err(InstallSnapshotError::Outdated);
         }
@@ -958,9 +945,9 @@ where
 
     fn prepare_entry(
         &mut self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-    ) -> Result<PromiseFor<C>, PrepareError<C>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+    ) -> Result<PromiseFor<I>, PrepareError<I>> {
         if self.passive_for(round_num) {
             debug!("In passive mode, rejecting prepare request.");
             return Err(PrepareError::Passive);
@@ -1081,8 +1068,8 @@ where
 
     fn try_get_applied_entry(
         &mut self,
-        round_num: RoundNumOf<C>,
-    ) -> Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)> {
+        round_num: RoundNumOf<I>,
+    ) -> Option<(CoordNumOf<I>, Arc<LogEntryOf<I>>)> {
         if let Some(offset) = crate::util::try_usize_delta(self.state_round, round_num) {
             if let Some((c, e)) = self.applied_entry_buffer.get(offset) {
                 return Some((*c, Arc::clone(e)));
@@ -1098,10 +1085,10 @@ where
 
     fn accept_entry(
         &mut self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        entry: Arc<LogEntryOf<C>>,
-    ) -> Result<YeaOf<C>, AcceptError<C>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        entry: Arc<LogEntryOf<I>>,
+    ) -> Result<YeaOf<I>, AcceptError<I>> {
         if round_num <= self.state_round {
             Err(AcceptError::Converged(
                 self.highest_observed_coord_num,
@@ -1138,10 +1125,10 @@ where
 
     fn accept_entries(
         &mut self,
-        coord_num: CoordNumOf<C>,
-        entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<C>>)>,
-        policy: AcceptPolicy<C>,
-    ) -> Result<Vec<YeaOf<C>>, AcceptError<C>> {
+        coord_num: CoordNumOf<I>,
+        entries: Vec<(RoundNumOf<I>, Arc<LogEntryOf<I>>)>,
+        policy: AcceptPolicy<I>,
+    ) -> Result<Vec<YeaOf<I>>, AcceptError<I>> {
         let first_round = entries[0].0;
 
         if let Participation::Passive {
@@ -1169,6 +1156,7 @@ where
 
         let round_range = round_range_start
             ..=(round_range_end
+                // TODO is the max here necessary? maybe add an assertion of r >= 1
                 .map(|r| std::cmp::max(r, One::one()) - One::one())
                 .unwrap_or_else(Bounded::max_value));
 
@@ -1223,10 +1211,10 @@ where
 
     fn commit_entry(
         &mut self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        entry: Arc<LogEntryOf<C>>,
-    ) -> Result<(), CommitError<S>> {
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        entry: Arc<LogEntryOf<I>>,
+    ) -> Result<(), CommitError<I>> {
         #[cfg(feature = "tracer")]
         {
             if let Some(tracer) = self.tracer.as_mut() {
@@ -1287,7 +1275,7 @@ where
         self.state = Some(state);
     }
 
-    fn apply_commits_to(&mut self, state: Arc<S>) -> (RoundNumOf<C>, Arc<S>) {
+    fn apply_commits_to(&mut self, state: Arc<StateOf<I>>) -> (RoundNumOf<I>, Arc<StateOf<I>>) {
         if !self
             .pending_commits
             .contains_key(&(self.state_round + One::one()))
@@ -1452,13 +1440,13 @@ impl ProofOfLife {
 }
 
 #[pin_project]
-pub struct EventStream<S: State, C: Communicator> {
+pub struct EventStream<I: Invocation> {
     #[pin]
-    delegate: mpsc::Receiver<ShutdownEvent<S, C>>,
+    delegate: mpsc::Receiver<ShutdownEvent<I>>,
 }
 
-impl<S: State, C: Communicator> futures::stream::Stream for EventStream<S, C> {
-    type Item = ShutdownEvent<S, C>;
+impl<I: Invocation> futures::stream::Stream for EventStream<I> {
+    type Item = ShutdownEvent<I>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,

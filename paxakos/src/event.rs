@@ -1,27 +1,24 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::communicator::Communicator;
-use crate::communicator::CoordNumOf;
-use crate::communicator::RoundNumOf;
+use crate::invocation::CoordNumOf;
+use crate::invocation::EventOf;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryOf;
+use crate::invocation::NodeOf;
+use crate::invocation::RoundNumOf;
+use crate::invocation::SnapshotFor;
+use crate::invocation::StateOf;
 use crate::node::NodeStatus;
-use crate::node::Shutdown;
-use crate::node::Snapshot;
-use crate::state::EventOf;
-use crate::state::LogEntryOf;
-use crate::state::NodeOf;
-use crate::state::State;
 use crate::RoundNum;
-
-pub type ShutdownEventFor<S> = ShutdownEvent<<S as Shutdown>::State, <S as Shutdown>::Communicator>;
 
 /// Emitted by `Node`'s [`poll_events`][crate::Node::poll_events] method.
 #[non_exhaustive]
-pub enum Event<S: State, C: Communicator> {
+pub enum Event<I: Invocation> {
     Init {
         status: NodeStatus,
-        round: RoundNumOf<C>,
-        state: Option<Arc<S>>,
+        round: RoundNumOf<I>,
+        state: Option<Arc<StateOf<I>>>,
     },
 
     StatusChange {
@@ -31,27 +28,30 @@ pub enum Event<S: State, C: Communicator> {
 
     /// The node is transitioning to [partially active
     /// participation][crate::node::Participation].
-    Activate(RoundNumOf<C>),
+    Activate(RoundNumOf<I>),
 
     /// A snapshot was installed.
-    Install { round: RoundNumOf<C>, state: Arc<S> },
+    Install {
+        round: RoundNumOf<I>,
+        state: Arc<StateOf<I>>,
+    },
 
     /// An entry has been committed to the log.
     ///
     /// The event does not imply that the entry was applied to the shared state.
     Commit {
         /// The round for which `log_entry` was committed.
-        round: RoundNumOf<C>,
+        round: RoundNumOf<I>,
 
         /// The log entry which was committed.
-        log_entry: Arc<LogEntryOf<S>>,
+        log_entry: Arc<LogEntryOf<I>>,
     },
 
     /// The next log entry was applied to the state.
     Apply {
-        round: RoundNumOf<C>,
-        log_entry: Arc<LogEntryOf<S>>,
-        result: EventOf<S>,
+        round: RoundNumOf<I>,
+        log_entry: Arc<LogEntryOf<I>>,
+        result: EventOf<I>,
     },
 
     /// A log entry was queued, preceeding entries are still missing.
@@ -60,7 +60,7 @@ pub enum Event<S: State, C: Communicator> {
     /// concurrency bound or if this node created the gap itself. The second
     /// case can arise when the leader tries to concurrently append multiple
     /// entries and abandons some of the earlier appends.
-    Gaps(Vec<Gap<RoundNumOf<C>>>),
+    Gaps(Vec<Gap<RoundNumOf<I>>>),
 
     /// This node received a (potentially indirect) directive for the given
     /// round and from the given node. The node used the mandate obtained with
@@ -68,14 +68,14 @@ pub enum Event<S: State, C: Communicator> {
     ///
     /// This event is not emitted when this node is disoriented or lagging.
     Directive {
-        leader: NodeOf<S>,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
+        leader: NodeOf<I>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
         timestamp: Instant,
     },
 }
 
-impl<S: State, C: Communicator> std::fmt::Debug for Event<S, C> {
+impl<I: Invocation> std::fmt::Debug for Event<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::Init {
@@ -145,21 +145,21 @@ pub struct Gap<R: RoundNum> {
 
 /// Emitted by `Shutdown`'s [`poll_shutdown`][crate::Shutdown::poll_shutdown]
 /// method.
-pub enum ShutdownEvent<S: State, C: Communicator> {
-    Regular(Event<S, C>),
+pub enum ShutdownEvent<I: Invocation> {
+    Regular(Event<I>),
     #[non_exhaustive]
     Last {
-        snapshot: Option<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>>,
+        snapshot: Option<SnapshotFor<I>>,
     },
 }
 
-impl<S: State, C: Communicator> From<Event<S, C>> for ShutdownEvent<S, C> {
-    fn from(e: Event<S, C>) -> Self {
+impl<I: Invocation> From<Event<I>> for ShutdownEvent<I> {
+    fn from(e: Event<I>) -> Self {
         ShutdownEvent::Regular(e)
     }
 }
 
-impl<S: State, C: Communicator> std::fmt::Debug for ShutdownEvent<S, C> {
+impl<I: Invocation> std::fmt::Debug for ShutdownEvent<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ShutdownEvent::Regular(e) => f.debug_tuple("ShutdownEvent::Regular").field(e).finish(),

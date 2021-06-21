@@ -3,6 +3,7 @@
 mod calc_app;
 
 use futures::stream::StreamExt;
+use paxakos::invocation::Invocation;
 use uuid::Uuid;
 
 use paxakos::prototyping::DirectCommunicators;
@@ -12,16 +13,17 @@ use paxakos::NodeInfo;
 use paxakos::Shutdown;
 use paxakos::ShutdownEvent;
 
+use calc_app::CalcInvocation;
 use calc_app::CalcOp;
 use calc_app::CalcState;
 
 #[test]
 fn clean_shutdown() {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !, (), !>::new();
+    let communicators = DirectCommunicators::<CalcInvocation>::new();
 
     let (_, node) = futures::executor::block_on(
-        paxakos::node_builder()
+        CalcInvocation::node_builder()
             .for_node(node_info.id())
             .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))

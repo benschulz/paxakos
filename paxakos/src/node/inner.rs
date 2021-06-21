@@ -21,23 +21,28 @@ use crate::append::AppendError;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
-use crate::applicable::ProjectionOf;
 use crate::communicator::Acceptance;
-use crate::communicator::AcceptanceFor;
 use crate::communicator::Communicator;
-use crate::communicator::CoordNumOf;
 use crate::communicator::ErrorOf;
-use crate::communicator::PromiseFor;
-use crate::communicator::RoundNumOf;
 use crate::communicator::Vote;
-use crate::communicator::VoteFor;
-use crate::state::LogEntryOf;
-use crate::state::NodeIdOf;
-use crate::state::NodeOf;
+use crate::invocation::AbstainOf;
+use crate::invocation::AcceptanceFor;
+use crate::invocation::CommitFor;
+use crate::invocation::CommunicationErrorOf;
+use crate::invocation::CoordNumOf;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryOf;
+use crate::invocation::NayOf;
+use crate::invocation::NodeIdOf;
+use crate::invocation::NodeOf;
+use crate::invocation::PromiseFor;
+use crate::invocation::RoundNumOf;
+use crate::invocation::StateOf;
+use crate::invocation::VoteFor;
+use crate::invocation::YeaOf;
 use crate::Conflict;
 use crate::LogEntry;
 use crate::Promise;
-use crate::State;
 
 use super::commits::Commit;
 use super::commits::Commits;
@@ -46,32 +51,50 @@ use super::NodeInfo;
 
 struct ElectionToken;
 
-pub struct NodeInner<S, C>
+pub struct NodeInner<I, C>
 where
-    S: State,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = NodeOf<I>,
+        RoundNum = RoundNumOf<I>,
+        CoordNum = CoordNumOf<I>,
+        LogEntry = LogEntryOf<I>,
+        Error = CommunicationErrorOf<I>,
+        Yea = YeaOf<I>,
+        Nay = NayOf<I>,
+        Abstain = AbstainOf<I>,
+    >,
 {
-    id: NodeIdOf<S>,
+    id: NodeIdOf<I>,
     communicator: RefCell<C>,
 
-    state_keeper: StateKeeperHandle<S, C>,
+    state_keeper: StateKeeperHandle<I>,
 
     election_lock: Mutex<ElectionToken>,
-    term_start: Cell<RoundNumOf<C>>,
-    campaigned_on: Cell<CoordNumOf<C>>,
+    term_start: Cell<RoundNumOf<I>>,
+    campaigned_on: Cell<CoordNumOf<I>>,
 
     commits: Commits,
 }
 
-impl<S, C> NodeInner<S, C>
+impl<I, C> NodeInner<I, C>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = NodeOf<I>,
+        RoundNum = RoundNumOf<I>,
+        CoordNum = CoordNumOf<I>,
+        LogEntry = LogEntryOf<I>,
+        Error = CommunicationErrorOf<I>,
+        Yea = YeaOf<I>,
+        Nay = NayOf<I>,
+        Abstain = AbstainOf<I>,
+    >,
 {
     pub fn new(
-        id: NodeIdOf<S>,
+        id: NodeIdOf<I>,
         communicator: C,
-        state_keeper: StateKeeperHandle<S, C>,
+        state_keeper: StateKeeperHandle<I>,
         commits: Commits,
     ) -> Self {
         Self {
@@ -88,15 +111,15 @@ where
         }
     }
 
-    pub fn id(&self) -> NodeIdOf<S> {
+    pub fn id(&self) -> NodeIdOf<I> {
         self.id
     }
 
-    pub async fn append<A: ApplicableTo<S>>(
+    pub async fn append<A: ApplicableTo<StateOf<I>>>(
         self: Rc<Self>,
         applicable: A,
-        args: AppendArgs<C>,
-    ) -> Result<Commit<S, RoundNumOf<C>, ProjectionOf<A, S>>, AppendError<C>> {
+        args: AppendArgs<I>,
+    ) -> Result<CommitFor<I, A>, AppendError<I>> {
         let log_entry = applicable.into_log_entry();
         let log_entry_id = log_entry.id();
 
@@ -120,9 +143,9 @@ where
 
     async fn append_actively(
         self: Rc<Self>,
-        log_entry: Arc<LogEntryOf<S>>,
-        mut args: AppendArgs<C>,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
+        log_entry: Arc<LogEntryOf<I>>,
+        mut args: AppendArgs<I>,
+    ) -> Result<CommitFor<I>, AppendError<I>> {
         let mut i: usize = 0;
 
         loop {
@@ -150,10 +173,10 @@ where
 
     async fn try_append(
         self: Rc<Self>,
-        log_entry: Arc<LogEntryOf<S>>,
-        round: RangeInclusive<RoundNumOf<C>>,
+        log_entry: Arc<LogEntryOf<I>>,
+        round: RangeInclusive<RoundNumOf<I>>,
         importance: Importance,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
+    ) -> Result<CommitFor<I>, AppendError<I>> {
         let reservation = self.state_keeper.reserve_round_num(round).await?;
 
         let result = self
@@ -168,10 +191,10 @@ where
 
     async fn try_append_internal(
         self: Rc<Self>,
-        log_entry: Arc<LogEntryOf<S>>,
-        round_num: RoundNumOf<C>,
+        log_entry: Arc<LogEntryOf<I>>,
+        round_num: RoundNumOf<I>,
         importance: Importance,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
+    ) -> Result<CommitFor<I>, AppendError<I>> {
         let node_id = self.id;
 
         let log_entry_id = log_entry.id();
@@ -187,7 +210,7 @@ where
         // The number of *additional* nodes that make a quorum.
         let quorum_prime = cluster.len() / 2;
 
-        let other_nodes: Vec<NodeOf<S>> = cluster
+        let other_nodes: Vec<NodeOf<I>> = cluster
             .into_iter()
             .filter(move |n| n.id() != node_id)
             .collect();
@@ -240,17 +263,17 @@ where
         &self,
         cluster_size: usize,
         own_node_idx: usize,
-    ) -> Result<CoordNumOf<C>, AppendError<C>> {
+    ) -> Result<CoordNumOf<I>, AppendError<I>> {
         assert!(own_node_idx < cluster_size);
 
-        let cluster_size = CoordNumOf::<C>::try_from(cluster_size).unwrap_or_else(|_| {
+        let cluster_size = CoordNumOf::<I>::try_from(cluster_size).unwrap_or_else(|_| {
             panic!(
                 "Cannot convert cluster size `{}` into a coordination number.",
                 cluster_size
             )
         });
 
-        let own_node_ix = CoordNumOf::<C>::try_from(own_node_idx).unwrap_or_else(|_| {
+        let own_node_ix = CoordNumOf::<I>::try_from(own_node_idx).unwrap_or_else(|_| {
             panic!(
                 "Cannot convert `{}` into a coordination number.",
                 own_node_idx
@@ -275,12 +298,12 @@ where
 
     async fn ensure_leadership(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
         quorum_prime: usize,
-        other_nodes: &[NodeOf<S>],
+        other_nodes: &[NodeOf<I>],
         importance: Importance,
-    ) -> Result<Option<Arc<LogEntryOf<S>>>, AppendError<C>> {
+    ) -> Result<Option<Arc<LogEntryOf<I>>>, AppendError<I>> {
         // This holds iff we already believe to be leader for `round_num`.
         if round_num >= self.term_start.get() && coord_num == self.campaigned_on.get() {
             return Ok(self.state_keeper.accepted_entry_of(round_num).await?);
@@ -364,11 +387,11 @@ where
     async fn become_leader(
         &self,
         _election_token: &ElectionToken,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
         quorum_prime: usize,
-        other_nodes: &[NodeOf<S>],
-    ) -> Result<Option<Arc<LogEntryOf<S>>>, AppendError<C>> {
+        other_nodes: &[NodeOf<I>],
+    ) -> Result<Option<Arc<LogEntryOf<I>>>, AppendError<I>> {
         let own_promise = self
             .state_keeper
             .prepare_entry(round_num, coord_num)
@@ -451,13 +474,13 @@ where
 
     async fn await_promise_quorum_or_first_conflict(
         &self,
-        round_num: RoundNumOf<C>,
+        round_num: RoundNumOf<I>,
         quorum: usize,
         pending_responses: impl IntoIterator<
-            Item = impl Future<Output = Result<VoteFor<C>, ErrorOf<C>>>,
+            Item = impl Future<Output = Result<VoteFor<I>, ErrorOf<C>>>,
         >,
-        own_promise: PromiseFor<C>,
-    ) -> Result<VoteFor<C>, AppendError<C>> {
+        own_promise: PromiseFor<I>,
+    ) -> Result<VoteFor<I>, AppendError<I>> {
         if quorum == 0 {
             return Ok(Vote::Given(own_promise));
         }
@@ -530,20 +553,20 @@ where
 
     async fn propose_entry(
         &self,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
         quorum_prime: usize,
-        other_nodes: &[NodeOf<S>],
-        log_entry: Arc<LogEntryOf<S>>,
+        other_nodes: &[NodeOf<I>],
+        log_entry: Arc<LogEntryOf<I>>,
     ) -> Result<
         (
-            HashSet<NodeIdOf<S>>,
-            HashSet<NodeIdOf<S>>,
+            HashSet<NodeIdOf<I>>,
+            HashSet<NodeIdOf<I>>,
             FuturesUnordered<
-                impl Future<Output = (NodeIdOf<S>, Result<AcceptanceFor<C>, ErrorOf<C>>)>,
+                impl Future<Output = (NodeIdOf<I>, Result<AcceptanceFor<I>, ErrorOf<C>>)>,
             >,
         ),
-        AppendError<C>,
+        AppendError<I>,
     > {
         self.state_keeper
             .accept_entry(round_num, coord_num, Arc::clone(&log_entry))
@@ -555,7 +578,7 @@ where
             .send_proposal(other_nodes, round_num, coord_num, Arc::clone(&log_entry))
             .into_iter()
             .map(|(node, fut)| {
-                let node_id: NodeIdOf<S> = node.id();
+                let node_id: NodeIdOf<I> = node.id();
                 fut.map(move |r| (node_id, r))
             });
 
@@ -565,19 +588,19 @@ where
 
     async fn await_accepted_quorum<'a, P>(
         &self,
-        round_num: RoundNumOf<C>,
+        round_num: RoundNumOf<I>,
         quorum: usize,
         pending_responses: impl IntoIterator<Item = P>,
     ) -> Result<
         (
-            HashSet<NodeIdOf<S>>,
-            HashSet<NodeIdOf<S>>,
+            HashSet<NodeIdOf<I>>,
+            HashSet<NodeIdOf<I>>,
             FuturesUnordered<P>,
         ),
-        AppendError<C>,
+        AppendError<I>,
     >
     where
-        P: Future<Output = (NodeIdOf<S>, Result<AcceptanceFor<C>, ErrorOf<C>>)>,
+        P: Future<Output = (NodeIdOf<I>, Result<AcceptanceFor<I>, ErrorOf<C>>)>,
     {
         if quorum == 0 {
             return Ok((
@@ -662,16 +685,16 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn commit_entry(
         self: Rc<Self>,
-        round_num: RoundNumOf<C>,
-        coord_num: CoordNumOf<C>,
-        log_entry: Arc<LogEntryOf<S>>,
-        mut other_nodes: Vec<NodeOf<S>>,
-        accepted: HashSet<NodeIdOf<S>>,
-        rejected_or_failed: HashSet<NodeIdOf<S>>,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+        log_entry: Arc<LogEntryOf<I>>,
+        mut other_nodes: Vec<NodeOf<I>>,
+        accepted: HashSet<NodeIdOf<I>>,
+        rejected_or_failed: HashSet<NodeIdOf<I>>,
         mut pending_acceptances: FuturesUnordered<
-            impl 'static + Future<Output = (NodeIdOf<S>, Result<AcceptanceFor<C>, ErrorOf<C>>)>,
+            impl 'static + Future<Output = (NodeIdOf<I>, Result<AcceptanceFor<I>, ErrorOf<C>>)>,
         >,
-    ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
+    ) -> Result<CommitFor<I>, AppendError<I>> {
         let accepted = other_nodes
             .drain_filter(|n| accepted.contains(&n.id()))
             .collect::<Vec<_>>();

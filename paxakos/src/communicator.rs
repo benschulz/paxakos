@@ -3,8 +3,9 @@ use std::convert::TryInto;
 use std::future::Future;
 use std::sync::Arc;
 
+use crate::invocation;
+use crate::invocation::Invocation;
 use crate::log::LogEntry;
-use crate::state::State;
 use crate::AcceptError;
 use crate::CommitError;
 use crate::Conflict;
@@ -21,10 +22,12 @@ pub type LogEntryOf<C> = <C as Communicator>::LogEntry;
 pub type LogEntryIdOf<C> = <LogEntryOf<C> as LogEntry>::Id;
 pub type NayOf<C> = <C as Communicator>::Nay;
 pub type NodeOf<C> = <C as Communicator>::Node;
+pub type NodeIdOf<C> = <NodeOf<C> as NodeInfo>::Id;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
 pub type YeaOf<C> = <C as Communicator>::Yea;
 
 pub type AcceptanceFor<C> = Acceptance<CoordNumOf<C>, LogEntryOf<C>, YeaOf<C>, NayOf<C>>;
+pub type ConflictFor<C> = Conflict<CoordNumOf<C>, LogEntryOf<C>>;
 pub type PromiseFor<C> = Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>;
 pub type VoteFor<C> = Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstainOf<C>>;
 
@@ -103,22 +106,31 @@ pub enum Vote<R, C, E, A> {
     Abstained(A),
 }
 
-impl<C: Communicator> TryFrom<Result<PromiseFor<C>, PrepareError<C>>>
-    for Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstainOf<C>>
+impl<I: Invocation> TryFrom<Result<invocation::PromiseFor<I>, PrepareError<I>>>
+    for Vote<
+        invocation::RoundNumOf<I>,
+        invocation::CoordNumOf<I>,
+        invocation::LogEntryOf<I>,
+        invocation::AbstainOf<I>,
+    >
 {
-    type Error = PrepareError<C>;
+    type Error = PrepareError<I>;
 
-    fn try_from(result: Result<PromiseFor<C>, PrepareError<C>>) -> Result<Self, Self::Error> {
+    fn try_from(
+        result: Result<invocation::PromiseFor<I>, PrepareError<I>>,
+    ) -> Result<Self, Self::Error> {
         result
             .map(Vote::Given)
             .or_else(|err| err.try_into().map(Vote::Conflicted))
     }
 }
 
-impl<C: Communicator> TryFrom<PrepareError<C>> for Conflict<CoordNumOf<C>, LogEntryOf<C>> {
-    type Error = PrepareError<C>;
+impl<I: Invocation> TryFrom<PrepareError<I>>
+    for Conflict<invocation::CoordNumOf<I>, invocation::LogEntryOf<I>>
+{
+    type Error = PrepareError<I>;
 
-    fn try_from(error: PrepareError<C>) -> Result<Self, Self::Error> {
+    fn try_from(error: PrepareError<I>) -> Result<Self, Self::Error> {
         match error {
             PrepareError::Supplanted(coord_num) => Ok(Conflict::Supplanted { coord_num }),
             PrepareError::Converged(coord_num, log_entry) => Ok(Conflict::Converged {
@@ -140,28 +152,35 @@ impl<R, C, E, A> From<Result<Promise<R, C, E>, Conflict<C, E>>> for Vote<R, C, E
 }
 
 #[derive(Debug)]
-pub enum Acceptance<C, E, Y, N> {
+pub enum Acceptance<C, E, Y, X> {
     Given(Y),
     Conflicted(Conflict<C, E>),
-    Refused(N),
+    Refused(X),
 }
 
-impl<C: Communicator> TryFrom<Result<YeaOf<C>, AcceptError<C>>>
-    for Acceptance<CoordNumOf<C>, LogEntryOf<C>, YeaOf<C>, NayOf<C>>
+impl<I: Invocation> TryFrom<Result<invocation::YeaOf<I>, AcceptError<I>>>
+    for Acceptance<
+        invocation::CoordNumOf<I>,
+        invocation::LogEntryOf<I>,
+        invocation::YeaOf<I>,
+        invocation::NayOf<I>,
+    >
 {
-    type Error = AcceptError<C>;
+    type Error = AcceptError<I>;
 
-    fn try_from(result: Result<YeaOf<C>, AcceptError<C>>) -> Result<Self, Self::Error> {
+    fn try_from(result: Result<invocation::YeaOf<I>, AcceptError<I>>) -> Result<Self, Self::Error> {
         result
             .map(Acceptance::Given)
             .or_else(|err| err.try_into().map(Acceptance::Conflicted))
     }
 }
 
-impl<C: Communicator> TryFrom<AcceptError<C>> for Conflict<CoordNumOf<C>, LogEntryOf<C>> {
-    type Error = AcceptError<C>;
+impl<I: Invocation> TryFrom<AcceptError<I>>
+    for Conflict<invocation::CoordNumOf<I>, invocation::LogEntryOf<I>>
+{
+    type Error = AcceptError<I>;
 
-    fn try_from(error: AcceptError<C>) -> Result<Self, Self::Error> {
+    fn try_from(error: AcceptError<I>) -> Result<Self, Self::Error> {
         match error {
             AcceptError::Supplanted(coord_num) => Ok(Conflict::Supplanted { coord_num }),
             AcceptError::Converged(coord_num, log_entry) => Ok(Conflict::Converged {
@@ -173,7 +192,7 @@ impl<C: Communicator> TryFrom<AcceptError<C>> for Conflict<CoordNumOf<C>, LogEnt
     }
 }
 
-impl<C, E, Y, N> From<Result<Y, Conflict<C, E>>> for Acceptance<C, E, Y, N> {
+impl<C, E, Y, X> From<Result<Y, Conflict<C, E>>> for Acceptance<C, E, Y, X> {
     fn from(result: Result<Y, Conflict<C, E>>) -> Self {
         result
             .map(Acceptance::Given)
@@ -189,10 +208,10 @@ impl From<()> for Committed {
     }
 }
 
-impl<S: State> TryFrom<Result<(), CommitError<S>>> for Committed {
-    type Error = CommitError<S>;
+impl<I: Invocation> TryFrom<Result<(), CommitError<I>>> for Committed {
+    type Error = CommitError<I>;
 
-    fn try_from(result: Result<(), CommitError<S>>) -> Result<Self, Self::Error> {
+    fn try_from(result: Result<(), CommitError<I>>) -> Result<Self, Self::Error> {
         result.map(|_| Committed)
     }
 }

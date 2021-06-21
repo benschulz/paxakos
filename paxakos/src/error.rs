@@ -3,13 +3,12 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::communicator::AbstainOf;
-use crate::communicator::Communicator;
-use crate::communicator::CoordNumOf;
-use crate::communicator::LogEntryOf;
-use crate::communicator::NayOf;
-use crate::state::LogEntryIdOf;
-use crate::state::State;
+use crate::invocation::AbstainOf;
+use crate::invocation::CoordNumOf;
+use crate::invocation::Invocation;
+use crate::invocation::LogEntryIdOf;
+use crate::invocation::LogEntryOf;
+use crate::invocation::NayOf;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -92,15 +91,15 @@ pub enum ReadStaleError {
 
 /// Preparing a round for proposals failed.
 #[derive(Error)]
-pub enum PrepareError<C: Communicator> {
+pub enum PrepareError<I: Invocation> {
     #[error("promise war deliberately withheld")]
-    Abstained(AbstainOf<C>),
+    Abstained(AbstainOf<I>),
 
     #[error("conflicting promise")]
-    Supplanted(CoordNumOf<C>),
+    Supplanted(CoordNumOf<I>),
 
     #[error("round already converged")]
-    Converged(CoordNumOf<C>, Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>),
+    Converged(CoordNumOf<I>, Option<(CoordNumOf<I>, Arc<LogEntryOf<I>>)>),
 
     #[error("node is passive")]
     Passive,
@@ -109,7 +108,7 @@ pub enum PrepareError<C: Communicator> {
     ShutDown,
 }
 
-impl<C: Communicator> std::fmt::Debug for PrepareError<C> {
+impl<I: Invocation> std::fmt::Debug for PrepareError<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PrepareError::Abstained(abstention) => f
@@ -131,8 +130,8 @@ impl<C: Communicator> std::fmt::Debug for PrepareError<C> {
     }
 }
 
-impl<C: Communicator> From<PrepareError<C>> for AppendError<C> {
-    fn from(e: PrepareError<C>) -> Self {
+impl<I: Invocation> From<PrepareError<I>> for AppendError<I> {
+    fn from(e: PrepareError<I>) -> Self {
         match e {
             PrepareError::Abstained(reason) => AppendError::NoQuorum {
                 abstentions: vec![reason],
@@ -149,24 +148,24 @@ impl<C: Communicator> From<PrepareError<C>> for AppendError<C> {
 
 /// A proposal could not be accepted.
 #[derive(Error)]
-pub enum AcceptError<C: Communicator> {
+pub enum AcceptError<I: Invocation> {
     #[error("conflicting promise")]
-    Supplanted(CoordNumOf<C>),
+    Supplanted(CoordNumOf<I>),
 
     #[error("round already converged")]
-    Converged(CoordNumOf<C>, Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>),
+    Converged(CoordNumOf<I>, Option<(CoordNumOf<I>, Arc<LogEntryOf<I>>)>),
 
     #[error("node is passive")]
     Passive,
 
     #[error("proposal was rejected")]
-    Rejected(NayOf<C>),
+    Rejected(NayOf<I>),
 
     #[error("node is shut down")]
     ShutDown,
 }
 
-impl<C: Communicator> std::fmt::Debug for AcceptError<C> {
+impl<I: Invocation> std::fmt::Debug for AcceptError<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AcceptError::Supplanted(coord_num) => f
@@ -188,8 +187,8 @@ impl<C: Communicator> std::fmt::Debug for AcceptError<C> {
     }
 }
 
-impl<C: Communicator> From<AcceptError<C>> for AppendError<C> {
-    fn from(e: AcceptError<C>) -> Self {
+impl<I: Invocation> From<AcceptError<I>> for AppendError<I> {
+    fn from(e: AcceptError<I>) -> Self {
         match e {
             AcceptError::Supplanted(_) => AppendError::Lost,
             AcceptError::Converged(_, _) => AppendError::Converged,
@@ -206,22 +205,35 @@ impl<C: Communicator> From<AcceptError<C>> for AppendError<C> {
 
 /// Committing a log entry failed.
 #[non_exhaustive]
-#[derive(Debug, Error)]
-pub enum CommitError<S: State> {
+#[derive(Error)]
+pub enum CommitError<I: Invocation> {
     #[error("node is disoriented")]
     Disoriented,
 
     /// The given id could not be resolved to a log entry.
     #[error("given log entry id is invalid")]
-    InvalidEntryId(LogEntryIdOf<S>),
+    InvalidEntryId(LogEntryIdOf<I>),
 
     /// The paxakos node was shut down.
     #[error("node is shut down")]
     ShutDown,
 }
 
-impl<S: State, C: Communicator> From<CommitError<S>> for AppendError<C> {
-    fn from(e: CommitError<S>) -> Self {
+impl<I: Invocation> std::fmt::Debug for CommitError<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommitError::Disoriented => f.debug_tuple("CommitError::Disoriented").finish(),
+            CommitError::InvalidEntryId(entry_id) => f
+                .debug_tuple("CommitError::InvalidEntryId")
+                .field(entry_id)
+                .finish(),
+            CommitError::ShutDown => f.debug_tuple("CommitError::ShutDown").finish(),
+        }
+    }
+}
+
+impl<I: Invocation> From<CommitError<I>> for AppendError<I> {
+    fn from(e: CommitError<I>) -> Self {
         match e {
             CommitError::Disoriented => AppendError::Disoriented,
             CommitError::InvalidEntryId(_) => unreachable!(),

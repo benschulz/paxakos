@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
+use std::sync::Arc;
 use std::task::Poll;
 use std::time::Instant;
 
@@ -12,11 +13,15 @@ use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
 use crate::communicator::Communicator;
 use crate::error::Disoriented;
+use crate::invocation;
+use crate::invocation::Invocation;
 use crate::node::builder::NodeBuilder;
 use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
+use crate::node::EventFor;
+use crate::node::InvocationOf;
 use crate::node::NayOf;
 use crate::node::Node;
 use crate::node::NodeIdOf;
@@ -26,11 +31,9 @@ use crate::node::NodeOf;
 use crate::node::NodeStatus;
 use crate::node::Participation;
 use crate::node::RoundNumOf;
-use crate::node::Snapshot;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::YeaOf;
-use crate::state::State;
 use crate::voting::Voter;
 use crate::RoundNum;
 
@@ -113,7 +116,7 @@ impl<N: Node> TrackLeadership<N> {
 
         if affects_first_mandate {
             let next_round = round + One::one();
-            let mandate = self.mandates.remove(&round).unwrap();
+            let mandate = self.mandates.pop_first().unwrap().1;
 
             let obsolete = self
                 .mandates
@@ -225,7 +228,7 @@ impl<N> Node for TrackLeadership<N>
 where
     N: Node,
 {
-    type State = StateOf<N>;
+    type Invocation = InvocationOf<N>;
     type Communicator = CommunicatorOf<N>;
     type Shutdown = <N as Node>::Shutdown;
 
@@ -241,10 +244,7 @@ where
         self.decorated.participation()
     }
 
-    fn poll_events(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<crate::Event<Self::State, Self::Communicator>> {
+    fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> Poll<EventFor<Self>> {
         let event = self.decorated.poll_events(cx);
 
         if let Poll::Ready(event) = &event {
@@ -302,28 +302,28 @@ where
 
     fn affirm_snapshot(
         &self,
-        snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
+        snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
         self.decorated.affirm_snapshot(snapshot)
     }
 
     fn install_snapshot(
         &self,
-        snapshot: Snapshot<Self::State, RoundNumOf<Self>, CoordNumOf<Self>>,
+        snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
         self.decorated.install_snapshot(snapshot)
     }
 
     fn read_stale(
         &self,
-    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<Self::State>, Disoriented>> {
+    ) -> futures::future::LocalBoxFuture<'_, Result<Arc<StateOf<Self>>, Disoriented>> {
         self.decorated.read_stale()
     }
 
-    fn append<A: ApplicableTo<Self::State> + 'static>(
+    fn append<A: ApplicableTo<StateOf<Self>> + 'static>(
         &self,
         applicable: A,
-        args: AppendArgs<Self::Communicator>,
+        args: AppendArgs<Self::Invocation>,
     ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
         self.decorated.append(applicable, args)
     }
@@ -337,7 +337,7 @@ impl<D, I> LeadershipAwareNode<(I,)> for D
 where
     D: Decoration
         + Node<
-            State = StateOf<<D as Decoration>::Decorated>,
+            Invocation = InvocationOf<<D as Decoration>::Decorated>,
             Communicator = CommunicatorOf<<D as Decoration>::Decorated>,
         >,
     <D as Decoration>::Decorated: LeadershipAwareNode<I>,
@@ -357,7 +357,7 @@ impl<D, I> MaybeLeadershipAwareNode<(I,)> for D
 where
     D: Decoration
         + Node<
-            State = StateOf<<D as Decoration>::Decorated>,
+            Invocation = InvocationOf<<D as Decoration>::Decorated>,
             Communicator = CommunicatorOf<<D as Decoration>::Decorated>,
         > + 'static,
     <D as Decoration>::Decorated: MaybeLeadershipAwareNode<I>,
@@ -377,10 +377,19 @@ where
     }
 }
 
-impl<S, C> MaybeLeadershipAwareNode<()> for NodeKernel<S, C>
+impl<I, C> MaybeLeadershipAwareNode<()> for NodeKernel<I, C>
 where
-    S: State<LogEntry = <C as Communicator>::LogEntry, Node = <C as Communicator>::Node>,
-    C: Communicator,
+    I: Invocation,
+    C: Communicator<
+        Node = invocation::NodeOf<I>,
+        RoundNum = invocation::RoundNumOf<I>,
+        CoordNum = invocation::CoordNumOf<I>,
+        LogEntry = invocation::LogEntryOf<I>,
+        Error = invocation::CommunicationErrorOf<I>,
+        Yea = invocation::YeaOf<I>,
+        Nay = invocation::NayOf<I>,
+        Abstain = invocation::AbstainOf<I>,
+    >,
 {
     fn leadership(&self) -> Option<&[LeadershipFor<Self>]> {
         None

@@ -377,6 +377,7 @@ pub mod communicator;
 pub mod deco;
 pub mod error;
 pub mod event;
+pub mod invocation;
 #[cfg(feature = "locking")]
 pub mod locking;
 mod log;
@@ -404,6 +405,8 @@ pub use error::CommitError;
 pub use error::PrepareError;
 pub use event::Event;
 pub use event::ShutdownEvent;
+#[doc(inline)]
+pub use invocation::Invocation;
 #[doc(inline)]
 pub use log::LogEntry;
 #[doc(inline)]
