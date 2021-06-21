@@ -5,6 +5,7 @@ use futures::channel::oneshot;
 
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
+use crate::communicator::PromiseFor;
 use crate::communicator::RoundNumOf;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
@@ -19,7 +20,6 @@ use crate::state::LogEntryOf;
 use crate::state::NodeOf;
 use crate::state::OutcomeOf;
 use crate::state::State;
-use crate::Promise;
 use crate::RoundNum;
 
 use super::error::AcquireRoundNumError;
@@ -115,7 +115,7 @@ pub enum Response<S: State, C: Communicator> {
     ObservedCoordNum(Result<(), !>),
     HighestObservedCoordNum(Result<CoordNumOf<C>, !>),
 
-    PrepareEntry(Result<Promise<C>, PrepareError<C>>),
+    PrepareEntry(Result<PromiseFor<C>, PrepareError<C>>),
 
     AcceptEntry(Result<(), AcceptError<C>>),
     AcceptEntries(Result<usize, AcceptError<C>>),

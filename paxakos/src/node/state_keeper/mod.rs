@@ -31,6 +31,7 @@ use crate::communicator::AbstentionOf;
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
 use crate::communicator::LogEntryOf;
+use crate::communicator::PromiseFor;
 use crate::communicator::RejectionOf;
 use crate::communicator::RoundNumOf;
 use crate::error::AcceptError;
@@ -955,7 +956,7 @@ where
         &mut self,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
-    ) -> Result<Promise<C>, PrepareError<C>> {
+    ) -> Result<PromiseFor<C>, PrepareError<C>> {
         if self.passive_for(round_num) {
             debug!("In passive mode, rejecting prepare request.");
             return Err(PrepareError::Passive);
@@ -1052,7 +1053,7 @@ where
                         .accepted_entries
                         .range(round_num..)
                         .map(|(r, (c, e))| Condition::from((*r, *c, Arc::clone(e))))
-                        .collect::<Vec<Condition<C>>>();
+                        .collect::<Vec<Condition<_, _, _>>>();
 
                     #[cfg(feature = "tracer")]
                     {

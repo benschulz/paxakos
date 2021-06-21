@@ -23,6 +23,10 @@ pub type NodeOf<C> = <C as Communicator>::Node;
 pub type RejectionOf<C> = <C as Communicator>::Rejection;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
 
+pub type AcceptanceFor<C> = Acceptance<CoordNumOf<C>, LogEntryOf<C>, RejectionOf<C>>;
+pub type PromiseFor<C> = Promise<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>>;
+pub type VoteFor<C> = Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstentionOf<C>>;
+
 /// Defines how [`Node`][crate::Node]s call others'
 /// [`RequestHandler`][crate::RequestHandler]s.
 ///
@@ -51,8 +55,8 @@ pub trait Communicator: Sized + 'static {
     type Abstention: std::fmt::Debug + Send + Sync + 'static;
     type Rejection: std::fmt::Debug + Send + Sync + 'static;
 
-    type SendPrepare: Future<Output = Result<Vote<Self>, Self::Error>>;
-    type SendProposal: Future<Output = Result<Acceptance<Self>, Self::Error>>;
+    type SendPrepare: Future<Output = Result<VoteFor<Self>, Self::Error>>;
+    type SendProposal: Future<Output = Result<AcceptanceFor<Self>, Self::Error>>;
     type SendCommit: Future<Output = Result<Committed, Self::Error>>;
     type SendCommitById: Future<Output = Result<Committed, Self::Error>>;
 
@@ -89,23 +93,25 @@ pub trait Communicator: Sized + 'static {
 }
 
 #[derive(Debug)]
-pub enum Vote<C: Communicator> {
-    Given(Promise<C>),
-    Conflicted(Conflict<C>),
-    Abstained(AbstentionOf<C>),
+pub enum Vote<R, C, E, A> {
+    Given(Promise<R, C, E>),
+    Conflicted(Conflict<C, E>),
+    Abstained(A),
 }
 
-impl<C: Communicator> TryFrom<Result<Promise<C>, PrepareError<C>>> for Vote<C> {
+impl<C: Communicator> TryFrom<Result<PromiseFor<C>, PrepareError<C>>>
+    for Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstentionOf<C>>
+{
     type Error = PrepareError<C>;
 
-    fn try_from(result: Result<Promise<C>, PrepareError<C>>) -> Result<Self, Self::Error> {
+    fn try_from(result: Result<PromiseFor<C>, PrepareError<C>>) -> Result<Self, Self::Error> {
         result
             .map(Vote::Given)
             .or_else(|err| err.try_into().map(Vote::Conflicted))
     }
 }
 
-impl<C: Communicator> TryFrom<PrepareError<C>> for Conflict<C> {
+impl<C: Communicator> TryFrom<PrepareError<C>> for Conflict<CoordNumOf<C>, LogEntryOf<C>> {
     type Error = PrepareError<C>;
 
     fn try_from(error: PrepareError<C>) -> Result<Self, Self::Error> {
@@ -120,8 +126,8 @@ impl<C: Communicator> TryFrom<PrepareError<C>> for Conflict<C> {
     }
 }
 
-impl<C: Communicator> From<Result<Promise<C>, Conflict<C>>> for Vote<C> {
-    fn from(result: Result<Promise<C>, Conflict<C>>) -> Self {
+impl<R, C, E, A> From<Result<Promise<R, C, E>, Conflict<C, E>>> for Vote<R, C, E, A> {
+    fn from(result: Result<Promise<R, C, E>, Conflict<C, E>>) -> Self {
         match result {
             Ok(promise) => Vote::Given(promise),
             Err(rejection) => Vote::Conflicted(rejection),
@@ -130,13 +136,15 @@ impl<C: Communicator> From<Result<Promise<C>, Conflict<C>>> for Vote<C> {
 }
 
 #[derive(Debug)]
-pub enum Acceptance<C: Communicator> {
+pub enum Acceptance<C, E, N> {
     Given,
-    Conflicted(Conflict<C>),
-    Rejected(RejectionOf<C>),
+    Conflicted(Conflict<C, E>),
+    Refused(N),
 }
 
-impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>> for Acceptance<C> {
+impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>>
+    for Acceptance<CoordNumOf<C>, LogEntryOf<C>, RejectionOf<C>>
+{
     type Error = AcceptError<C>;
 
     fn try_from(result: Result<(), AcceptError<C>>) -> Result<Self, Self::Error> {
@@ -146,7 +154,7 @@ impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>> for Acceptance<C> {
     }
 }
 
-impl<C: Communicator> TryFrom<AcceptError<C>> for Conflict<C> {
+impl<C: Communicator> TryFrom<AcceptError<C>> for Conflict<CoordNumOf<C>, LogEntryOf<C>> {
     type Error = AcceptError<C>;
 
     fn try_from(error: AcceptError<C>) -> Result<Self, Self::Error> {
@@ -161,12 +169,11 @@ impl<C: Communicator> TryFrom<AcceptError<C>> for Conflict<C> {
     }
 }
 
-impl<C: Communicator> From<Result<(), Conflict<C>>> for Acceptance<C> {
-    fn from(result: Result<(), Conflict<C>>) -> Self {
-        match result {
-            Ok(_) => Acceptance::Given,
-            Err(rejection) => Acceptance::Conflicted(rejection),
-        }
+impl<C, E, N> From<Result<(), Conflict<C, E>>> for Acceptance<C, E, N> {
+    fn from(result: Result<(), Conflict<C, E>>) -> Self {
+        result
+            .map(|_| Acceptance::Given)
+            .unwrap_or_else(Acceptance::Conflicted)
     }
 }
 

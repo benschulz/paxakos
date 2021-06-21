@@ -10,6 +10,7 @@ use futures::sink::SinkExt;
 
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
+use crate::communicator::PromiseFor;
 use crate::communicator::RoundNumOf;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
@@ -27,7 +28,6 @@ use crate::state::NodeOf;
 use crate::state::OutcomeOf;
 use crate::state::State;
 use crate::LogEntry;
-use crate::Promise;
 
 use super::error::AcquireRoundNumError;
 use super::error::ClusterError;
@@ -185,7 +185,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         &self,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
-    ) -> impl Future<Output = Result<Promise<C>, PrepareError<C>>> {
+    ) -> impl Future<Output = Result<PromiseFor<C>, PrepareError<C>>> {
         self.handle_prepare(round_num, coord_num)
     }
 
@@ -193,7 +193,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         &self,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
-    ) -> impl Future<Output = Result<Promise<C>, PrepareError<C>>> {
+    ) -> impl Future<Output = Result<PromiseFor<C>, PrepareError<C>>> {
         dispatch_state_keeper_req!(self, PrepareEntry, {
             round_num,
             coord_num,

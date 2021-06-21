@@ -14,9 +14,11 @@ use thiserror::Error;
 use crate::append::AppendError;
 use crate::append::RetryPolicy;
 use crate::communicator::Acceptance;
+use crate::communicator::AcceptanceFor;
 use crate::communicator::Committed;
 use crate::communicator::Communicator;
 use crate::communicator::Vote;
+use crate::communicator::VoteFor;
 use crate::error::BoxError;
 use crate::state::LogEntryOf;
 use crate::state::NodeIdOf;
@@ -425,8 +427,8 @@ where
     type Abstention = A;
     type Rejection = J;
 
-    type SendPrepare = LocalBoxFuture<'static, Result<Vote<Self>, Self::Error>>;
-    type SendProposal = LocalBoxFuture<'static, Result<Acceptance<Self>, Self::Error>>;
+    type SendPrepare = LocalBoxFuture<'static, Result<VoteFor<Self>, Self::Error>>;
+    type SendProposal = LocalBoxFuture<'static, Result<AcceptanceFor<Self>, Self::Error>>;
     type SendCommit = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
     type SendCommitById = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
 

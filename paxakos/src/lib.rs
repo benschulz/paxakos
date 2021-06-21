@@ -398,10 +398,6 @@ use std::sync::Arc;
 use serde::Deserialize;
 use serde::Serialize;
 
-use communicator::Communicator;
-use communicator::CoordNumOf;
-use communicator::LogEntryOf;
-use communicator::RoundNumOf;
 // TODO move these three into the communicator module
 pub use error::AcceptError;
 pub use error::CommitError;
@@ -491,24 +487,20 @@ impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifi
 
 /// A condition for a [Promise].
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "C::LogEntry: Serialize",
-    deserialize = "C::LogEntry: Deserialize<'de>"
-))]
-pub struct Condition<C: Communicator> {
-    pub round_num: RoundNumOf<C>,
-    pub coord_num: CoordNumOf<C>,
-    pub log_entry: Arc<LogEntryOf<C>>,
+pub struct Condition<R, C, E> {
+    pub round_num: R,
+    pub coord_num: C,
+    pub log_entry: Arc<E>,
 }
 
-impl<C: Communicator> From<Condition<C>> for (RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>) {
-    fn from(val: Condition<C>) -> Self {
+impl<R, C, E> From<Condition<R, C, E>> for (R, C, Arc<E>) {
+    fn from(val: Condition<R, C, E>) -> Self {
         (val.round_num, val.coord_num, val.log_entry)
     }
 }
 
-impl<C: Communicator> From<(RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)> for Condition<C> {
-    fn from(condition: (RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)) -> Self {
+impl<R, C, E> From<(R, C, Arc<E>)> for Condition<R, C, E> {
+    fn from(condition: (R, C, Arc<E>)) -> Self {
         let (round_num, coord_num, log_entry) = condition;
 
         Self {
@@ -523,31 +515,24 @@ impl<C: Communicator> From<(RoundNumOf<C>, CoordNumOf<C>, Arc<LogEntryOf<C>>)> f
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(
-    serialize = "C::LogEntry: Serialize",
-    deserialize = "C::LogEntry: Deserialize<'de>"
-))]
-pub struct Promise<C: Communicator>(Vec<Condition<C>>);
+pub struct Promise<R, C, E>(Vec<Condition<R, C, E>>);
 
-impl<C: Communicator> From<Vec<Condition<C>>> for Promise<C> {
-    fn from(mut conditions: Vec<Condition<C>>) -> Self {
+impl<R: RoundNum, C, E> From<Vec<Condition<R, C, E>>> for Promise<R, C, E> {
+    fn from(mut conditions: Vec<Condition<R, C, E>>) -> Self {
         conditions.sort_by_key(|c| c.round_num);
 
         Self(conditions)
     }
 }
 
-impl<C: Communicator> From<Promise<C>> for Vec<Condition<C>> {
-    fn from(val: Promise<C>) -> Self {
+impl<R, C, E> From<Promise<R, C, E>> for Vec<Condition<R, C, E>> {
+    fn from(val: Promise<R, C, E>) -> Self {
         val.0
     }
 }
 
-impl<C> IntoIterator for Promise<C>
-where
-    C: Communicator,
-{
-    type Item = Condition<C>;
+impl<R, C, E> IntoIterator for Promise<R, C, E> {
+    type Item = Condition<R, C, E>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -555,9 +540,9 @@ where
     }
 }
 
-impl<C: Communicator> Promise<C> {
+impl<R: RoundNum, C: CoordNum, E> Promise<R, C, E> {
     /// The conditions this promise is predicated on.
-    pub fn conditions(&self) -> &[Condition<C>] {
+    pub fn conditions(&self) -> &[Condition<R, C, E>] {
         &self.0
     }
 
@@ -569,7 +554,7 @@ impl<C: Communicator> Promise<C> {
         self.0.is_empty()
     }
 
-    pub(crate) fn log_entry_for(&self, round_num: RoundNumOf<C>) -> Option<Arc<LogEntryOf<C>>> {
+    pub(crate) fn log_entry_for(&self, round_num: R) -> Option<Arc<E>> {
         // TODO exploit order
         self.0
             .iter()
@@ -635,22 +620,18 @@ impl<C: Communicator> Promise<C> {
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(
-    serialize = "C::LogEntry: Serialize",
-    deserialize = "C::LogEntry: Deserialize<'de>"
-))]
-pub enum Conflict<C: Communicator> {
+pub enum Conflict<C, E> {
     Supplanted {
-        coord_num: CoordNumOf<C>,
+        coord_num: C,
     },
     Converged {
-        coord_num: CoordNumOf<C>,
-        log_entry: Option<(CoordNumOf<C>, Arc<LogEntryOf<C>>)>,
+        coord_num: C,
+        log_entry: Option<(C, Arc<E>)>,
     },
 }
 
-impl<C: Communicator> Conflict<C> {
-    pub(crate) fn coord_num(&self) -> CoordNumOf<C> {
+impl<C: CoordNum, E> Conflict<C, E> {
+    pub(crate) fn coord_num(&self) -> C {
         match *self {
             Conflict::Supplanted { coord_num } => coord_num,
             Conflict::Converged { coord_num, .. } => coord_num,

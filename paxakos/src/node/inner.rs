@@ -23,11 +23,14 @@ use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
 use crate::applicable::ProjectionOf;
 use crate::communicator::Acceptance;
+use crate::communicator::AcceptanceFor;
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
 use crate::communicator::ErrorOf;
+use crate::communicator::PromiseFor;
 use crate::communicator::RoundNumOf;
 use crate::communicator::Vote;
+use crate::communicator::VoteFor;
 use crate::state::LogEntryOf;
 use crate::state::NodeIdOf;
 use crate::state::NodeOf;
@@ -450,9 +453,11 @@ where
         &self,
         round_num: RoundNumOf<C>,
         quorum: usize,
-        pending_responses: impl IntoIterator<Item = impl Future<Output = Result<Vote<C>, ErrorOf<C>>>>,
-        own_promise: Promise<C>,
-    ) -> Result<Vote<C>, AppendError<C>> {
+        pending_responses: impl IntoIterator<
+            Item = impl Future<Output = Result<VoteFor<C>, ErrorOf<C>>>,
+        >,
+        own_promise: PromiseFor<C>,
+    ) -> Result<VoteFor<C>, AppendError<C>> {
         if quorum == 0 {
             return Ok(Vote::Given(own_promise));
         }
@@ -535,7 +540,7 @@ where
             HashSet<NodeIdOf<S>>,
             HashSet<NodeIdOf<S>>,
             FuturesUnordered<
-                impl Future<Output = (NodeIdOf<S>, Result<Acceptance<C>, ErrorOf<C>>)>,
+                impl Future<Output = (NodeIdOf<S>, Result<AcceptanceFor<C>, ErrorOf<C>>)>,
             >,
         ),
         AppendError<C>,
@@ -572,7 +577,7 @@ where
         AppendError<C>,
     >
     where
-        P: Future<Output = (NodeIdOf<S>, Result<Acceptance<C>, ErrorOf<C>>)>,
+        P: Future<Output = (NodeIdOf<S>, Result<AcceptanceFor<C>, ErrorOf<C>>)>,
     {
         if quorum == 0 {
             return Ok((
@@ -626,7 +631,7 @@ where
                                 .map(|c| std::cmp::max(c, coord_num))
                                 .or(Some(coord_num));
                         }
-                        Ok(Acceptance::Rejected(rejection)) => rejections.push(rejection),
+                        Ok(Acceptance::Refused(rejection)) => rejections.push(rejection),
                         Ok(Acceptance::Given)
                         | Ok(Acceptance::Conflicted(Conflict::Converged { .. })) => {
                             // covered in outer match
@@ -664,7 +669,7 @@ where
         accepted: HashSet<NodeIdOf<S>>,
         rejected_or_failed: HashSet<NodeIdOf<S>>,
         mut pending_acceptances: FuturesUnordered<
-            impl 'static + Future<Output = (NodeIdOf<S>, Result<Acceptance<C>, ErrorOf<C>>)>,
+            impl 'static + Future<Output = (NodeIdOf<S>, Result<AcceptanceFor<C>, ErrorOf<C>>)>,
         >,
     ) -> Result<Commit<S, RoundNumOf<C>>, AppendError<C>> {
         let accepted = other_nodes

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
+use crate::communicator::PromiseFor;
 use crate::communicator::RoundNumOf;
 use crate::error::AcceptError;
 use crate::error::CommitError;
@@ -11,7 +12,6 @@ use crate::node::CommunicatorOf;
 use crate::node::StateOf;
 use crate::state::LogEntryIdOf;
 use crate::state::LogEntryOf;
-use crate::Promise;
 use crate::State;
 
 use super::state_keeper::StateKeeperHandle;
@@ -33,7 +33,7 @@ impl<S: State, C: Communicator> RequestHandler<S, C> {
         &self,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
-    ) -> impl Future<Output = Result<Promise<C>, PrepareError<C>>> {
+    ) -> impl Future<Output = Result<PromiseFor<C>, PrepareError<C>>> {
         let handle = self.0.clone();
         async move { handle.handle_prepare(round_num, coord_num).await }
     }
