@@ -1,5 +1,3 @@
-//! # paxakos
-//!
 //! Paxakos is a pure Rust implementation of a distributed consensus algorithm
 //! based on Leslie Lamport's [Paxos][wikipedia]. It enables distributed systems
 //! to consistently modify shared state across their network, even in the
@@ -7,7 +5,18 @@
 //!
 //! [wikipedia]: https://en.wikipedia.org/wiki/Paxos_(computer_science)
 //!
-//! ## Usage
+//! [![crates.io][crates.io-badge]][crates.io-url]
+//! [![docs.rs][docs.rs-badge]][docs.rs-url]
+//! [![GPLv3 licensed][gpl-badge]][gpl-url]
+//!
+//! [crates.io-badge]: https://img.shields.io/crates/v/paxakos.svg
+//! [crates.io-url]: https://crates.io/crates/paxakos
+//! [docs.rs-badge]: https://docs.rs/paxakos/badge.svg
+//! [docs.rs-url]: https://docs.rs/paxakos
+//! [gpl-badge]: https://img.shields.io/badge/license-GPLv3-blue.svg
+//! [gpl-url]: LICENSE
+//!
+//! # Usage
 //!
 //! In order to use Paxakos, the traits [`LogEntry`], [`State`], [`NodeInfo`]
 //! and [`Communicator`][Communicator] need to be implemented. The first two
@@ -129,14 +138,14 @@
 //! }
 //! ```
 //!
-//! ## Motivation
+//! # Motivation
 //!
 //! Rust is a great language with which to implement efficient and truly
 //! reliable, fault-tolerant services. And while there already are several Rust
 //! implementations of consensus algorithms, they are either rudimentary or
 //! incomplete or their API was not approachable enough for this author.
 //!
-//! ### Priorities
+//! # Priorities
 //!
 //! The project's priorities are as follows.
 //!
@@ -169,19 +178,19 @@
 //!    correctness or simplicity. The biggest challenge in this area are, at
 //!    present, build times. If you have other concerns, please open an issue.
 //!
-//! ## Features
+//! # Features
 //!
 //! Paxakos is a Multi-Paxos implementation. It supports membership changes,
 //! concurrency, as well as taking and installing snapshots.
 //!
-//! ### Membership Changes
+//! ## Membership Changes
 //!
 //! The `State` trait exposes the [`cluster_at`][State::cluster_at] method. By
 //! implementing it, _arbitrary_ membership changes may be made. No restrictions
 //! are imposed and it is up to users and implementors to make sure that any
 //! transition is safe.
 //!
-//! ### Concurrency
+//! ## Concurrency
 //!
 //! Multi-Paxos allows for any number of rounds to be settled concurrently. This
 //! can be exploited by implementing `State`'s [concurrency][State::concurrency]
@@ -192,19 +201,7 @@
 //! This is typically done by appending no-op entries. A utility for doing so
 //! automatically is provided, but its API is far from stable.
 //!
-//! #### Interjection
-//!
-//! Consensus based clusters typically elect a single leader and who drive all
-//! progress. This is highly efficient, as each leader election incurs overhead.
-//! That notwithstanding, Paxakos has made the unusual design decision to allow
-//! multiple leaders at the same time, but for different rounds.
-//!
-//! This design allows a follower node to "interject" an entry at the end of the
-//! concurrency window. This part of the design hasn't been fleshed out yet, but
-//! it could allow nodes to conveniently queue operations without introducing
-//! additional communication protocols besides Paxakos.
-//!
-//! ### Snapshots
+//! ## Snapshots
 //!
 //! A node may take a snapshot of its current state. The result is a combination
 //! of the application specific `State` as well as pakakos specifc information.
@@ -212,7 +209,7 @@
 //! nodes which have joined the cluster or to catch up nodes that have fallen
 //! behind.
 //!
-//! ## Protocol
+//! # Protocol
 //!
 //! This section describes the Paxakos protocol. It is, for the most part, a
 //! typical _Multi-Paxos_ protocol. Multi-Paxos generalizes Paxos to be run for
@@ -244,13 +241,14 @@
 //!    stability and consistency and is achieved by exploiting the deterministic
 //!    order of nodes returned by [`cluster_at`][State::cluster_at].
 //!
-//! 2. Promise or Rejection
+//! 2. Vote
 //!
 //!    When a node receives a prepare request, it checks that it hasn't accepted
 //!    a previous such request with a coordination number that's higher than the
-//!    given one. If it hasn't, it sends back a _promise_ not to accept any more
-//!    _proposals_ with a coordination number that's less the given one.
-//!    Otherwise it sends back a rejection.
+//!    given one. If it has, it will reply with a conflict. If it hasn't, the
+//!    node will either abstain, i.e., choose not to give its vote, or it sends
+//!    back a _promise_ not to accept any more _proposals_ with a coordination
+//!    number that's less the given one.
 //!
 //!    1. Promise `(Vec<(RoundNum, CoordNum, LogEntry)>)`
 //!
@@ -259,11 +257,18 @@
 //!       acknowledge your bid to become leader and give you my vote. However,
 //!       in return you must respect these previous commitments I've made."
 //!
-//!    2. Rejection `(CoordNum, Option<(CoordNum, LogEntry)>)`
+//!    2. Conflict `(CoordNum, Option<(CoordNum, LogEntry)>)`
 //!
 //!       A rejection is sent with the highest observed coordination number so
 //!       far. For the special case that the round has already converged and the
 //!       node still has it available, it will send it along as well.
+//!
+//!    3. Abstention `A`
+//!
+//!       The node chose to abstain. By default nodes will never abstain. This
+//!       can be changed by providing a custom `Voter` implementation. The
+//!       argument type `A` is defined by `Communicator::Abstain` and
+//!       `Voter::Abstain`.
 //!
 //! 3. Propose `(RoundNum, CoordNum, LogEntry)`
 //!
@@ -278,56 +283,64 @@
 //!    the same round and coordination number will have the same log entry as
 //!    well.)
 //!
-//! 4. Acceptance or Rejection
+//! 4. Vote
 //!
 //!    When a node receives a proposal, it will check whether it has made any
-//!    conflicting promises. If it hasn't it will simply reply that it has
-//!    accepted the entry. Otherwise it will respond with a rejection.
+//!    conflicting promises. If it has, it responds with a conflict. If it
+//!    hasn't, it may choose to accept or reject the proposal and reply
+//!    accordingly.
 //!
-//!    1. Acceptance `()`
-//!    2. Rejection `(CoordNum, Option<(CoordNum, LogEntry)>)`
+//!    1. Acceptance `Y` / Rejection `N`
+//!
+//!       By default nodes accept all proposals with `Y = ()`. This can be
+//!       changed by providing a custom `Voter` implementation. The argument
+//!       types `Y` and `N` are defined by `Communicator::Yea`,
+//!       `Communicator::Nay`, `Voter::Yea` and `Voter::Nay`.
+//!
+//!    2. Conflict `(CoordNum, Option<(CoordNum, LogEntry)>)`
 //!
 //!       See 2.2.
 //!
-//! 5. Commit `(RoundNum, LogEntry::Id)` / CommitById `(RoundNum, LogEntry)`
+//! 5. Commit `(RoundNum, CoordNum, LogEntry::Id)` /
+//!    CommitById `(RoundNum, CoordNum, LogEntry)`
 //!
 //!    After having received a quorum of acceptances, the round has converged on
 //!    the proposed entry. The leader node will commit the entry locally and
 //!    inform other nodes as well. Nodes who sent an acceptance will only be
 //!    sent the log entry's id, others will receive the full entry.
 //!
-//! ## Project Status
+//! # Project Status
 //!
 //! This section examines different aspects of paxakos, how far along they are
 //! and what's missing or in need of improvement.
 //!
-//! ### ☀️ Consensus Implementation ☀️
+//! ## ☀️ Consensus Implementation ☀️
 //!
 //! The core algorithm of paxakos is well-tested and has been exercised a lot.
 //! There is reason to be confident in its correctness.
 //!
-//! ### ⛅ Passive Mode ⛅
+//! ## ⛅ Passive Mode ⛅
 //!
 //! [Passive mode][crate::node::Participation] is implemented and superficially
 //! tested. Thorough testing is still needed.
 //!
-//! ### 🌧️ Serialization 🌧️
+//! ## 🌧️ Serialization 🌧️
 //!
 //! Snapshot serialization needs to be reworked to allow for backward compat.
 //!
-//! ### ⛅ API Stability ⛅
+//! ## ⛅ API Stability ⛅
 //!
 //! The API has been fairly stable and there is no reason to expect big changes.
 //! The decorations may be reworked so that their configuration *can* be moved
 //! into the `State`.
 //!
-//! ### ☁️ Efficiency ☁️
+//! ## ⛅ Efficiency ⛅
 //!
-//! With its support for concurrency, paxakos has the potential to be very
-//! efficient. To fully unlock this potential, an implementation of master
-//! leases is required.
+//! Paxakos supports concurrency and has a (for now rudimentary) implementation
+//! of master leases. Assuming a scheme to delegate to the current master, this
+//! combination is highly efficient.
 //!
-//! ### Nightly Features
+//! ## Nightly Features
 //!
 //! Paxakos currently relies on several nightly features. None of them are
 //! crucial, but there hasn't been any need become compatible with stable Rust.
@@ -337,18 +350,13 @@
 //! This is a side project. I will work on the following as my time allows (in
 //! no particular order).
 //!
-//! - Passive Mode
-//!
-//! - Tests
-//!
-//! - Adding comments and documentation
-//!
-//! - Additional decorations
-//!
-//! - Support for _Master Leases_ (see section 5.2 of [Paxos Made
-//!   Live][paxos-made-live]).
-//!
-//! [paxos-made-live]: https://doi.org/10.1145/1281100.1281103
+//!  - Tests
+//!  - Adding comments and documentation
+//!  - Rounding off existing decorations
+//!  - Additional decorations, e.g.,
+//!    - for consistency checks
+//!    - for delegation to the current leader
+//!  - Serialization
 //!
 //! [Communicator]: crate::communicator::Communicator
 //! [LogEntry]: crate::log::LogEntry
