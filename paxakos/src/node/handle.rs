@@ -23,8 +23,41 @@ use super::state_keeper::StateKeeperHandle;
 use super::Admin;
 use super::NodeStatus;
 
-// macros
-use crate::dispatch_node_handle_req;
+macro_rules! dispatch_node_handle_req {
+    ($self:ident, $name:ident) => {{
+        let req = NodeHandleRequest::$name;
+
+        let mut sender = $self.sender.clone();
+        let (s, r) = oneshot::channel();
+
+        async move {
+            let send_res = sender.send((req, s)).await;
+
+            match (send_res, r.await) {
+                (Ok(_), Ok(NodeHandleResponse::$name(r))) => Some(r),
+                (Err(_), _) | (_, Err(_)) => None,
+                _ => unreachable!(),
+            }
+        }
+    }};
+
+    ($self:ident, $name:ident, $args:tt) => {{
+        let req = NodeHandleRequest::$name $args;
+
+        let mut sender = $self.sender.clone();
+        let (s, r) = oneshot::channel();
+
+        async move {
+            let send_res = sender.send((req, s)).await;
+
+            match (send_res, r.await) {
+                (Ok(_), Ok(NodeHandleResponse::$name(r))) => Some(r),
+                (Err(_), _) | (_, Err(_)) => None,
+                _ => unreachable!(),
+            }
+        }
+    }};
+}
 
 pub type RequestAndResponseSender<S, C> = (
     NodeHandleRequest<C>,
@@ -154,44 +187,4 @@ pub enum NodeHandleResponse<S: State, C: Communicator> {
     Status(NodeStatus),
 
     Append(Result<Commit<S, RoundNumOf<C>>, AppendError<C>>),
-}
-
-mod macros {
-    #[doc(hidden)]
-    #[macro_export]
-    macro_rules! dispatch_node_handle_req {
-        ($self:ident, $name:ident) => {{
-            let req = NodeHandleRequest::$name;
-
-            let mut sender = $self.sender.clone();
-            let (s, r) = oneshot::channel();
-
-            async move {
-                let send_res = sender.send((req, s)).await;
-
-                match (send_res, r.await) {
-                    (Ok(_), Ok(NodeHandleResponse::$name(r))) => Some(r),
-                    (Err(_), _) | (_, Err(_)) => None,
-                    _ => unreachable!(),
-                }
-            }
-        }};
-
-        ($self:ident, $name:ident, $args:tt) => {{
-            let req = NodeHandleRequest::$name $args;
-
-            let mut sender = $self.sender.clone();
-            let (s, r) = oneshot::channel();
-
-            async move {
-                let send_res = sender.send((req, s)).await;
-
-                match (send_res, r.await) {
-                    (Ok(_), Ok(NodeHandleResponse::$name(r))) => Some(r),
-                    (Err(_), _) | (_, Err(_)) => None,
-                    _ => unreachable!(),
-                }
-            }
-        }};
-    }
 }

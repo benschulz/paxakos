@@ -37,6 +37,43 @@ use super::msg::Response;
 use super::ProofOfLife;
 use super::RoundNumReservation;
 
+#[doc(hidden)]
+macro_rules! dispatch_state_keeper_req {
+    ($self:ident, $name:ident) => {{
+        let req = Request::$name;
+
+        let (s, r) = oneshot::channel();
+
+        let mut sender = $self.sender.clone();
+
+        async move {
+            sender.send((req, s)).await.map_err(|_| ShutDown)?;
+
+            match r.await.map_err(|_| ShutDown)? {
+                Response::$name(r) => Ok(r?),
+                _ => unreachable!(),
+            }
+        }
+    }};
+
+    ($self:ident, $name:ident, $args:tt) => {{
+        let req = Request::$name $args;
+
+        let (s, r) = oneshot::channel();
+
+        let mut sender = $self.sender.clone();
+
+        async move {
+            sender.send((req, s)).await.map_err(|_| ShutDown)?;
+
+            match r.await.map_err(|_| ShutDown)? {
+                Response::$name(r) => Ok(r?),
+                _ => unreachable!(),
+            }
+        }
+    }};
+}
+
 #[derive(Debug)]
 pub struct StateKeeperHandle<S: State, C: Communicator> {
     sender: mpsc::Sender<super::RequestAndResponseSender<S, C>>,
@@ -63,21 +100,21 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         &self,
     ) -> impl Future<Output = Result<Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>, PrepareSnapshotError>>
     {
-        crate::dispatch_state_keeper_req!(self, PrepareSnapshot)
+        dispatch_state_keeper_req!(self, PrepareSnapshot)
     }
 
     pub fn affirm_snapshot(
         &self,
         snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> impl Future<Output = Result<(), AffirmSnapshotError>> {
-        crate::dispatch_state_keeper_req!(self, AffirmSnapshot, { snapshot })
+        dispatch_state_keeper_req!(self, AffirmSnapshot, { snapshot })
     }
 
     pub fn install_snapshot(
         &self,
         snapshot: Snapshot<S, RoundNumOf<C>, CoordNumOf<C>>,
     ) -> impl Future<Output = Result<(), InstallSnapshotError>> {
-        crate::dispatch_state_keeper_req!(self, InstallSnapshot, { snapshot })
+        dispatch_state_keeper_req!(self, InstallSnapshot, { snapshot })
     }
 
     pub fn read_stale(
@@ -93,7 +130,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
     }
 
     pub fn try_read_stale(&self) -> impl Future<Output = Result<Arc<S>, ReadStaleError>> {
-        crate::dispatch_state_keeper_req!(self, ReadStale)
+        dispatch_state_keeper_req!(self, ReadStale)
     }
 
     pub fn await_commit_of(
@@ -101,7 +138,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         entry_id: LogEntryIdOf<S>,
     ) -> impl Future<Output = Result<oneshot::Receiver<(RoundNumOf<C>, OutcomeOf<S>)>, ShutDown>>
     {
-        crate::dispatch_state_keeper_req!(self, AwaitCommitOf, { entry_id })
+        dispatch_state_keeper_req!(self, AwaitCommitOf, { entry_id })
     }
 
     pub fn reserve_round_num(
@@ -109,14 +146,14 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         range: RangeInclusive<RoundNumOf<C>>,
     ) -> impl Future<Output = Result<RoundNumReservation<RoundNumOf<C>>, AcquireRoundNumError>>
     {
-        crate::dispatch_state_keeper_req!(self, AcquireRoundNum, { range })
+        dispatch_state_keeper_req!(self, AcquireRoundNum, { range })
     }
 
     pub fn accepted_entry_of(
         &self,
         round_num: RoundNumOf<C>,
     ) -> impl Future<Output = Result<Option<Arc<LogEntryOf<S>>>, ShutDown>> {
-        crate::dispatch_state_keeper_req!(self, AcceptedEntryOf, { round_num })
+        dispatch_state_keeper_req!(self, AcceptedEntryOf, { round_num })
     }
 
     /// Returns the nodes that make up the cluster for the given instance of
@@ -128,20 +165,20 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         &self,
         round_num: RoundNumOf<C>,
     ) -> impl Future<Output = Result<Vec<NodeOf<S>>, ClusterError<RoundNumOf<C>>>> {
-        crate::dispatch_state_keeper_req!(self, Cluster, { round_num })
+        dispatch_state_keeper_req!(self, Cluster, { round_num })
     }
 
     pub fn observe_coord_num(
         &self,
         coord_num: CoordNumOf<C>,
     ) -> impl Future<Output = Result<(), ShutDown>> {
-        crate::dispatch_state_keeper_req!(self, ObservedCoordNum, { coord_num })
+        dispatch_state_keeper_req!(self, ObservedCoordNum, { coord_num })
     }
 
     pub fn highest_observed_coord_num(
         &self,
     ) -> impl Future<Output = Result<CoordNumOf<C>, ShutDown>> {
-        crate::dispatch_state_keeper_req!(self, HighestObservedCoordNum)
+        dispatch_state_keeper_req!(self, HighestObservedCoordNum)
     }
 
     pub fn prepare_entry(
@@ -157,7 +194,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
     ) -> impl Future<Output = Result<Promise<C>, PrepareError<C>>> {
-        crate::dispatch_state_keeper_req!(self, PrepareEntry, {
+        dispatch_state_keeper_req!(self, PrepareEntry, {
             round_num,
             coord_num,
         })
@@ -169,7 +206,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         coord_num: CoordNumOf<C>,
         entry: Arc<LogEntryOf<S>>,
     ) -> impl Future<Output = Result<(), AcceptError<C>>> {
-        crate::dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
+        dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
     }
 
     pub fn handle_proposal(
@@ -179,7 +216,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         entry: impl Into<Arc<LogEntryOf<S>>>,
     ) -> impl Future<Output = Result<(), AcceptError<C>>> {
         let entry = entry.into();
-        crate::dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
+        dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
     }
 
     pub fn accept_entries(
@@ -187,7 +224,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         coord_num: CoordNumOf<C>,
         entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<S>>)>,
     ) -> impl Future<Output = Result<usize, AcceptError<C>>> {
-        crate::dispatch_state_keeper_req!(self, AcceptEntries, { coord_num, entries })
+        dispatch_state_keeper_req!(self, AcceptEntries, { coord_num, entries })
     }
 
     pub fn commit_entry(
@@ -212,7 +249,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         coord_num: CoordNumOf<C>,
         entry: impl Into<Arc<LogEntryOf<S>>>,
     ) -> impl Future<Output = Result<(), CommitError<S>>> {
-        crate::dispatch_state_keeper_req!(self, CommitEntry, {
+        dispatch_state_keeper_req!(self, CommitEntry, {
             round_num,
             coord_num,
             entry: entry.into(),
@@ -225,7 +262,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         coord_num: CoordNumOf<C>,
         entry_id: <LogEntryOf<S> as LogEntry>::Id,
     ) -> impl Future<Output = Result<(), CommitError<S>>> {
-        crate::dispatch_state_keeper_req!(self, CommitEntryById, {
+        dispatch_state_keeper_req!(self, CommitEntryById, {
             round_num,
             coord_num,
             entry_id,
@@ -237,7 +274,7 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
     ) -> impl Future<Output = Result<(), ShutDown>> {
-        crate::dispatch_state_keeper_req!(
+        dispatch_state_keeper_req!(
             self,
             AssumeLeadership,
             {
@@ -248,10 +285,10 @@ impl<S: State, C: Communicator> StateKeeperHandle<S, C> {
     }
 
     pub fn force_active(&self) -> impl Future<Output = Result<bool, ShutDown>> {
-        crate::dispatch_state_keeper_req!(self, ForceActive)
+        dispatch_state_keeper_req!(self, ForceActive)
     }
 
     pub fn shut_down(&self, _proof_of_life: ProofOfLife) -> impl Future<Output = ()> {
-        crate::dispatch_state_keeper_req!(self, Shutdown).map(ShutDown::rule_out)
+        dispatch_state_keeper_req!(self, Shutdown).map(ShutDown::rule_out)
     }
 }

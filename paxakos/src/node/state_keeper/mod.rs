@@ -1,7 +1,6 @@
 mod error;
 mod handle;
 mod io;
-mod macros;
 mod msg;
 mod working_dir;
 
