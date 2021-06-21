@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::node::{NodeStatus, Shutdown, Snapshot};
@@ -63,6 +64,7 @@ pub enum Event<S: State, C: Communicator> {
         leader: NodeOf<S>,
         round_num: RoundNumOf<C>,
         coord_num: CoordNumOf<C>,
+        timestamp: Instant,
     },
 }
 
@@ -113,11 +115,13 @@ impl<S: State, C: Communicator> std::fmt::Debug for Event<S, C> {
                 leader,
                 round_num,
                 coord_num,
+                timestamp,
             } => f
                 .debug_struct("Event::Directive")
                 .field("leader", leader)
                 .field("round_num", round_num)
                 .field("coord_num", coord_num)
+                .field("timestamp", timestamp)
                 .finish(),
         }
     }

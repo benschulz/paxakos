@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::task::Poll;
+use std::time::Instant;
 
 use futures::future::LocalBoxFuture;
 use num_traits::{Bounded, One, Zero};
@@ -75,14 +76,14 @@ pub struct TrackLeadership<N: Node> {
 struct Mandate<N: Node> {
     mandate: CoordNumOf<N>,
     leader: NodeIdOf<N>,
-    last_directive_at: std::time::Instant,
+    last_directive_at: Instant,
 }
 
 pub struct Leadership<N, R: RoundNum, C> {
     pub leader: N,
     pub rounds: RangeInclusive<R>,
     pub mandate: C,
-    pub last_directive_at: std::time::Instant,
+    pub last_directive_at: Instant,
 }
 
 impl<N: Node> TrackLeadership<N> {
@@ -117,10 +118,9 @@ impl<N: Node> TrackLeadership<N> {
         leader: &NodeOf<N>,
         round_num: RoundNumOf<N>,
         coord_num: CoordNumOf<N>,
+        timestamp: Instant,
     ) {
         let leader = leader.id();
-
-        let now = std::time::Instant::now();
 
         let known_mandate = self
             .mandates
@@ -130,11 +130,11 @@ impl<N: Node> TrackLeadership<N> {
 
         if let Some((_, m)) = known_mandate {
             if m.mandate == coord_num {
-                m.last_directive_at = now;
+                m.last_directive_at = timestamp;
 
                 for l in &mut self.leadership {
                     if l.mandate == coord_num {
-                        l.last_directive_at = now;
+                        l.last_directive_at = timestamp;
                     }
                 }
             }
@@ -147,7 +147,7 @@ impl<N: Node> TrackLeadership<N> {
                 Mandate {
                     mandate: coord_num,
                     leader,
-                    last_directive_at: now,
+                    last_directive_at: timestamp,
                 },
             );
 
@@ -259,9 +259,10 @@ where
                     leader,
                     round_num,
                     coord_num,
+                    timestamp,
                 } => {
                     if !self.suspended && *round_num >= self.min_round {
-                        self.react_to_directive(leader, *round_num, *coord_num);
+                        self.react_to_directive(leader, *round_num, *coord_num, *timestamp);
                     }
                 }
                 _ => {}
