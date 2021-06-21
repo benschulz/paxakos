@@ -15,6 +15,7 @@ categories = [ "network-programming" ]
 default = []
 locker = []
 locking = [ "locker", "release-locks" ]
+master-leases = [ "either" ]
 prototyping = [ "rand", "rand_distr", "tracer" ]
 release-locks = []
 tracer = []
@@ -23,6 +24,7 @@ tracer = []
 async-trait = "0.1"
 bincode = "1"
 blake3 = "0.3.1"
+either = { version = "1", optional = true }
 futures = "0.3"
 futures-timer = "3"
 num-traits = "0.2"
@@ -31,6 +33,7 @@ rand = { version = "0.8", optional = true }
 rand_distr = { version = "0.4", optional = true }
  # TODO serde should be optional
 serde = { version = "1", features = [ "derive", "rc" ] }
+smallvec = "1"
 thiserror = "1"
 tracing = "0.1"
 

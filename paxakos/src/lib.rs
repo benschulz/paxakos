@@ -361,6 +361,7 @@
 #![feature(array_windows)]
 #![feature(btree_drain_filter)]
 #![feature(drain_filter)]
+#![feature(duration_zero)]
 #![feature(map_first_last)]
 #![feature(never_type)]
 #![feature(step_trait)]
@@ -378,6 +379,8 @@ pub mod deco;
 pub mod error;
 pub mod event;
 pub mod invocation;
+#[cfg(feature = "master-leases")]
+pub mod leases;
 #[cfg(feature = "locking")]
 pub mod locking;
 mod log;
