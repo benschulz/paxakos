@@ -96,9 +96,9 @@ fn multiple_concurrent_appends() {
     assert!((target - state.value()).abs() < f64::EPSILON);
 }
 
-fn setup_node() -> paxakos::NodeKernel<CalcState, DirectCommunicator<CalcState, u64, u32, !>> {
+fn setup_node() -> paxakos::NodeKernel<CalcState, DirectCommunicator<CalcState, u64, u32, !, !>> {
     let node_info = PrototypingNode::new();
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !>::new();
+    let communicators = DirectCommunicators::<CalcState, u64, u32, !, !>::new();
 
     let (_, node) = futures::executor::block_on(
         paxakos::node_builder()

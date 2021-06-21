@@ -1,5 +1,7 @@
-use crate::node::{self, CoordNumOf, NodeInfo, RoundNumOf, StateOf};
-use crate::state::{LogEntryOf, NodeIdOf, NodeOf, State};
+use std::convert::Infallible;
+
+use crate::node::{self, CoordNumOf, RoundNumOf, StateOf};
+use crate::state::{LogEntryOf, NodeOf, State};
 use crate::{CoordNum, RoundNum};
 
 pub type AbstentionOf<V> = <V as Voter>::Abstention;
@@ -9,26 +11,28 @@ pub trait Voter: Send + 'static {
     type RoundNum: RoundNum;
     type CoordNum: CoordNum;
     type Abstention: std::fmt::Debug + Send + Sync;
+    type Rejection: std::fmt::Debug + Send + Sync;
 
     /// *Careful*: `state` is the current applied state and independent of
     /// `round_num`.
-    fn contemplate(
+    fn contemplate_candidate(
         &self,
         round_num: Self::RoundNum,
         coord_num: Self::CoordNum,
         candidate: Option<&NodeOf<Self::State>>,
         state: Option<&Self::State>,
-    ) -> Decision<Self::Abstention>;
+    ) -> Decision<Self::Abstention, Infallible>;
 
-    #[allow(unused_variables)]
-    fn observe_accept(
-        &mut self,
+    /// *Careful*: `state` is the current applied state and independent of
+    /// `round_num`.
+    fn contemplate_proposal(
+        &self,
         round_num: Self::RoundNum,
         coord_num: Self::CoordNum,
         log_entry: &LogEntryOf<Self::State>,
         leader: Option<&NodeOf<Self::State>>,
-    ) {
-    }
+        state: Option<&Self::State>,
+    ) -> Decision<Infallible, Self::Rejection>;
 
     #[allow(unused_variables)]
     fn observe_commit(
@@ -41,105 +45,61 @@ pub trait Voter: Send + 'static {
     }
 }
 
-pub enum Decision<J> {
-    Abstain(J),
+pub enum Decision<A, R> {
+    Abstain(A),
+    Reject(R),
     Vote,
 }
 
-pub type IndiscriminateVoterFor<N> =
-    IndiscriminateVoter<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>, node::AbstentionOf<N>>;
+pub type IndiscriminateVoterFor<N> = IndiscriminateVoter<
+    StateOf<N>,
+    RoundNumOf<N>,
+    CoordNumOf<N>,
+    node::AbstentionOf<N>,
+    node::RejectionOf<N>,
+>;
 
 #[derive(Default)]
-pub struct IndiscriminateVoter<S, R, C, A>(std::marker::PhantomData<(S, R, C, A)>);
+pub struct IndiscriminateVoter<S, R, C, A, J>(std::marker::PhantomData<(S, R, C, A, J)>);
 
-impl<S, R, C, A> IndiscriminateVoter<S, R, C, A> {
+impl<S, R, C, A, J> IndiscriminateVoter<S, R, C, A, J> {
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
     }
 }
 
-impl<S, R, C, A> Voter for IndiscriminateVoter<S, R, C, A>
+impl<S, R, C, A, J> Voter for IndiscriminateVoter<S, R, C, A, J>
 where
     S: State,
     R: RoundNum,
     C: CoordNum,
     A: std::fmt::Debug + Send + Sync + 'static,
+    J: std::fmt::Debug + Send + Sync + 'static,
 {
     type State = S;
     type RoundNum = R;
     type CoordNum = C;
     type Abstention = A;
+    type Rejection = J;
 
-    fn contemplate(
+    fn contemplate_candidate(
         &self,
         _round_num: Self::RoundNum,
         _coord_num: Self::CoordNum,
         _candidate: Option<&NodeOf<Self::State>>,
         _state: Option<&Self::State>,
-    ) -> Decision<Self::Abstention> {
+    ) -> Decision<Self::Abstention, Infallible> {
         Decision::Vote
     }
-}
 
-pub type AuthoritarianVoterFor<N> = AuthoritarianVoter<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
-
-#[derive(Default)]
-pub struct AuthoritarianVoter<S: State, R, C> {
-    last_commit: Option<(NodeIdOf<S>, std::time::Instant)>,
-    timeout: std::time::Duration,
-    _p: std::marker::PhantomData<(R, C)>,
-}
-
-impl<S: State, R, C> AuthoritarianVoter<S, R, C> {
-    pub fn with_timeout_of(timeout: std::time::Duration) -> Self {
-        Self {
-            last_commit: None,
-            timeout,
-            _p: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<S, R, C> Voter for AuthoritarianVoter<S, R, C>
-where
-    S: State,
-    R: RoundNum,
-    C: CoordNum,
-{
-    type State = S;
-    type RoundNum = R;
-    type CoordNum = C;
-    type Abstention = std::time::Duration;
-
-    fn contemplate(
+    fn contemplate_proposal(
         &self,
         _round_num: Self::RoundNum,
         _coord_num: Self::CoordNum,
-        candidate: Option<&NodeOf<Self::State>>,
-        _state: Option<&Self::State>,
-    ) -> Decision<Self::Abstention> {
-        if candidate.map(|c| c.id()) == self.last_commit.map(|c| c.0) {
-            Decision::Vote
-        } else if let Some((_, t)) = self.last_commit {
-            let now = std::time::Instant::now();
-
-            if now > t + self.timeout {
-                Decision::Vote
-            } else {
-                Decision::Abstain(t + self.timeout - now)
-            }
-        } else {
-            Decision::Vote
-        }
-    }
-
-    fn observe_commit(
-        &mut self,
-        _round_num: Self::RoundNum,
-        _coord_num: Self::CoordNum,
         _log_entry: &LogEntryOf<Self::State>,
-        leader: Option<&NodeOf<Self::State>>,
-    ) {
-        self.last_commit = leader.map(|l| (l.id(), std::time::Instant::now()))
+        _leader: Option<&NodeOf<Self::State>>,
+        _state: Option<&Self::State>,
+    ) -> Decision<Infallible, Self::Rejection> {
+        Decision::Vote
     }
 }

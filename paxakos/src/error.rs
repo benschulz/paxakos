@@ -3,7 +3,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, LogEntryOf};
+use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, LogEntryOf, RejectionOf};
 use crate::state::{LogEntryIdOf, State};
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -132,6 +132,7 @@ impl<C: Communicator> From<PrepareError<C>> for AppendError<C> {
             PrepareError::Abstained(reason) => AppendError::NoQuorum {
                 abstentions: vec![reason],
                 communication_errors: Vec::new(),
+                rejections: Vec::new(),
             },
             PrepareError::Supplanted(_) => AppendError::Lost,
             PrepareError::Converged(_, _) => AppendError::Converged,
@@ -153,6 +154,9 @@ pub enum AcceptError<C: Communicator> {
     #[error("node is passive")]
     Passive,
 
+    #[error("proposal was rejected")]
+    Rejected(RejectionOf<C>),
+
     #[error("node is shut down")]
     ShutDown,
 }
@@ -170,6 +174,10 @@ impl<C: Communicator> std::fmt::Debug for AcceptError<C> {
                 .field(converged)
                 .finish(),
             AcceptError::Passive => f.debug_tuple("AcceptError::Passive").finish(),
+            AcceptError::Rejected(rejection) => f
+                .debug_tuple("AcceptError::Rejected")
+                .field(rejection)
+                .finish(),
             AcceptError::ShutDown => f.debug_tuple("AcceptError::ShutDown").finish(),
         }
     }
@@ -181,6 +189,11 @@ impl<C: Communicator> From<AcceptError<C>> for AppendError<C> {
             AcceptError::Supplanted(_) => AppendError::Lost,
             AcceptError::Converged(_, _) => AppendError::Converged,
             AcceptError::Passive => AppendError::Passive,
+            AcceptError::Rejected(reason) => AppendError::NoQuorum {
+                abstentions: Vec::new(),
+                communication_errors: Vec::new(),
+                rejections: vec![reason],
+            },
             AcceptError::ShutDown => AppendError::ShutDown,
         }
     }

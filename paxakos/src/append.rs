@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use num_traits::{Bounded, Zero};
 use thiserror::Error;
 
-use crate::communicator::{AbstentionOf, Communicator, ErrorOf, RoundNumOf};
+use crate::communicator::{AbstentionOf, Communicator, ErrorOf, RejectionOf, RoundNumOf};
 use crate::error::BoxError;
 
 pub struct AppendArgs<C: Communicator> {
@@ -91,6 +91,7 @@ pub enum AppendError<C: Communicator> {
     NoQuorum {
         abstentions: Vec<AbstentionOf<C>>,
         communication_errors: Vec<ErrorOf<C>>,
+        rejections: Vec<RejectionOf<C>>,
     },
 
     /// Catch-all, this may be refined over time.
@@ -122,10 +123,12 @@ impl<C: Communicator> std::fmt::Debug for AppendError<C> {
             AppendError::NoQuorum {
                 abstentions,
                 communication_errors,
+                rejections,
             } => f
                 .debug_struct("AppendError::NoQuorum")
                 .field("abstentions", abstentions)
                 .field("communication_errors", communication_errors)
+                .field("rejections", rejections)
                 .finish(),
             AppendError::Other(err) => f.debug_tuple("AppendError::Other").field(err).finish(),
             AppendError::Passive => f.debug_tuple("AppendError::Passive").finish(),

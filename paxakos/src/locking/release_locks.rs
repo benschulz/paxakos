@@ -10,8 +10,8 @@ use crate::deco::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
 use crate::node::{AbstentionOf, AppendResultFor, CommunicatorOf, CoordNumOf, EventOf};
-use crate::node::{LogEntryOf, Node, NodeIdOf, Participation, RoundNumOf, Snapshot};
-use crate::node::{SnapshotFor, StateOf};
+use crate::node::{LogEntryOf, Node, NodeIdOf, Participation, RejectionOf, RoundNumOf};
+use crate::node::{Snapshot, SnapshotFor, StateOf};
 use crate::voting::Voter;
 
 type LockOf<N> = <EventOf<N> as AsLockEvent>::Lock;
@@ -66,6 +66,7 @@ where
         RoundNum = RoundNumOf<N>,
         CoordNum = CoordNumOf<N>,
         Abstention = AbstentionOf<N>,
+        Rejection = RejectionOf<N>,
     >,
 {
     type Node = N;

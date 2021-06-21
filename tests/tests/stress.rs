@@ -21,8 +21,8 @@ use paxakos::{Node, NodeInfo, Shutdown};
 use calc_app::{CalcOp, CalcState};
 use tracer::StabilityChecker;
 
-type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !>;
-type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !>;
+type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !, !>;
+type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, !>;
 
 #[test]
 fn stress_test() {

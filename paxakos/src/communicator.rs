@@ -12,6 +12,8 @@ pub type CoordNumOf<C> = <C as Communicator>::CoordNum;
 pub type ErrorOf<C> = <C as Communicator>::Error;
 pub type LogEntryOf<C> = <C as Communicator>::LogEntry;
 pub type LogEntryIdOf<C> = <LogEntryOf<C> as LogEntry>::Id;
+pub type NodeOf<C> = <C as Communicator>::Node;
+pub type RejectionOf<C> = <C as Communicator>::Rejection;
 pub type RoundNumOf<C> = <C as Communicator>::RoundNum;
 
 /// Defines how [`Node`][crate::Node]s call others'
@@ -40,6 +42,7 @@ pub trait Communicator: Sized + 'static {
 
     type Error: std::fmt::Debug + Send + Sync + 'static;
     type Abstention: std::fmt::Debug + Send + Sync + 'static;
+    type Rejection: std::fmt::Debug + Send + Sync + 'static;
 
     type SendPrepare: Future<Output = Result<Vote<Self>, Self::Error>>;
     type SendProposal: Future<Output = Result<Acceptance<Self>, Self::Error>>;
@@ -119,10 +122,11 @@ impl<C: Communicator> From<Result<Promise<C>, Conflict<C>>> for Vote<C> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Acceptance<C: Communicator> {
     Given,
     Conflicted(Conflict<C>),
+    Rejected(RejectionOf<C>),
 }
 
 impl<C: Communicator> TryFrom<Result<(), AcceptError<C>>> for Acceptance<C> {

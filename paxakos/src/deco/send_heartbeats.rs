@@ -9,7 +9,7 @@ use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
 use crate::node::{AbstentionOf, AppendResultFor, CommunicatorOf, CoordNumOf, EventOf};
-use crate::node::{NodeIdOf, NodeStatus, Participation, RoundNumOf, Snapshot};
+use crate::node::{NodeIdOf, NodeStatus, Participation, RejectionOf, RoundNumOf, Snapshot};
 use crate::node::{SnapshotFor, StateOf};
 use crate::voting::Voter;
 use crate::Node;
@@ -112,6 +112,7 @@ where
         RoundNum = RoundNumOf<N>,
         CoordNum = CoordNumOf<N>,
         Abstention = AbstentionOf<N>,
+        Rejection = RejectionOf<N>,
     >,
 {
     type Node = N;

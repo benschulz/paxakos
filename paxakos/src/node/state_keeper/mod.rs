@@ -19,7 +19,8 @@ use num_traits::{Bounded, One, Zero};
 use pin_project::pin_project;
 use tracing::{debug, info};
 
-use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, LogEntryOf, RoundNumOf};
+use crate::communicator::{self, AbstentionOf, Communicator, CoordNumOf};
+use crate::communicator::{LogEntryOf, RejectionOf, RoundNumOf};
 use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
 use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError, SpawnError};
 use crate::event::{Event, ShutdownEvent};
@@ -44,6 +45,17 @@ type RequestAndResponseSender<S, C> = (Request<S, C>, ResponseSender<S, C>);
 type ResponseSender<S, C> = oneshot::Sender<Response<S, C>>;
 type Awaiter<S, R> = oneshot::Sender<(R, OutcomeOf<S>)>;
 
+// this should become unnecessary with stabilization of `!`
+macro_rules! assert_unreachable {
+    ($v:expr) => {{
+        h($v);
+
+        fn h(_: std::convert::Infallible) -> ! {
+            unreachable!()
+        }
+    }};
+}
+
 #[derive(Debug)]
 enum Participation<R, C> {
     Active,
@@ -67,6 +79,11 @@ impl<R, C> From<super::Participation<R>> for Participation<R, C> {
             super::Participation::PartiallyActive(_) => unreachable!(),
         }
     }
+}
+
+enum AcceptPolicy<C: Communicator> {
+    Irrejectable,
+    Rejectable(Option<communicator::NodeOf<C>>),
 }
 
 type SpawnResult<C> = Result<(NodeStatus, super::Participation<RoundNumOf<C>>), SpawnError>;
@@ -176,6 +193,7 @@ where
         RoundNum = RoundNumOf<C>,
         CoordNum = CoordNumOf<C>,
         Abstention = AbstentionOf<C>,
+        Rejection = RejectionOf<C>,
     >,
 {
     pub async fn spawn(
@@ -627,7 +645,7 @@ where
                     assert_eq!(leader.id(), self.node_id);
                 }
 
-                let result = self.accept_entries(coord_num, entries, leader);
+                let result = self.accept_entries(coord_num, entries, AcceptPolicy::Irrejectable);
 
                 if let Some(round_num) = round_num {
                     if result.is_ok() {
@@ -984,7 +1002,7 @@ where
         if coord_num < strongest_promise {
             Err(PrepareError::Supplanted(strongest_promise))
         } else {
-            let voting_decision = self.voter.contemplate(
+            let voting_decision = self.voter.contemplate_candidate(
                 round_num,
                 coord_num,
                 self.deduce_node(round_num, coord_num).as_ref(),
@@ -993,6 +1011,7 @@ where
 
             match voting_decision {
                 voting::Decision::Abstain(reason) => Err(PrepareError::Abstained(reason)),
+                voting::Decision::Reject(never) => assert_unreachable!(never),
                 voting::Decision::Vote => {
                     overriding_insert(&mut self.promises, round_num, coord_num);
 
@@ -1068,7 +1087,7 @@ where
                 self.accept_entries(
                     coord_num,
                     vec![(round_num, entry)],
-                    self.deduce_node(round_num, coord_num),
+                    AcceptPolicy::Rejectable(self.deduce_node(round_num, coord_num)),
                 )
                 .map(|n| assert!(n == 1))
             }
@@ -1079,7 +1098,7 @@ where
         &mut self,
         coord_num: CoordNumOf<C>,
         entries: Vec<(RoundNumOf<C>, Arc<LogEntryOf<C>>)>,
-        leader: Option<NodeOf<S>>,
+        policy: AcceptPolicy<C>,
     ) -> Result<usize, AcceptError<C>> {
         let first_round = entries[0].0;
 
@@ -1116,15 +1135,30 @@ where
         let acceptable_entries = entries.into_iter().filter(|(r, _)| round_range.contains(r));
 
         for (round_num, log_entry) in acceptable_entries {
+            if let AcceptPolicy::Rejectable(leader) = &policy {
+                match self.voter.contemplate_proposal(
+                    round_num,
+                    coord_num,
+                    &*log_entry,
+                    leader.as_ref(),
+                    self.state.as_deref(),
+                ) {
+                    voting::Decision::Abstain(never) => assert_unreachable!(never),
+                    voting::Decision::Reject(rejection) => {
+                        return Err(AcceptError::Rejected(rejection))
+                    }
+                    voting::Decision::Vote => {
+                        // keep going
+                    }
+                }
+            }
+
             #[cfg(feature = "tracer")]
             {
                 if let Some(tracer) = self.tracer.as_mut() {
                     tracer.record_accept(round_num, coord_num, log_entry.id());
                 }
             }
-
-            self.voter
-                .observe_accept(round_num, coord_num, &*log_entry, leader.as_ref());
 
             accepted += 1;
 

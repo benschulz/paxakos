@@ -462,6 +462,7 @@ where
                         return Err(AppendError::NoQuorum {
                             abstentions,
                             communication_errors,
+                            rejections: Vec::new(),
                         });
                     }
                 }
@@ -572,6 +573,7 @@ where
         let mut accepted = HashSet::new();
         let mut rejected_or_failed = HashSet::new();
 
+        let mut rejections = Vec::new();
         let mut communication_errors = Vec::new();
 
         let mut conflict = None;
@@ -607,6 +609,7 @@ where
                                 .map(|c| std::cmp::max(c, coord_num))
                                 .or(Some(coord_num));
                         }
+                        Ok(Acceptance::Rejected(rejection)) => rejections.push(rejection),
                         Ok(Acceptance::Given)
                         | Ok(Acceptance::Conflicted(Conflict::Converged { .. })) => {
                             // covered in outer match
@@ -622,6 +625,7 @@ where
                         return Err(AppendError::NoQuorum {
                             abstentions: Vec::new(),
                             communication_errors,
+                            rejections,
                         });
                     }
 

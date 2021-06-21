@@ -19,7 +19,7 @@ use paxakos::{Node, NodeInfo, NodeKernel};
 
 use calc_app::{CalcOp, CalcState};
 
-type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !>;
+type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, !>;
 type CalcNode = NodeKernel<CalcState, CalcCommunicator>;
 
 #[test]
@@ -42,7 +42,7 @@ fn worst_case() {
             .for_node(node_id)
             .working_ephemerally()
             .communicating_via(
-                DirectCommunicators::<CalcState, u64, u32, !>::new()
+                DirectCommunicators::<CalcState, u64, u32, !, !>::new()
                     .create_communicator_for(node_id),
             )
             .resuming_from(initial_snapshot)
@@ -89,7 +89,7 @@ fn worst_case() {
             .for_node(node_id)
             .working_ephemerally()
             .communicating_via(
-                DirectCommunicators::<CalcState, u64, u32, !>::new()
+                DirectCommunicators::<CalcState, u64, u32, !, !>::new()
                     .create_communicator_for(node_id),
             )
             .recovering_with(snapshot)
@@ -178,7 +178,7 @@ fn worst_case() {
 #[test]
 fn become_active() {
     let concurrency = 5;
-    let communicators = DirectCommunicators::<CalcState, u64, u32, !>::new();
+    let communicators = DirectCommunicators::<CalcState, u64, u32, !, !>::new();
 
     let nodes = vec![
         PrototypingNode::new(),
@@ -261,7 +261,7 @@ fn setup_node(
     node_id: usize,
     active: bool,
     nodes: Vec<PrototypingNode>,
-    communicators: DirectCommunicators<CalcState, u64, u32, !>,
+    communicators: DirectCommunicators<CalcState, u64, u32, !, !>,
     concurrency: usize,
 ) -> CalcNode {
     let initial_state = CalcState::new(nodes, concurrency);

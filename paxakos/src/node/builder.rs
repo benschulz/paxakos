@@ -4,7 +4,7 @@ use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
 use crate::deco::Decoration;
 use crate::error::SpawnError;
 use crate::log::LogKeeping;
-use crate::node::{self, AbstentionOf, Participation, RequestHandlerFor};
+use crate::node::{self, AbstentionOf, Participation, RejectionOf, RequestHandlerFor};
 use crate::state::{ContextOf, NodeIdOf};
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
@@ -296,6 +296,7 @@ where
         RoundNum = node::RoundNumOf<N>,
         CoordNum = node::CoordNumOf<N>,
         Abstention = AbstentionOf<N>,
+        Rejection = RejectionOf<N>,
     >,
 {
     pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V>

@@ -8,7 +8,7 @@ use num_traits::One;
 
 use crate::append::{AppendArgs, AppendError};
 use crate::applicable::ApplicableTo;
-use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, RoundNumOf};
+use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, RejectionOf, RoundNumOf};
 use crate::error::Disoriented;
 use crate::event::{Event, ShutdownEvent};
 use crate::state::{LogEntryOf, NodeIdOf, State};
@@ -179,6 +179,7 @@ where
             RoundNum = RoundNumOf<C>,
             CoordNum = CoordNumOf<C>,
             Abstention = AbstentionOf<C>,
+            Rejection = RejectionOf<C>,
         >,
     {
         let (initial_status, initial_participation, events, state_keeper, proof_of_life) =
