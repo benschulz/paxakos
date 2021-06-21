@@ -4,18 +4,29 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::channel::mpsc;
-use futures::future::{FutureExt, LocalBoxFuture};
+use futures::future::FutureExt;
+use futures::future::LocalBoxFuture;
 use futures::lock::Mutex;
 use futures::sink::SinkExt;
 use futures::stream::Stream;
 use thiserror::Error;
 
-use crate::append::{AppendError, RetryPolicy};
-use crate::communicator::{Acceptance, Committed, Communicator, Vote};
+use crate::append::AppendError;
+use crate::append::RetryPolicy;
+use crate::communicator::Acceptance;
+use crate::communicator::Committed;
+use crate::communicator::Communicator;
+use crate::communicator::Vote;
 use crate::error::BoxError;
-use crate::state::{LogEntryOf, NodeIdOf, NodeOf};
-use crate::{CoordNum, LogEntry, NodeInfo};
-use crate::{RequestHandler, RoundNum, State};
+use crate::state::LogEntryOf;
+use crate::state::NodeIdOf;
+use crate::state::NodeOf;
+use crate::CoordNum;
+use crate::LogEntry;
+use crate::NodeInfo;
+use crate::RequestHandler;
+use crate::RoundNum;
+use crate::State;
 
 /// A `NodeInfo` implementation for prototyping.
 #[derive(Clone, Copy, Debug, Default)]

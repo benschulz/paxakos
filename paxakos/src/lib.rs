@@ -389,27 +389,38 @@ pub mod tracer;
 mod util;
 pub mod voting;
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use communicator::{Communicator, CoordNumOf, LogEntryOf, RoundNumOf};
+use communicator::Communicator;
+use communicator::CoordNumOf;
+use communicator::LogEntryOf;
+use communicator::RoundNumOf;
 // TODO move these three into the communicator module
-#[doc(inline)]
-pub use error::{AcceptError, CommitError, PrepareError};
-#[doc(inline)]
-pub use event::{Event, ShutdownEvent};
+pub use error::AcceptError;
+pub use error::CommitError;
+pub use error::PrepareError;
+pub use event::Event;
+pub use event::ShutdownEvent;
 #[doc(inline)]
 pub use log::LogEntry;
 #[doc(inline)]
 pub use node::builder as node_builder;
-#[doc(inline)]
-pub use node::{Commit, Node, NodeBuilder, NodeHandle, NodeInfo, NodeKernel, Shutdown};
-#[doc(inline)]
-pub use node::{NodeStatus, RequestHandler};
+pub use node::Commit;
+pub use node::Node;
+pub use node::NodeBuilder;
+pub use node::NodeHandle;
+pub use node::NodeInfo;
+pub use node::NodeKernel;
+pub use node::NodeStatus;
+pub use node::RequestHandler;
+pub use node::Shutdown;
 #[doc(inline)]
 pub use state::State;
 

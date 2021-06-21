@@ -1,18 +1,34 @@
-use futures::future::{FutureExt, LocalBoxFuture, TryFutureExt};
+use futures::future::FutureExt;
+use futures::future::LocalBoxFuture;
+use futures::future::TryFutureExt;
 
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
+use crate::communicator::Communicator;
+use crate::communicator::CoordNumOf;
+use crate::communicator::RoundNumOf;
 use crate::deco::Decoration;
 use crate::error::SpawnError;
 use crate::log::LogKeeping;
-use crate::node::{self, AbstentionOf, Participation, RejectionOf, RequestHandlerFor};
-use crate::state::{ContextOf, NodeIdOf};
+use crate::node;
+use crate::node::AbstentionOf;
+use crate::node::Participation;
+use crate::node::RejectionOf;
+use crate::node::RequestHandlerFor;
+use crate::state::ContextOf;
+use crate::state::NodeIdOf;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
-use crate::voting::{IndiscriminateVoter, IndiscriminateVoterFor, Voter};
-use crate::{Identifier, Node, State};
+use crate::voting::IndiscriminateVoter;
+use crate::voting::IndiscriminateVoterFor;
+use crate::voting::Voter;
+use crate::Identifier;
+use crate::Node;
+use crate::State;
 
-use super::snapshot::{Snapshot, SnapshotFor};
-use super::{CommunicatorOf, NodeKernel, StateOf};
+use super::snapshot::Snapshot;
+use super::snapshot::SnapshotFor;
+use super::CommunicatorOf;
+use super::NodeKernel;
+use super::StateOf;
 
 #[derive(Default)]
 pub struct NodeBuilderBlank;

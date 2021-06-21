@@ -1,18 +1,31 @@
 use std::task::Poll;
 use std::time::Duration;
 
-use futures::future::{FutureExt, LocalBoxFuture};
+use futures::future::FutureExt;
+use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 
-use crate::append::{AppendArgs, DoNotRetry};
+use crate::append::AppendArgs;
+use crate::append::DoNotRetry;
 use crate::applicable::ApplicableTo;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
-use crate::node::{AbstentionOf, AppendResultFor, CommunicatorOf, CoordNumOf, RejectionOf};
-use crate::node::{LogEntryOf, NodeIdOf, NodeStatus, Participation, RoundNumOf};
-use crate::node::{Snapshot, SnapshotFor, StateOf};
+use crate::node::AbstentionOf;
+use crate::node::AppendResultFor;
+use crate::node::CommunicatorOf;
+use crate::node::CoordNumOf;
+use crate::node::LogEntryOf;
+use crate::node::NodeIdOf;
+use crate::node::NodeStatus;
+use crate::node::Participation;
+use crate::node::RejectionOf;
+use crate::node::RoundNumOf;
+use crate::node::Snapshot;
+use crate::node::SnapshotFor;
+use crate::node::StateOf;
 use crate::voting::Voter;
-use crate::{Node, RoundNum};
+use crate::Node;
+use crate::RoundNum;
 
 use super::Decoration;
 

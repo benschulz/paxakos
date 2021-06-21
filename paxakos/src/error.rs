@@ -3,8 +3,13 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, LogEntryOf, RejectionOf};
-use crate::state::{LogEntryIdOf, State};
+use crate::communicator::AbstentionOf;
+use crate::communicator::Communicator;
+use crate::communicator::CoordNumOf;
+use crate::communicator::LogEntryOf;
+use crate::communicator::RejectionOf;
+use crate::state::LogEntryIdOf;
+use crate::state::State;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 

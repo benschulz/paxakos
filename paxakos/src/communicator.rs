@@ -1,11 +1,18 @@
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::future::Future;
 use std::sync::Arc;
 
 use crate::log::LogEntry;
 use crate::state::State;
-use crate::{AcceptError, CommitError, CoordNum, NodeInfo};
-use crate::{Conflict, PrepareError, Promise, RoundNum};
+use crate::AcceptError;
+use crate::CommitError;
+use crate::Conflict;
+use crate::CoordNum;
+use crate::NodeInfo;
+use crate::PrepareError;
+use crate::Promise;
+use crate::RoundNum;
 
 pub type AbstentionOf<C> = <C as Communicator>::Abstention;
 pub type CoordNumOf<C> = <C as Communicator>::CoordNum;

@@ -1,7 +1,10 @@
-use std::collections::{hash_map, BinaryHeap, HashMap};
+use std::collections::hash_map;
+use std::collections::BinaryHeap;
+use std::collections::HashMap;
 use std::task::Poll;
 
-use futures::future::{FutureExt, LocalBoxFuture};
+use futures::future::FutureExt;
+use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 
 use crate::append::AppendArgs;
@@ -9,9 +12,20 @@ use crate::applicable::ApplicableTo;
 use crate::deco::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
-use crate::node::{AbstentionOf, AppendResultFor, CommunicatorOf, CoordNumOf, EventOf};
-use crate::node::{LogEntryOf, Node, NodeIdOf, Participation, RejectionOf, RoundNumOf};
-use crate::node::{Snapshot, SnapshotFor, StateOf};
+use crate::node::AbstentionOf;
+use crate::node::AppendResultFor;
+use crate::node::CommunicatorOf;
+use crate::node::CoordNumOf;
+use crate::node::EventOf;
+use crate::node::LogEntryOf;
+use crate::node::Node;
+use crate::node::NodeIdOf;
+use crate::node::Participation;
+use crate::node::RejectionOf;
+use crate::node::RoundNumOf;
+use crate::node::Snapshot;
+use crate::node::SnapshotFor;
+use crate::node::StateOf;
 use crate::voting::Voter;
 
 type LockOf<N> = <EventOf<N> as AsLockEvent>::Lock;

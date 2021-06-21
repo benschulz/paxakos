@@ -3,7 +3,8 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use futures::io::AsyncRead;
 
-use crate::{LogEntry, NodeInfo};
+use crate::LogEntry;
+use crate::NodeInfo;
 
 /// Type alias to extract a state's [`Context`][State::Context] type.
 pub type ContextOf<S> = <S as State>::Context;

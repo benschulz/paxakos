@@ -3,20 +3,39 @@ use std::future::Future;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::future::FutureExt;
 use futures::sink::SinkExt;
 
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
-use crate::error::{AcceptError, AffirmSnapshotError, CommitError, Disoriented};
-use crate::error::{InstallSnapshotError, PrepareError, PrepareSnapshotError, ReadStaleError};
-use crate::node::{Commit, Snapshot};
-use crate::state::{LogEntryIdOf, LogEntryOf, NodeOf, OutcomeOf, State};
-use crate::{LogEntry, Promise};
+use crate::communicator::Communicator;
+use crate::communicator::CoordNumOf;
+use crate::communicator::RoundNumOf;
+use crate::error::AcceptError;
+use crate::error::AffirmSnapshotError;
+use crate::error::CommitError;
+use crate::error::Disoriented;
+use crate::error::InstallSnapshotError;
+use crate::error::PrepareError;
+use crate::error::PrepareSnapshotError;
+use crate::error::ReadStaleError;
+use crate::node::Commit;
+use crate::node::Snapshot;
+use crate::state::LogEntryIdOf;
+use crate::state::LogEntryOf;
+use crate::state::NodeOf;
+use crate::state::OutcomeOf;
+use crate::state::State;
+use crate::LogEntry;
+use crate::Promise;
 
-use super::error::{AcquireRoundNumError, ClusterError, ShutDown};
-use super::msg::{Request, Response};
-use super::{ProofOfLife, RoundNumReservation};
+use super::error::AcquireRoundNumError;
+use super::error::ClusterError;
+use super::error::ShutDown;
+use super::msg::Request;
+use super::msg::Response;
+use super::ProofOfLife;
+use super::RoundNumReservation;
 
 #[derive(Debug)]
 pub struct StateKeeperHandle<S: State, C: Communicator> {

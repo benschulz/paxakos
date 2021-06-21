@@ -7,9 +7,15 @@ use std::convert::Infallible;
 use async_trait::async_trait;
 use futures::io::AsyncRead;
 use paxakos::append::AppendArgs;
-use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
-use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
-use paxakos::{LogEntry, Node, NodeHandle, NodeInfo, State};
+use paxakos::prototyping::DirectCommunicator;
+use paxakos::prototyping::DirectCommunicators;
+use paxakos::prototyping::PrototypingNode;
+use paxakos::prototyping::RetryIndefinitely;
+use paxakos::LogEntry;
+use paxakos::Node;
+use paxakos::NodeHandle;
+use paxakos::NodeInfo;
+use paxakos::State;
 use uuid::Uuid;
 
 type ChatCommunicator = DirectCommunicator<ChatState, u64, u32, !, !>;

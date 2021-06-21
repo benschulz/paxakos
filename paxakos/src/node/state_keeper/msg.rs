@@ -3,14 +3,27 @@ use std::sync::Arc;
 
 use futures::channel::oneshot;
 
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
-use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
-use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
+use crate::communicator::Communicator;
+use crate::communicator::CoordNumOf;
+use crate::communicator::RoundNumOf;
+use crate::error::AcceptError;
+use crate::error::AffirmSnapshotError;
+use crate::error::CommitError;
+use crate::error::InstallSnapshotError;
+use crate::error::PrepareError;
+use crate::error::PrepareSnapshotError;
+use crate::error::ReadStaleError;
 use crate::node::Snapshot;
-use crate::state::{LogEntryIdOf, LogEntryOf, NodeOf, OutcomeOf, State};
-use crate::{Promise, RoundNum};
+use crate::state::LogEntryIdOf;
+use crate::state::LogEntryOf;
+use crate::state::NodeOf;
+use crate::state::OutcomeOf;
+use crate::state::State;
+use crate::Promise;
+use crate::RoundNum;
 
-use super::error::{AcquireRoundNumError, ClusterError};
+use super::error::AcquireRoundNumError;
+use super::error::ClusterError;
 use super::RoundNumReservation;
 
 #[derive(Debug)]

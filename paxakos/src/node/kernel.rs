@@ -1,26 +1,49 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use futures::channel::{mpsc, oneshot};
-use futures::future::{FutureExt, LocalBoxFuture};
-use futures::stream::{FuturesUnordered, StreamExt};
+use futures::channel::mpsc;
+use futures::channel::oneshot;
+use futures::future::FutureExt;
+use futures::future::LocalBoxFuture;
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamExt;
 use num_traits::One;
 
-use crate::append::{AppendArgs, AppendError};
+use crate::append::AppendArgs;
+use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
-use crate::communicator::{AbstentionOf, Communicator, CoordNumOf, RejectionOf, RoundNumOf};
+use crate::communicator::AbstentionOf;
+use crate::communicator::Communicator;
+use crate::communicator::CoordNumOf;
+use crate::communicator::RejectionOf;
+use crate::communicator::RoundNumOf;
 use crate::error::Disoriented;
-use crate::event::{Event, ShutdownEvent};
-use crate::state::{LogEntryOf, NodeIdOf, State};
+use crate::event::Event;
+use crate::event::ShutdownEvent;
+use crate::state::LogEntryOf;
+use crate::state::NodeIdOf;
+use crate::state::State;
 use crate::voting::Voter;
 
-use super::handle::{NodeHandleRequest, NodeHandleResponse};
+use super::commits::Commits;
+use super::handle::NodeHandleRequest;
+use super::handle::NodeHandleResponse;
 use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
-use super::snapshot::{Snapshot, SnapshotFor};
-use super::state_keeper::{EventStream, ProofOfLife, StateKeeper, StateKeeperHandle};
-use super::{commits::Commits, AppendResultFor};
-use super::{CommitFor, EventFor, Node, NodeHandle, NodeStatus, Participation, RequestHandler};
+use super::snapshot::Snapshot;
+use super::snapshot::SnapshotFor;
+use super::state_keeper::EventStream;
+use super::state_keeper::ProofOfLife;
+use super::state_keeper::StateKeeper;
+use super::state_keeper::StateKeeperHandle;
+use super::AppendResultFor;
+use super::CommitFor;
+use super::EventFor;
+use super::Node;
+use super::NodeHandle;
+use super::NodeStatus;
+use super::Participation;
+use super::RequestHandler;
 
 /// The default [`Node`][crate::Node] implementation.
 // TODO a better name may be needed…

@@ -1,4 +1,5 @@
-use futures::future::{FutureExt, LocalBoxFuture};
+use futures::future::FutureExt;
+use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 
 use crate::communicator::Communicator;

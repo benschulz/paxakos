@@ -1,31 +1,43 @@
 #![feature(never_type)]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::future;
 use futures::lock::Mutex;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use paxakos::append::AppendArgs;
-use paxakos::prototyping::{DirectCommunicator, DirectCommunicatorPayload, DirectCommunicators};
-use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
+use paxakos::deco::EnsureLeadershipBuilderExt;
+use paxakos::deco::FillGapsBuilderExt;
+use paxakos::deco::LeadershipAwareNode;
+use paxakos::deco::SendHeartbeatsBuilderExt;
+use paxakos::deco::TrackLeadershipBuilderExt;
+use paxakos::node::Participation;
+use paxakos::node::Snapshot;
+use paxakos::prototyping::DirectCommunicator;
+use paxakos::prototyping::DirectCommunicatorPayload;
+use paxakos::prototyping::DirectCommunicators;
+use paxakos::prototyping::PrototypingNode;
+use paxakos::prototyping::RetryIndefinitely;
 use paxakos::LogEntry;
-use paxakos::{
-    deco::{EnsureLeadershipBuilderExt, FillGapsBuilderExt, LeadershipAwareNode},
-    node::Snapshot,
-};
-use paxakos::{
-    deco::{SendHeartbeatsBuilderExt, TrackLeadershipBuilderExt},
-    node::Participation,
-};
-use paxakos::{Node, NodeInfo, Shutdown, ShutdownEvent, State};
-use rocket::{get, patch, post, routes};
-use rocket::{response::content::Html, tokio::io::AsyncRead};
+use paxakos::Node;
+use paxakos::NodeInfo;
+use paxakos::Shutdown;
+use paxakos::ShutdownEvent;
+use paxakos::State;
+use rocket::get;
+use rocket::patch;
+use rocket::post;
+use rocket::response::content::Html;
+use rocket::routes;
+use rocket::tokio::io::AsyncRead;
 use uuid::Uuid;
 
 type R = u32;

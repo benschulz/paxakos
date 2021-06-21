@@ -1,11 +1,16 @@
 use std::convert::TryInto;
 use std::fs;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
 use std::path;
 
-use crate::error::{BoxError, IoError};
+use crate::error::BoxError;
+use crate::error::IoError;
 use crate::log::LogEntry;
-use crate::{CoordNum, RoundNum};
+use crate::CoordNum;
+use crate::RoundNum;
 
 pub fn read_dir(dir: impl AsRef<path::Path>) -> Result<fs::ReadDir, IoError> {
     let dir = dir.as_ref();

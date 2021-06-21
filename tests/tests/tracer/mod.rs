@@ -1,12 +1,19 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::Write;
 
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
 use streamunordered::StreamUnordered;
 
-use paxakos::communicator::{Communicator, CoordNumOf, LogEntryIdOf, RoundNumOf};
-use paxakos::{CoordNum, Identifier, RoundNum};
+use paxakos::communicator::Communicator;
+use paxakos::communicator::CoordNumOf;
+use paxakos::communicator::LogEntryIdOf;
+use paxakos::communicator::RoundNumOf;
+use paxakos::CoordNum;
+use paxakos::Identifier;
+use paxakos::RoundNum;
 
 type EventFor<C> = Event<RoundNumOf<C>, CoordNumOf<C>, LogEntryIdOf<C>>;
 

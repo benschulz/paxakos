@@ -3,12 +3,16 @@ use std::future::Future;
 use std::rc::Rc;
 
 use futures::channel::oneshot;
-use futures::future::{FutureExt, LocalBoxFuture};
-use futures::stream::{FuturesUnordered, StreamExt};
+use futures::future::FutureExt;
+use futures::future::LocalBoxFuture;
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamExt;
 
-use crate::applicable::{Identity, Projection};
+use crate::applicable::Identity;
+use crate::applicable::Projection;
 use crate::error::ShutDown;
-use crate::state::{OutcomeOf, State};
+use crate::state::OutcomeOf;
+use crate::state::State;
 
 #[derive(Clone)]
 pub struct Commits {

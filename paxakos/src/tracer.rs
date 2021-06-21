@@ -1,4 +1,6 @@
-use crate::communicator::{CoordNumOf, LogEntryIdOf, RoundNumOf};
+use crate::communicator::CoordNumOf;
+use crate::communicator::LogEntryIdOf;
+use crate::communicator::RoundNumOf;
 
 pub trait Tracer<C>: Send
 where

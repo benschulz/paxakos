@@ -1,11 +1,18 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
-use crate::error::{AcceptError, CommitError, PrepareError};
-use crate::node::{CommunicatorOf, StateOf};
-use crate::state::{LogEntryIdOf, LogEntryOf};
-use crate::{Promise, State};
+use crate::communicator::Communicator;
+use crate::communicator::CoordNumOf;
+use crate::communicator::RoundNumOf;
+use crate::error::AcceptError;
+use crate::error::CommitError;
+use crate::error::PrepareError;
+use crate::node::CommunicatorOf;
+use crate::node::StateOf;
+use crate::state::LogEntryIdOf;
+use crate::state::LogEntryOf;
+use crate::Promise;
+use crate::State;
 
 use super::state_keeper::StateKeeperHandle;
 

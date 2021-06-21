@@ -7,11 +7,16 @@ use futures::stream::StreamExt;
 use uuid::Uuid;
 
 use paxakos::append::AppendArgs;
-use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
-use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
-use paxakos::{Event, Node, NodeInfo};
+use paxakos::prototyping::DirectCommunicator;
+use paxakos::prototyping::DirectCommunicators;
+use paxakos::prototyping::PrototypingNode;
+use paxakos::prototyping::RetryIndefinitely;
+use paxakos::Event;
+use paxakos::Node;
+use paxakos::NodeInfo;
 
-use calc_app::{CalcOp, CalcState};
+use calc_app::CalcOp;
+use calc_app::CalcState;
 
 #[test]
 fn single_append() {

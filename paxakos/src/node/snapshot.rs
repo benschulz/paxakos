@@ -3,13 +3,21 @@ use std::convert::TryInto;
 use std::io::Read;
 use std::sync::Arc;
 
-use futures::io::{self, AsyncRead, AsyncReadExt};
-use num_traits::{One, Zero};
-use serde::{Deserialize, Serialize};
+use futures::io;
+use futures::io::AsyncRead;
+use futures::io::AsyncReadExt;
+use num_traits::One;
+use num_traits::Zero;
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::node::{CoordNumOf, RoundNumOf, StateOf};
-use crate::state::{LogEntryOf, State};
-use crate::{CoordNum, RoundNum};
+use crate::node::CoordNumOf;
+use crate::node::RoundNumOf;
+use crate::node::StateOf;
+use crate::state::LogEntryOf;
+use crate::state::State;
+use crate::CoordNum;
+use crate::RoundNum;
 
 pub type SnapshotFor<N> = Snapshot<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 

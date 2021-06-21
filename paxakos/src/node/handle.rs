@@ -1,20 +1,27 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::future::FutureExt;
 use futures::sink::SinkExt;
 
-use crate::append::{AppendArgs, AppendError};
-use crate::applicable::{ApplicableTo, ProjectionOf};
-use crate::communicator::{Communicator, CoordNumOf, LogEntryOf, RoundNumOf};
+use crate::append::AppendArgs;
+use crate::append::AppendError;
+use crate::applicable::ApplicableTo;
+use crate::applicable::ProjectionOf;
+use crate::communicator::Communicator;
+use crate::communicator::CoordNumOf;
+use crate::communicator::LogEntryOf;
+use crate::communicator::RoundNumOf;
 use crate::error::ShutDown;
 use crate::state::State;
 
 use super::commits::Commit;
 use super::snapshot::Snapshot;
 use super::state_keeper::StateKeeperHandle;
-use super::{Admin, NodeStatus};
+use super::Admin;
+use super::NodeStatus;
 
 // macros
 use crate::dispatch_node_handle_req;

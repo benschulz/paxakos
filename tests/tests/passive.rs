@@ -10,14 +10,19 @@ use futures::future::Either;
 use rand::Rng;
 use uuid::Uuid;
 
-use paxakos::prototyping::{DirectCommunicator, DirectCommunicators, PrototypingNode};
-use paxakos::{
-    node::{Participation, Snapshot},
-    AcceptError, PrepareError,
-};
-use paxakos::{Node, NodeInfo, NodeKernel};
+use paxakos::node::Participation;
+use paxakos::node::Snapshot;
+use paxakos::prototyping::DirectCommunicator;
+use paxakos::prototyping::DirectCommunicators;
+use paxakos::prototyping::PrototypingNode;
+use paxakos::AcceptError;
+use paxakos::Node;
+use paxakos::NodeInfo;
+use paxakos::NodeKernel;
+use paxakos::PrepareError;
 
-use calc_app::{CalcOp, CalcState};
+use calc_app::CalcOp;
+use calc_app::CalcState;
 
 type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, !>;
 type CalcNode = NodeKernel<CalcState, CalcCommunicator>;

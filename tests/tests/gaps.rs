@@ -5,14 +5,24 @@ mod calc_app;
 use futures::stream::StreamExt;
 use uuid::Uuid;
 
-use paxakos::communicator::{Communicator, CoordNumOf, RoundNumOf};
+use paxakos::communicator::Communicator;
+use paxakos::communicator::CoordNumOf;
+use paxakos::communicator::RoundNumOf;
 use paxakos::event::Gap;
 use paxakos::node::EventFor;
-use paxakos::prototyping::{DirectCommunicator, DirectCommunicators, PrototypingNode};
+use paxakos::prototyping::DirectCommunicator;
+use paxakos::prototyping::DirectCommunicators;
+use paxakos::prototyping::PrototypingNode;
 use paxakos::state::LogEntryOf;
-use paxakos::{Event, Node, NodeInfo, NodeKernel, RequestHandler, State};
+use paxakos::Event;
+use paxakos::Node;
+use paxakos::NodeInfo;
+use paxakos::NodeKernel;
+use paxakos::RequestHandler;
+use paxakos::State;
 
-use calc_app::{CalcOp, CalcState};
+use calc_app::CalcOp;
+use calc_app::CalcState;
 
 type CalcCommunicator = DirectCommunicator<CalcState, u64, u32, !, !>;
 type CalcNode = NodeKernel<CalcState, CalcCommunicator>;

@@ -1,8 +1,14 @@
 use std::convert::Infallible;
 
-use crate::node::{self, CoordNumOf, RoundNumOf, StateOf};
-use crate::state::{LogEntryOf, NodeOf, State};
-use crate::{CoordNum, RoundNum};
+use crate::node;
+use crate::node::CoordNumOf;
+use crate::node::RoundNumOf;
+use crate::node::StateOf;
+use crate::state::LogEntryOf;
+use crate::state::NodeOf;
+use crate::state::State;
+use crate::CoordNum;
+use crate::RoundNum;
 
 pub type AbstentionOf<V> = <V as Voter>::Abstention;
 

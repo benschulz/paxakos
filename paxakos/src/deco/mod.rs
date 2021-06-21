@@ -6,10 +6,15 @@ mod track_leadership;
 use crate::error::SpawnError;
 use crate::Node;
 
-pub use ensure_leadership::{EnsureLeadership, EnsureLeadershipBuilderExt};
-pub use fill_gaps::{FillGaps, FillGapsBuilderExt};
-pub use send_heartbeats::{SendHeartbeats, SendHeartbeatsBuilderExt};
-pub use track_leadership::{LeadershipAwareNode, TrackLeadership, TrackLeadershipBuilderExt};
+pub use ensure_leadership::EnsureLeadership;
+pub use ensure_leadership::EnsureLeadershipBuilderExt;
+pub use fill_gaps::FillGaps;
+pub use fill_gaps::FillGapsBuilderExt;
+pub use send_heartbeats::SendHeartbeats;
+pub use send_heartbeats::SendHeartbeatsBuilderExt;
+pub use track_leadership::LeadershipAwareNode;
+pub use track_leadership::TrackLeadership;
+pub use track_leadership::TrackLeadershipBuilderExt;
 
 pub trait Decoration
 where

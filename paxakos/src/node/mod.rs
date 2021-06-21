@@ -12,26 +12,36 @@ mod status;
 
 use std::sync::Arc;
 
-use futures::future::{BoxFuture, LocalBoxFuture};
+use futures::future::BoxFuture;
+use futures::future::LocalBoxFuture;
 
-use crate::append::{AppendArgs, AppendError};
-use crate::applicable::{ApplicableTo, ProjectionOf};
-use crate::communicator::{self, Communicator};
-use crate::error::{Disoriented, ShutDown};
+use crate::append::AppendArgs;
+use crate::append::AppendError;
+use crate::applicable::ApplicableTo;
+use crate::applicable::ProjectionOf;
+use crate::communicator;
+use crate::communicator::Communicator;
+use crate::error::Disoriented;
+use crate::error::ShutDown;
 use crate::log::LogKeeping;
-use crate::state::{self, ContextOf};
+use crate::state;
+use crate::state::ContextOf;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
-use crate::{Event, State};
+use crate::Event;
+use crate::State;
 
 pub use builder::NodeBuilder;
 pub use commits::Commit;
 pub use handle::NodeHandle;
 pub use info::NodeInfo;
 pub use kernel::NodeKernel;
-pub use req_handler::{RequestHandler, RequestHandlerFor};
-pub use shutdown::{DefaultShutdown, Shutdown};
-pub use snapshot::{Snapshot, SnapshotFor};
+pub use req_handler::RequestHandler;
+pub use req_handler::RequestHandlerFor;
+pub use shutdown::DefaultShutdown;
+pub use shutdown::Shutdown;
+pub use snapshot::Snapshot;
+pub use snapshot::SnapshotFor;
 pub use status::NodeStatus;
 
 pub type StateOf<N> = <N as Node>::State;

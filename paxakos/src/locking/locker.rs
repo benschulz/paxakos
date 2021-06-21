@@ -1,13 +1,19 @@
 use std::collections::BinaryHeap;
-use std::sync::{atomic, Arc, Weak};
+use std::sync::atomic;
+use std::sync::Arc;
+use std::sync::Weak;
 use std::task::Poll;
 
-use futures::channel::{mpsc, oneshot};
-use futures::future::{BoxFuture, FutureExt};
+use futures::channel::mpsc;
+use futures::channel::oneshot;
+use futures::future::BoxFuture;
+use futures::future::FutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 
-use crate::{applicable::ProjectedOf, communicator::Communicator, node::StateOf};
+use crate::applicable::ProjectedOf;
+use crate::communicator::Communicator;
+use crate::node::StateOf;
 
 pub type Result<T> = std::result::Result<T, LockError>;
 

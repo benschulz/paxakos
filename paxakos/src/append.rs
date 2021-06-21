@@ -1,10 +1,15 @@
 use std::ops::RangeInclusive;
 
 use async_trait::async_trait;
-use num_traits::{Bounded, Zero};
+use num_traits::Bounded;
+use num_traits::Zero;
 use thiserror::Error;
 
-use crate::communicator::{AbstentionOf, Communicator, ErrorOf, RejectionOf, RoundNumOf};
+use crate::communicator::AbstentionOf;
+use crate::communicator::Communicator;
+use crate::communicator::ErrorOf;
+use crate::communicator::RejectionOf;
+use crate::communicator::RoundNumOf;
 use crate::error::BoxError;
 
 pub struct AppendArgs<C: Communicator> {

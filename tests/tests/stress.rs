@@ -8,18 +8,26 @@ use std::task::Poll;
 
 use futures::channel::oneshot;
 use futures::future::FutureExt;
-use futures::stream::{FuturesUnordered, StreamExt};
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamExt;
 use rand::seq::SliceRandom;
 use uuid::Uuid;
 
 use paxakos::append::AppendArgs;
-use paxakos::deco::{EnsureLeadershipBuilderExt, FillGapsBuilderExt};
-use paxakos::deco::{SendHeartbeatsBuilderExt, TrackLeadershipBuilderExt};
-use paxakos::prototyping::{DirectCommunicator, DirectCommunicators};
-use paxakos::prototyping::{PrototypingNode, RetryIndefinitely};
-use paxakos::{Node, NodeInfo, Shutdown};
+use paxakos::deco::EnsureLeadershipBuilderExt;
+use paxakos::deco::FillGapsBuilderExt;
+use paxakos::deco::SendHeartbeatsBuilderExt;
+use paxakos::deco::TrackLeadershipBuilderExt;
+use paxakos::prototyping::DirectCommunicator;
+use paxakos::prototyping::DirectCommunicators;
+use paxakos::prototyping::PrototypingNode;
+use paxakos::prototyping::RetryIndefinitely;
+use paxakos::Node;
+use paxakos::NodeInfo;
+use paxakos::Shutdown;
 
-use calc_app::{CalcOp, CalcState};
+use calc_app::CalcOp;
+use calc_app::CalcState;
 use tracer::StabilityChecker;
 
 type CalcCommunicators = DirectCommunicators<CalcState, u64, u32, !, !>;

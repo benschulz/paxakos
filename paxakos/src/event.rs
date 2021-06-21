@@ -1,9 +1,16 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::communicator::{Communicator, CoordNumOf, RoundNumOf};
-use crate::node::{NodeStatus, Shutdown, Snapshot};
-use crate::state::{EventOf, LogEntryOf, NodeOf, State};
+use crate::communicator::Communicator;
+use crate::communicator::CoordNumOf;
+use crate::communicator::RoundNumOf;
+use crate::node::NodeStatus;
+use crate::node::Shutdown;
+use crate::node::Snapshot;
+use crate::state::EventOf;
+use crate::state::LogEntryOf;
+use crate::state::NodeOf;
+use crate::state::State;
 use crate::RoundNum;
 
 pub type ShutdownEventFor<S> = ShutdownEvent<<S as Shutdown>::State, <S as Shutdown>::Communicator>;

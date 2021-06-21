@@ -5,10 +5,15 @@ mod calc_app;
 use futures::stream::StreamExt;
 use uuid::Uuid;
 
-use paxakos::prototyping::{DirectCommunicators, PrototypingNode};
-use paxakos::{Node, NodeInfo, Shutdown, ShutdownEvent};
+use paxakos::prototyping::DirectCommunicators;
+use paxakos::prototyping::PrototypingNode;
+use paxakos::Node;
+use paxakos::NodeInfo;
+use paxakos::Shutdown;
+use paxakos::ShutdownEvent;
 
-use calc_app::{CalcOp, CalcState};
+use calc_app::CalcOp;
+use calc_app::CalcState;
 
 #[test]
 fn clean_shutdown() {

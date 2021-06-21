@@ -4,7 +4,8 @@ use std::convert::Infallible;
 use async_trait::async_trait;
 use futures::io::AsyncRead;
 use paxakos::prototyping::PrototypingNode;
-use paxakos::{LogEntry, State};
+use paxakos::LogEntry;
+use paxakos::State;
 use serde::Serialize;
 use uuid::Uuid;
 

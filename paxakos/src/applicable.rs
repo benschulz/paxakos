@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::log::LogEntry;
-use crate::state::{LogEntryOf, OutcomeOf, State};
+use crate::state::LogEntryOf;
+use crate::state::OutcomeOf;
+use crate::state::State;
 
 pub type ProjectedOf<A, S> = <ProjectionOf<A, S> as Projection<OutcomeOf<S>>>::Projected;
 pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;

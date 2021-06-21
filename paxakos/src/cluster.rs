@@ -1,7 +1,8 @@
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 pub trait ClusterLogEntry<N> {
     fn concurrency(&self) -> Option<NonZeroUsize>;

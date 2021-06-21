@@ -1,9 +1,15 @@
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::communicator::{Communicator, RoundNumOf};
-use crate::error::{AcceptError, AffirmSnapshotError, CommitError, InstallSnapshotError};
-use crate::error::{PrepareError, PrepareSnapshotError, ReadStaleError};
+use crate::communicator::Communicator;
+use crate::communicator::RoundNumOf;
+use crate::error::AcceptError;
+use crate::error::AffirmSnapshotError;
+use crate::error::CommitError;
+use crate::error::InstallSnapshotError;
+use crate::error::PrepareError;
+use crate::error::PrepareSnapshotError;
+use crate::error::ReadStaleError;
 use crate::state::State;
 use crate::RoundNum;
 
