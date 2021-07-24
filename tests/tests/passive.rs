@@ -3,6 +3,7 @@
 
 mod calc_app;
 
+use std::assert_matches::assert_matches;
 use std::task::Poll;
 
 use futures::channel::oneshot;

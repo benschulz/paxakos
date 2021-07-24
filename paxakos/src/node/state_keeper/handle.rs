@@ -52,7 +52,11 @@ macro_rules! dispatch_state_keeper_req {
             sender.send((req, s)).await.map_err(|_| ShutDown)?;
 
             match r.await.map_err(|_| ShutDown)? {
-                Response::$name(r) => Ok(r?),
+                Response::$name(r) => Ok(match r {
+                    Ok(v) => v,
+                    #[allow(unreachable_code)]
+                    Err(e) => return Err(e),
+                }),
                 _ => unreachable!(),
             }
         }
@@ -69,7 +73,11 @@ macro_rules! dispatch_state_keeper_req {
             sender.send((req, s)).await.map_err(|_| ShutDown)?;
 
             match r.await.map_err(|_| ShutDown)? {
-                Response::$name(r) => Ok(r?),
+                Response::$name(r) => Ok(match r {
+                    Ok(v) => v,
+                    #[allow(unreachable_code)]
+                    Err(e) => return Err(e),
+                }),
                 _ => unreachable!(),
             }
         }
