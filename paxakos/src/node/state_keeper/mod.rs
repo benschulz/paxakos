@@ -867,7 +867,7 @@ where
             if round_num > self.state_round
                 && round_num <= self.state_round + into_round_num(state.concurrency())
             {
-                // FIXME lots of duplication with NodeInner::determine_coord_num
+                // TODO lots of duplication with NodeInner::determine_coord_num
                 let round_offset = crate::util::usize_delta(round_num, self.state_round);
                 let round_offset = std::num::NonZeroUsize::new(round_offset)
                     .expect("Zero was ruled out via equality check");

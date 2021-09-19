@@ -100,7 +100,7 @@ impl<V> Drop for Lease<V> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LeaseError {
-    // FIXME
+    // TODO
     #[error("generic")]
     Generic,
 }
@@ -295,7 +295,7 @@ where
             );
         }
 
-        // FIXME terminate
+        // TODO terminate
         while let Poll::Ready(Some((take, args, reply))) = self.take_receiver.poll_next_unpin(cx) {
             let mut taken_sender = self.taken_or_extended_sender.clone();
 
