@@ -3,7 +3,6 @@
 
 use std::convert::Infallible;
 
-use paxakos::append::AppendArgs;
 use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
@@ -31,7 +30,10 @@ fn main() {
 
     futures::executor::block_on(async move {
         let _ = node_a
-            .append(msg("Alice", "Oh, hey guys"), always_retry())
+            .append(
+                msg("Alice", "Oh, hey guys"),
+                RetryIndefinitely::without_pausing(),
+            )
             .await;
     });
 
@@ -41,14 +43,20 @@ fn main() {
     let b = std::thread::spawn(|| {
         futures::executor::block_on(async move {
             let _ = node_b
-                .append(msg("Bob", "Hi Alice, long time no see!"), always_retry())
+                .append(
+                    msg("Bob", "Hi Alice, long time no see!"),
+                    RetryIndefinitely::without_pausing(),
+                )
                 .await;
         });
     });
     let c = std::thread::spawn(|| {
         futures::executor::block_on(async move {
             let _ = node_c
-                .append(msg("Charlie", "Hi Alice, how are you?"), always_retry())
+                .append(
+                    msg("Charlie", "Hi Alice, how are you?"),
+                    RetryIndefinitely::without_pausing(),
+                )
                 .await;
         });
     });
@@ -105,13 +113,6 @@ fn msg(sender: &str, message: &str) -> ChatMessage {
         id: Uuid::new_v4(),
         sender: sender.to_string(),
         message: message.to_string(),
-    }
-}
-
-fn always_retry() -> AppendArgs<ChatInvocation> {
-    AppendArgs {
-        retry_policy: Box::new(RetryIndefinitely::without_pausing()),
-        ..Default::default()
     }
 }
 

@@ -49,7 +49,9 @@ mod cfg_backoff {
 
     use async_trait::async_trait;
     use backoff::backoff::Backoff;
+    use backoff::exponential::ExponentialBackoff;
 
+    use crate::append::AppendArgs;
     use crate::append::AppendError;
     use crate::error::BoxError;
     use crate::invocation::Invocation;
@@ -76,6 +78,16 @@ mod cfg_backoff {
     impl<B: Backoff, I> From<B> for RetryWithBackoff<B, I> {
         fn from(backoff: B) -> Self {
             Self(backoff, std::marker::PhantomData)
+        }
+    }
+
+    impl<C, I> From<ExponentialBackoff<C>> for AppendArgs<I>
+    where
+        C: backoff::Clock + Send + 'static,
+        I: Invocation + Send,
+    {
+        fn from(backoff: ExponentialBackoff<C>) -> Self {
+            RetryWithBackoff::from(backoff).into()
         }
     }
 

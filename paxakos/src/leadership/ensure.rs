@@ -25,7 +25,6 @@ use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::YeaOf;
-use crate::retry::DoNotRetry;
 use crate::voting::Voter;
 use crate::Node;
 use crate::RoundNum;
@@ -184,13 +183,7 @@ where
 
         let append = self
             .decorated
-            .append(
-                log_entry,
-                AppendArgs {
-                    retry_policy: Box::new(DoNotRetry::new()),
-                    ..Default::default()
-                },
-            )
+            .append(log_entry, ())
             .map(|_| ())
             .boxed_local();
 
@@ -320,10 +313,10 @@ where
         self.decorated.read_stale()
     }
 
-    fn append<A: ApplicableTo<StateOf<Self>> + 'static>(
+    fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
         &self,
         applicable: A,
-        args: AppendArgs<Self::Invocation>,
+        args: P,
     ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
         self.decorated.append(applicable, args)
     }

@@ -179,13 +179,13 @@ where
         self.state_keeper.install_snapshot(snapshot).boxed_local()
     }
 
-    fn append<A: ApplicableTo<StateOf<I>> + 'static>(
+    fn append<A: ApplicableTo<StateOf<I>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
         &self,
         applicable: A,
-        args: AppendArgs<I>,
+        args: P,
     ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError<I>>> {
         Rc::clone(&self.inner)
-            .append(applicable, args)
+            .append(applicable, args.into())
             .boxed_local()
     }
 

@@ -16,11 +16,10 @@ use crate::retry::RetryPolicy;
 pub struct AppendArgs<I: Invocation> {
     pub round: RangeInclusive<RoundNumOf<I>>,
     pub importance: Importance,
-    // TODO box internally
     pub retry_policy: Box<dyn RetryPolicy<Invocation = I> + Send>,
 }
 
-impl<C: Invocation> Default for AppendArgs<C> {
+impl<I: Invocation> Default for AppendArgs<I> {
     fn default() -> Self {
         DoNotRetry::new().into()
     }
@@ -37,6 +36,12 @@ where
             importance: Importance::GainLeadership,
             retry_policy: Box::new(retry_policy),
         }
+    }
+}
+
+impl<I: Invocation> From<()> for AppendArgs<I> {
+    fn from(_: ()) -> Self {
+        Default::default()
     }
 }
 

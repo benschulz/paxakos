@@ -5,7 +5,6 @@ use futures::stream::StreamExt;
 use paxakos::invocation::Invocation;
 use uuid::Uuid;
 
-use paxakos::append::AppendArgs;
 use paxakos::prototyping::DirectCommunicator;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
@@ -22,9 +21,7 @@ use calc_app::CalcState;
 fn single_append() {
     let node = setup_node();
 
-    let result = futures::executor::block_on(
-        node.append(CalcOp::Add(42.0, Uuid::new_v4()), Default::default()),
-    );
+    let result = futures::executor::block_on(node.append(CalcOp::Add(42.0, Uuid::new_v4()), ()));
     let result = result.unwrap();
     let result = futures::executor::block_on(result).unwrap();
     assert!((42.0 - result).abs() < f64::EPSILON);
@@ -37,16 +34,12 @@ fn single_append() {
 fn multiple_serial_append() {
     let node = setup_node();
 
-    let result = futures::executor::block_on(
-        node.append(CalcOp::Add(42.0, Uuid::new_v4()), Default::default()),
-    );
+    let result = futures::executor::block_on(node.append(CalcOp::Add(42.0, Uuid::new_v4()), ()));
     let result = result.unwrap();
     let result = futures::executor::block_on(result).unwrap();
     assert!((42.0 - result).abs() < f64::EPSILON);
 
-    let result = futures::executor::block_on(
-        node.append(CalcOp::Mul(3.0, Uuid::new_v4()), Default::default()),
-    );
+    let result = futures::executor::block_on(node.append(CalcOp::Mul(3.0, Uuid::new_v4()), ()));
     let result = result.unwrap();
     let result = futures::executor::block_on(result).unwrap();
     assert!((126.0 - result).abs() < f64::EPSILON);
@@ -70,15 +63,9 @@ fn multiple_concurrent_appends() {
     let futures: futures::stream::FuturesUnordered<_> = ops
         .into_iter()
         .map(|op| {
-            node.append(
-                op,
-                AppendArgs {
-                    retry_policy: Box::new(RetryIndefinitely::without_pausing()),
-                    ..Default::default()
-                },
-            )
-            .map(|_| ())
-            .left_future()
+            node.append(op, RetryIndefinitely::without_pausing())
+                .map(|_| ())
+                .left_future()
         })
         .collect();
 

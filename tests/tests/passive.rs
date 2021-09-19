@@ -208,7 +208,7 @@ fn become_active() {
                     node_handle
                         .append(
                             CalcOp::Add(1.0, Uuid::new_v4()),
-                            RetryIndefinitely::without_pausing().into(),
+                            RetryIndefinitely::without_pausing(),
                         )
                         .await
                         .unwrap()

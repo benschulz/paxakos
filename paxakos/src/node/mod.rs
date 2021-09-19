@@ -117,10 +117,10 @@ pub trait Node: Sized {
 
     fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<StateOf<Self>>, Disoriented>>;
 
-    fn append<A: ApplicableTo<StateOf<Self>> + 'static>(
+    fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
         &self,
         applicable: A,
-        args: AppendArgs<Self::Invocation>,
+        args: P,
     ) -> LocalBoxFuture<'static, AppendResultFor<Self, A>>;
 
     fn shut_down(self) -> Self::Shutdown;

@@ -269,7 +269,7 @@ where
         while let Poll::Ready(Some(lease_id)) = self.releases.poll_next_unpin(cx) {
             let release = lease_id.into_release();
 
-            let append = self.node_handle.append(release, Default::default());
+            let append = self.node_handle.append(release, ());
 
             self.appends.push(
                 async move {
@@ -283,7 +283,7 @@ where
         while let Poll::Ready(Some((take, reply))) = self.take_receiver.poll_next_unpin(cx) {
             let mut taken_sender = self.taken_or_extended_sender.clone();
 
-            let append = self.node_handle.append(take, Default::default());
+            let append = self.node_handle.append(take, ());
 
             self.appends.push(
                 async move {
@@ -330,7 +330,7 @@ where
                     let duration = std::time::Duration::from_secs(3);
 
                     let extend = queued.lease_id.into_extend(duration);
-                    let append = self.node_handle.append(extend, Default::default());
+                    let append = self.node_handle.append(extend, ());
 
                     self.appends.push(
                         async move {

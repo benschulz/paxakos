@@ -3,6 +3,7 @@ mod tracer;
 
 use std::sync::Once;
 use std::task::Poll;
+use std::time::Duration;
 
 use futures::channel::oneshot;
 use futures::future::FutureExt;
@@ -13,7 +14,6 @@ use paxakos::invocation::Invocation;
 use rand::seq::SliceRandom;
 use uuid::Uuid;
 
-use paxakos::append::AppendArgs;
 use paxakos::autofill::AutofillBuilderExt;
 use paxakos::heartbeats::HeartbeatsBuilderExt;
 use paxakos::leadership::ensure::EnsureLeadershipBuilderExt;
@@ -170,13 +170,13 @@ fn spawn_node(
                 .traced_by(tracer)
                 .fill_gaps(autofill::StaticConfig::<_, PlusZero>::new(
                     1,
-                    std::time::Duration::from_millis(50),
+                    Duration::from_millis(50),
                 ))
                 .send_heartbeats(HeartbeatConfig::new())
                 .track_leadership()
                 .ensure_leadership(|c| {
                     c.with_entry(|| CalcOp::Div(1.0, Uuid::new_v4()))
-                        .every(std::time::Duration::from_millis(500))
+                        .every(Duration::from_millis(500))
                 })
                 .spawn_in(()),
         )
@@ -204,12 +204,7 @@ fn spawn_node(
                             handle
                                 .append(
                                     op,
-                                    AppendArgs {
-                                        retry_policy: Box::new(RetryIndefinitely::pausing_up_to(
-                                            std::time::Duration::from_millis(200),
-                                        )),
-                                        ..Default::default()
-                                    },
+                                    RetryIndefinitely::pausing_up_to(Duration::from_millis(200)),
                                 )
                                 .map(move |r| r.err().map(|_| op)),
                         );
@@ -311,7 +306,7 @@ where
         CalcOp::Mul(1.0, Uuid::new_v4())
     }
 
-    fn interval(&self) -> Option<std::time::Duration> {
-        Some(std::time::Duration::from_millis(200))
+    fn interval(&self) -> Option<Duration> {
+        Some(Duration::from_millis(200))
     }
 }

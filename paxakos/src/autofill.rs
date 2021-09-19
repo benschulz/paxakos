@@ -435,10 +435,10 @@ where
         self.decorated.read_stale()
     }
 
-    fn append<A: ApplicableTo<StateOf<Self>> + 'static>(
+    fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
         &self,
         applicable: A,
-        args: AppendArgs<Self::Invocation>,
+        args: P,
     ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
         self.decorated.append(applicable, args)
     }

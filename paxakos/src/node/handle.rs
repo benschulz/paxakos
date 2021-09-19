@@ -116,14 +116,14 @@ impl<I: Invocation> NodeHandle<I> {
         self.state_keeper.try_read_stale()
     }
 
-    pub fn append<A: ApplicableTo<StateOf<I>>>(
+    pub fn append<A: ApplicableTo<StateOf<I>>, P: Into<AppendArgs<I>>>(
         &self,
         applicable: A,
-        args: AppendArgs<I>,
+        args: P,
     ) -> impl Future<Output = Result<CommitFor<I, A>, AppendError<I>>> {
         dispatch_node_handle_req!(self, Append, {
             log_entry: applicable.into_log_entry(),
-            args,
+            args: args.into(),
         })
         .map(|r| {
             r.ok_or(AppendError::ShutDown)

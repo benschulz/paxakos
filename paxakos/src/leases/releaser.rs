@@ -200,11 +200,11 @@ where
     }
 }
 
-impl<N, P> Node for Releaser<N, P>
+impl<N, C> Node for Releaser<N, C>
 where
     N: Node,
     EventOf<N>: AsLeaseEvent,
-    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
+    C: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
 {
     type Invocation = InvocationOf<N>;
     type Communicator = CommunicatorOf<N>;
@@ -274,7 +274,7 @@ where
                         let log_entry = (self.arguments.entry_producer)(id);
                         self.appends.push(
                             self.decorated
-                                .append(log_entry, Default::default())
+                                .append(log_entry, ())
                                 .map(move |r| r.map(|_| None).unwrap_or(Some(id)))
                                 .boxed_local(),
                         );
@@ -327,10 +327,10 @@ where
         self.decorated.read_stale()
     }
 
-    fn append<A: ApplicableTo<StateOf<Self>> + 'static>(
+    fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
         &self,
         applicable: A,
-        args: AppendArgs<Self::Invocation>,
+        args: P,
     ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
         self.decorated.append(applicable, args)
     }
