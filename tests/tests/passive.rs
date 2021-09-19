@@ -1,5 +1,4 @@
 #![feature(assert_matches)]
-#![feature(never_type)]
 
 mod calc_app;
 

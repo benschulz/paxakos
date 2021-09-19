@@ -1,5 +1,3 @@
-#![feature(never_type)]
-
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Cursor;

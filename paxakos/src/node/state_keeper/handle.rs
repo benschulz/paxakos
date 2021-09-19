@@ -55,7 +55,7 @@ macro_rules! dispatch_state_keeper_req {
                 Response::$name(r) => Ok(match r {
                     Ok(v) => v,
                     #[allow(unreachable_code)]
-                    Err(e) => return Err(e),
+                    Err(e) => return Err(e.into()),
                 }),
                 _ => unreachable!(),
             }
@@ -76,7 +76,7 @@ macro_rules! dispatch_state_keeper_req {
                 Response::$name(r) => Ok(match r {
                     Ok(v) => v,
                     #[allow(unreachable_code)]
-                    Err(e) => return Err(e),
+                    Err(e) => return Err(e.into()),
                 }),
                 _ => unreachable!(),
             }

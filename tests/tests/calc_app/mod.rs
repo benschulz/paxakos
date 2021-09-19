@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::convert::Infallible;
 
 use paxakos::applicable::ApplicableTo;
 use paxakos::applicable::Identity;
@@ -18,8 +19,8 @@ impl Invocation for CalcInvocation {
     type State = CalcState;
 
     type Yea = ();
-    type Nay = !;
-    type Abstain = !;
+    type Nay = Infallible;
+    type Abstain = Infallible;
 
     type CommunicationError = DirectCommunicatorError;
 }

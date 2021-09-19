@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
@@ -97,6 +98,8 @@ pub enum Request<I: Invocation> {
     Shutdown,
 }
 
+type PendingCommit<I> = oneshot::Receiver<(RoundNumOf<I>, OutcomeOf<I>)>;
+
 #[derive(Debug)]
 pub enum Response<I: Invocation> {
     PrepareSnapshot(Result<SnapshotFor<I>, PrepareSnapshotError>),
@@ -105,16 +108,16 @@ pub enum Response<I: Invocation> {
 
     ReadStale(Result<Arc<StateOf<I>>, ReadStaleError>),
 
-    AwaitCommitOf(Result<oneshot::Receiver<(RoundNumOf<I>, OutcomeOf<I>)>, !>),
+    AwaitCommitOf(Result<PendingCommit<I>, Infallible>),
 
     AcquireRoundNum(Result<RoundNumReservation<RoundNumOf<I>>, AcquireRoundNumError>),
 
-    AcceptedEntryOf(Result<Option<Arc<LogEntryOf<I>>>, !>),
+    AcceptedEntryOf(Result<Option<Arc<LogEntryOf<I>>>, Infallible>),
 
     Cluster(Result<Vec<NodeOf<I>>, ClusterError<RoundNumOf<I>>>),
 
-    ObservedCoordNum(Result<(), !>),
-    HighestObservedCoordNum(Result<CoordNumOf<I>, !>),
+    ObservedCoordNum(Result<(), Infallible>),
+    HighestObservedCoordNum(Result<CoordNumOf<I>, Infallible>),
 
     PrepareEntry(Result<PromiseFor<I>, PrepareError<I>>),
 
@@ -125,11 +128,11 @@ pub enum Response<I: Invocation> {
 
     CommitEntryById(Result<(), CommitError<I>>),
 
-    AssumeLeadership(Result<(), !>),
+    AssumeLeadership(Result<(), Infallible>),
 
-    ForceActive(Result<bool, !>),
+    ForceActive(Result<bool, Infallible>),
 
-    Shutdown(Result<(), !>),
+    Shutdown(Result<(), Infallible>),
 }
 
 #[derive(Debug)]

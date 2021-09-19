@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::sync::Arc;
 
 use thiserror::Error;
@@ -253,3 +254,9 @@ pub struct Disoriented;
 #[derive(Clone, Copy, Debug, Error)]
 #[error("node is shut down")]
 pub struct ShutDown;
+
+impl From<Infallible> for ShutDown {
+    fn from(_: Infallible) -> Self {
+        Self
+    }
+}

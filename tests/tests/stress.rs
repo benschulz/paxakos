@@ -1,5 +1,3 @@
-#![feature(never_type)]
-
 mod calc_app;
 mod tracer;
 

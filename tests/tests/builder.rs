@@ -1,5 +1,3 @@
-#![feature(never_type)]
-
 mod calc_app;
 
 use paxakos::invocation::Invocation;

@@ -1,6 +1,7 @@
 //! This example is for illustrative purposes only. Basing a chat protocol on
 //! consensus is a bad idea, but makes a neat example.
-#![feature(never_type)]
+
+use std::convert::Infallible;
 
 use paxakos::append::AppendArgs;
 use paxakos::prototyping::DirectCommunicatorError;
@@ -123,8 +124,8 @@ impl Invocation for ChatInvocation {
     type State = ChatState;
 
     type Yea = ();
-    type Nay = !;
-    type Abstain = !;
+    type Nay = Infallible;
+    type Abstain = Infallible;
 
     type CommunicationError = DirectCommunicatorError;
 }
