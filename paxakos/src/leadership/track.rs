@@ -12,6 +12,7 @@ use num_traits::Zero;
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
 use crate::communicator::Communicator;
+use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::invocation;
 use crate::invocation::Invocation;
@@ -36,8 +37,6 @@ use crate::node::StateOf;
 use crate::node::YeaOf;
 use crate::voting::Voter;
 use crate::RoundNum;
-
-use super::Decoration;
 
 pub type LeadershipFor<N> = Leadership<NodeIdOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 

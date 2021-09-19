@@ -77,7 +77,7 @@ fn auto_fill_gaps() {
     let node_info = PrototypingNode::new();
     let communicators = DirectCommunicators::<CalcInvocation>::new();
 
-    use paxakos::deco::FillGapsBuilderExt;
+    use paxakos::autofill::AutofillBuilderExt;
 
     let (req_handler, mut node) = futures::executor::block_on(
         CalcInvocation::node_builder()

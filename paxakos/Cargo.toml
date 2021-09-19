@@ -12,18 +12,22 @@ keywords = [ "paxos", "consensus", "distributed" ]
 categories = [ "network-programming" ]
 
 [features]
+autofill = []
 default = []
-locker = []
-locking = [ "locker", "release-locks" ]
-master-leases = [ "either" ]
+ensure-leadership = []
+heartbeats = [ "track-leadership" ]
+leases = []
+leaser = [ "leases" ]
+master-leases = [ "either", "leases" ]
 prototyping = [ "rand", "rand_distr", "tracer" ]
-release-locks = []
+releaser = [ "leases" ]
 tracer = []
+track-leadership = []
 
 [dependencies]
 async-trait = "0.1"
 bincode = "1"
-blake3 = "0.3.1"
+blake3 = "1"
 either = { version = "1", optional = true }
 futures = "0.3"
 futures-timer = "3"

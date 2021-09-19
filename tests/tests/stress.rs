@@ -15,10 +15,10 @@ use rand::seq::SliceRandom;
 use uuid::Uuid;
 
 use paxakos::append::AppendArgs;
-use paxakos::deco::EnsureLeadershipBuilderExt;
-use paxakos::deco::FillGapsBuilderExt;
-use paxakos::deco::SendHeartbeatsBuilderExt;
-use paxakos::deco::TrackLeadershipBuilderExt;
+use paxakos::autofill::AutofillBuilderExt;
+use paxakos::heartbeats::SendHeartbeatsBuilderExt;
+use paxakos::leadership::ensure::EnsureLeadershipBuilderExt;
+use paxakos::leadership::track::TrackLeadershipBuilderExt;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::prototyping::RetryIndefinitely;
@@ -285,7 +285,7 @@ impl<N> HeartbeatConfig<N> {
     }
 }
 
-impl<N> paxakos::deco::send_heartbeats::Config for HeartbeatConfig<N>
+impl<N> paxakos::heartbeats::Config for HeartbeatConfig<N>
 where
     N: Node<Invocation = CalcInvocation>,
 {

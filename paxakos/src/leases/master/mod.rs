@@ -18,7 +18,7 @@ pub use voter::LeaseGrantingVoter;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
-use crate::deco::Decoration;
+use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::node::AbstainOf;
 use crate::node::AppendResultFor;

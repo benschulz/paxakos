@@ -12,7 +12,7 @@ async-trait = "0.1"
 bytes = "1"
 futures = "0.3"
 futures-timer = "3"
-paxakos = { path = "../../paxakos", features = [ "prototyping" ] }
+paxakos = { path = "../../paxakos", features = [ "autofill", "ensure-leadership", "heartbeats", "prototyping" ] }
 rand_distr = "0.4"
 rocket = { version = "0.5.0-rc.1", features = [ "json" ] }
 serde = "1"

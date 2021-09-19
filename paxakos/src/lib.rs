@@ -345,16 +345,19 @@
 
 pub mod append;
 pub mod applicable;
+#[cfg(feature = "autofill")]
+pub mod autofill;
 pub mod cluster;
 pub mod communicator;
-pub mod deco;
+pub mod decoration;
 pub mod error;
 pub mod event;
+#[cfg(feature = "heartbeats")]
+pub mod heartbeats;
 pub mod invocation;
-#[cfg(feature = "master-leases")]
+pub mod leadership;
+#[cfg(feature = "leases")]
 pub mod leases;
-#[cfg(feature = "locking")]
-pub mod locking;
 mod log;
 pub mod node;
 #[cfg(feature = "prototyping")]

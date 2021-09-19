@@ -8,9 +8,9 @@ publish = false
 [dev-dependencies]
 async-trait = "0.1"
 bincode = "1"
-blake3 = "0.3.1"
+blake3 = "1"
 futures = "0.3"
-paxakos = { path = "../paxakos", features = [ "prototyping", "tracer" ] }
+paxakos = { path = "../paxakos", features = [ "autofill", "ensure-leadership", "heartbeats", "prototyping", "tracer" ] }
 rand = "0.8"
 rand_distr = "0.4"
 serde = { version = "1", features = [ "derive", "rc" ] }

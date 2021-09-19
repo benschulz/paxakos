@@ -11,7 +11,9 @@ use crate::append::DoNotRetry;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
+use crate::decoration::Decoration;
 use crate::error::Disoriented;
+use crate::leadership::track::MaybeLeadershipAwareNode;
 use crate::node::builder::NodeBuilder;
 use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
@@ -30,9 +32,6 @@ use crate::node::StateOf;
 use crate::node::YeaOf;
 use crate::voting::Voter;
 use crate::Node;
-
-use super::track_leadership::MaybeLeadershipAwareNode;
-use super::Decoration;
 
 pub trait Config {
     type Node: Node;

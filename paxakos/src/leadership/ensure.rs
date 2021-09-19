@@ -8,6 +8,7 @@ use futures::stream::StreamExt;
 use crate::append::AppendArgs;
 use crate::append::DoNotRetry;
 use crate::applicable::ApplicableTo;
+use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
 use crate::node::AbstainOf;
@@ -28,8 +29,6 @@ use crate::node::YeaOf;
 use crate::voting::Voter;
 use crate::Node;
 use crate::RoundNum;
-
-use super::Decoration;
 
 pub trait EnsureLeadershipBuilderExt {
     type Node: Node + 'static;

@@ -10,7 +10,7 @@ use futures::stream::StreamExt;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
-use crate::deco::Decoration;
+use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
 use crate::node::AbstainOf;
@@ -31,18 +31,18 @@ use crate::node::StateOf;
 use crate::node::YeaOf;
 use crate::voting::Voter;
 
-type LockOf<N> = <EventOf<N> as AsLockEvent>::Lock;
-type LockIdOf<N> = <LockOf<N> as Lock>::Id;
+type LeaseOf<N> = <EventOf<N> as AsLeaseEvent>::Lease;
+type LeaseIdOf<N> = <LeaseOf<N> as Lease>::Id;
 
-pub trait AsLockEvent {
-    type Lock: Lock;
+pub trait AsLeaseEvent {
+    type Lease: Lease;
 
-    fn as_lock_taken(&self) -> Option<&Self::Lock>;
+    fn as_lease_taken(&self) -> Option<&Self::Lease>;
 
-    fn as_lock_released(&self) -> Option<<Self::Lock as Lock>::Id>;
+    fn as_lease_released(&self) -> Option<<Self::Lease as Lease>::Id>;
 }
 
-pub trait Lock {
+pub trait Lease {
     type Id: Copy + Eq + std::hash::Hash + PartialEq;
 
     fn id(&self) -> Self::Id;
@@ -51,33 +51,31 @@ pub trait Lock {
     fn timeout(&self) -> std::time::Instant;
 }
 
-pub trait HasLocks {
-    type Lock: Lock;
-    type Iter: Iterator<Item = Self::Lock>;
+pub trait HasLeases {
+    type Lease: Lease;
+    type Iter: Iterator<Item = Self::Lease>;
 
-    fn locks(&self) -> Self::Iter;
+    fn leases(&self) -> Self::Iter;
 }
 
-pub trait AutoReleaseLocksBuilderExt {
+pub trait ReleaserBuilderExt {
     type Node: Node;
     type Voter: Voter;
 
-    fn release_locks<C, P>(
+    fn release_leases<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilder<AutoReleaseLocks<Self::Node, P>, Self::Voter>
+    ) -> NodeBuilder<Releaser<Self::Node, P>, Self::Voter>
     where
-        EventOf<Self::Node>: AsLockEvent,
-        C: FnOnce(
-            AutoReleaseLocksBuilderBlank<Self::Node>,
-        ) -> AutoReleaseLocksBuilder<Self::Node, P>,
-        P: Fn(LockIdOf<Self::Node>) -> LogEntryOf<Self::Node> + 'static;
+        EventOf<Self::Node>: AsLeaseEvent,
+        C: FnOnce(ReleaserBuilderBlank<Self::Node>) -> ReleaserBuilder<Self::Node, P>,
+        P: Fn(LeaseIdOf<Self::Node>) -> LogEntryOf<Self::Node> + 'static;
 }
 
-impl<N, V> AutoReleaseLocksBuilderExt for NodeBuilder<N, V>
+impl<N, V> ReleaserBuilderExt for NodeBuilder<N, V>
 where
     N: Node + 'static,
-    EventOf<N>: AsLockEvent,
+    EventOf<N>: AsLeaseEvent,
     V: Voter<
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
@@ -90,15 +88,15 @@ where
     type Node = N;
     type Voter = V;
 
-    fn release_locks<C, P>(self, configure: C) -> NodeBuilder<AutoReleaseLocks<N, P>, V>
+    fn release_leases<C, P>(self, configure: C) -> NodeBuilder<Releaser<N, P>, V>
     where
-        EventOf<N>: AsLockEvent,
-        C: FnOnce(AutoReleaseLocksBuilderBlank<N>) -> AutoReleaseLocksBuilder<N, P>,
-        P: Fn(LockIdOf<N>) -> LogEntryOf<N> + 'static,
+        EventOf<N>: AsLeaseEvent,
+        C: FnOnce(ReleaserBuilderBlank<N>) -> ReleaserBuilder<N, P>,
+        P: Fn(LeaseIdOf<N>) -> LogEntryOf<N> + 'static,
     {
-        let configured = configure(AutoReleaseLocksBuilderBlank(std::marker::PhantomData));
+        let configured = configure(ReleaserBuilderBlank(std::marker::PhantomData));
 
-        self.decorated_with(AutoReleaseLocksArgs {
+        self.decorated_with(ReleaserArgs {
             _node: std::marker::PhantomData,
             _jitter: std::time::Duration::from_millis(0),
             entry_producer: configured.entry_producer,
@@ -106,43 +104,43 @@ where
     }
 }
 
-pub struct AutoReleaseLocksBuilderBlank<N>(std::marker::PhantomData<N>)
+pub struct ReleaserBuilderBlank<N>(std::marker::PhantomData<N>)
 where
     N: Node,
-    EventOf<N>: AsLockEvent;
+    EventOf<N>: AsLeaseEvent;
 
-impl<N> AutoReleaseLocksBuilderBlank<N>
+impl<N> ReleaserBuilderBlank<N>
 where
     N: Node,
-    EventOf<N>: AsLockEvent,
+    EventOf<N>: AsLeaseEvent,
 {
-    pub fn with<P>(self, entry_producer: P) -> AutoReleaseLocksBuilder<N, P>
+    pub fn with<P>(self, entry_producer: P) -> ReleaserBuilder<N, P>
     where
-        P: Fn(LockIdOf<N>) -> LogEntryOf<N>,
+        P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
     {
-        AutoReleaseLocksBuilder {
+        ReleaserBuilder {
             entry_producer,
             _node: std::marker::PhantomData,
         }
     }
 }
 
-pub struct AutoReleaseLocksBuilder<N, P>
+pub struct ReleaserBuilder<N, P>
 where
     N: Node,
-    EventOf<N>: AsLockEvent,
-    P: Fn(LockIdOf<N>) -> LogEntryOf<N>,
+    EventOf<N>: AsLeaseEvent,
+    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
 {
     entry_producer: P,
 
     _node: std::marker::PhantomData<N>,
 }
 
-pub struct AutoReleaseLocksArgs<N, P>
+pub struct ReleaserArgs<N, P>
 where
     N: Node,
-    EventOf<N>: AsLockEvent,
-    P: Fn(LockIdOf<N>) -> LogEntryOf<N>,
+    EventOf<N>: AsLeaseEvent,
+    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
 {
     _node: std::marker::PhantomData<N>,
     // TODO jitter
@@ -150,31 +148,31 @@ where
     entry_producer: P,
 }
 
-pub struct AutoReleaseLocks<N, P>
+pub struct Releaser<N, P>
 where
     N: Node,
-    EventOf<N>: AsLockEvent,
-    P: Fn(LockIdOf<N>) -> LogEntryOf<N>,
+    EventOf<N>: AsLeaseEvent,
+    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
 {
     decorated: N,
-    arguments: AutoReleaseLocksArgs<N, P>,
+    arguments: ReleaserArgs<N, P>,
 
-    queue: BinaryHeap<QueuedLock<LockIdOf<N>>>,
-    timeouts: HashMap<LockIdOf<N>, usize>,
+    queue: BinaryHeap<QueuedLease<LeaseIdOf<N>>>,
+    timeouts: HashMap<LeaseIdOf<N>, usize>,
     next_timeout_id: usize,
 
     timer: Option<futures_timer::Delay>,
 
-    appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, Option<LockIdOf<N>>>>,
+    appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, Option<LeaseIdOf<N>>>>,
 }
 
-impl<N, P> Decoration for AutoReleaseLocks<N, P>
+impl<N, P> Decoration for Releaser<N, P>
 where
     N: Node + 'static,
-    EventOf<N>: AsLockEvent,
-    P: Fn(LockIdOf<N>) -> LogEntryOf<N> + 'static,
+    EventOf<N>: AsLeaseEvent,
+    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N> + 'static,
 {
-    type Arguments = AutoReleaseLocksArgs<N, P>;
+    type Arguments = ReleaserArgs<N, P>;
 
     type Decorated = N;
 
@@ -202,11 +200,11 @@ where
     }
 }
 
-impl<N, P> Node for AutoReleaseLocks<N, P>
+impl<N, P> Node for Releaser<N, P>
 where
     N: Node,
-    EventOf<N>: AsLockEvent,
-    P: Fn(LockIdOf<N>) -> LogEntryOf<N>,
+    EventOf<N>: AsLeaseEvent,
+    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
 {
     type Invocation = InvocationOf<N>;
     type Communicator = CommunicatorOf<N>;
@@ -227,36 +225,36 @@ where
     fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> Poll<EventFor<Self>> {
         let e = self.decorated.poll_events(cx);
 
-        // TODO queue locks on Init and Install
+        // TODO queue leases on Init and Install
 
         if let Poll::Ready(crate::Event::Apply { result, .. }) = &e {
-            if let Some(lock) = result.as_lock_taken() {
+            if let Some(lease) = result.as_lease_taken() {
                 let timeout_id = self.next_timeout_id;
                 self.next_timeout_id += 1;
 
-                self.timeouts.insert(lock.id(), timeout_id);
-                self.queue.push(QueuedLock {
-                    lock_id: lock.id(),
+                self.timeouts.insert(lease.id(), timeout_id);
+                self.queue.push(QueuedLease {
+                    lease_id: lease.id(),
                     timeout_id,
-                    timeout: lock.timeout(),
+                    timeout: lease.timeout(),
                 })
             }
 
-            if let Some(lock_id) = result.as_lock_released() {
-                self.timeouts.remove(&lock_id);
+            if let Some(lease_id) = result.as_lease_released() {
+                self.timeouts.remove(&lease_id);
             }
         }
 
         while let Poll::Ready(Some(r)) = self.appends.poll_next_unpin(cx) {
-            if let Some(lock_id) = r {
+            if let Some(lease_id) = r {
                 let timeout_id = self.next_timeout_id;
                 self.next_timeout_id += 1;
 
                 // TODO retry policy
                 let new_timeout = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                self.timeouts.insert(lock_id, timeout_id);
-                self.queue.push(QueuedLock {
-                    lock_id,
+                self.timeouts.insert(lease_id, timeout_id);
+                self.queue.push(QueuedLease {
+                    lease_id,
                     timeout_id,
                     timeout: new_timeout,
                 })
@@ -269,7 +267,7 @@ where
             while self.queue.peek().filter(|q| q.timeout <= now).is_some() {
                 let queued = self.queue.pop().unwrap();
 
-                if let hash_map::Entry::Occupied(e) = self.timeouts.entry(queued.lock_id) {
+                if let hash_map::Entry::Occupied(e) = self.timeouts.entry(queued.lease_id) {
                     if *e.get() == queued.timeout_id {
                         let (id, _) = e.remove_entry();
 
@@ -342,27 +340,27 @@ where
     }
 }
 
-struct QueuedLock<I> {
-    lock_id: I,
+struct QueuedLease<I> {
+    lease_id: I,
     timeout_id: usize,
     timeout: std::time::Instant,
 }
 
-impl<I> Eq for QueuedLock<I> {}
+impl<I> Eq for QueuedLease<I> {}
 
-impl<I> PartialEq for QueuedLock<I> {
+impl<I> PartialEq for QueuedLease<I> {
     fn eq(&self, other: &Self) -> bool {
         self.timeout.eq(&other.timeout)
     }
 }
 
-impl<I> Ord for QueuedLock<I> {
+impl<I> Ord for QueuedLease<I> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.timeout.cmp(&other.timeout).reverse()
     }
 }
 
-impl<I> PartialOrd for QueuedLock<I> {
+impl<I> PartialOrd for QueuedLease<I> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }

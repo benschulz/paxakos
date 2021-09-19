@@ -15,6 +15,7 @@ use crate::append::DoNotRetry;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
+use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
 use crate::node::AbstainOf;
@@ -37,21 +38,19 @@ use crate::voting::Voter;
 use crate::Node;
 use crate::RoundNum;
 
-use super::Decoration;
-
-pub trait FillGapsBuilderExt: Sized {
+pub trait AutofillBuilderExt: Sized {
     type Node: Node;
     type Voter: Voter;
 
-    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilder<FillGaps<Self::Node, P>, Self::Voter>
+    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilder<Autofill<Self::Node, P>, Self::Voter>
     where
-        C: FnOnce(FillGapsBuilderBlank<Self::Node>) -> FillGapsBuilder<Self::Node, P>,
+        C: FnOnce(AutofillBuilderBlank<Self::Node>) -> AutofillBuilder<Self::Node, P>,
         P: Fn() -> LogEntryOf<Self::Node> + 'static;
 
     fn fill_gaps_with<P>(
         self,
         entry_producer: P,
-    ) -> NodeBuilder<FillGaps<Self::Node, P>, Self::Voter>
+    ) -> NodeBuilder<Autofill<Self::Node, P>, Self::Voter>
     where
         P: 'static + Fn() -> LogEntryOf<Self::Node>,
     {
@@ -59,7 +58,7 @@ pub trait FillGapsBuilderExt: Sized {
     }
 }
 
-pub struct FillGapsBuilder<N, P>
+pub struct AutofillBuilder<N, P>
 where
     N: Node,
     P: Fn() -> LogEntryOf<N>,
@@ -72,7 +71,7 @@ where
     _node: std::marker::PhantomData<N>,
 }
 
-impl<N, V> FillGapsBuilderExt for NodeBuilder<N, V>
+impl<N, V> AutofillBuilderExt for NodeBuilder<N, V>
 where
     N: Node + 'static,
     V: Voter<
@@ -87,27 +86,27 @@ where
     type Node = N;
     type Voter = V;
 
-    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilder<FillGaps<N, P>, V>
+    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilder<Autofill<N, P>, V>
     where
-        C: FnOnce(FillGapsBuilderBlank<N>) -> FillGapsBuilder<N, P>,
+        C: FnOnce(AutofillBuilderBlank<N>) -> AutofillBuilder<N, P>,
         P: Fn() -> LogEntryOf<N> + 'static,
     {
-        self.decorated_with(configure(FillGapsBuilderBlank::new()).build())
+        self.decorated_with(configure(AutofillBuilderBlank::new()).build())
     }
 }
 
-pub struct FillGapsBuilderBlank<N: Node>(std::marker::PhantomData<N>);
+pub struct AutofillBuilderBlank<N: Node>(std::marker::PhantomData<N>);
 
-impl<N: Node> FillGapsBuilderBlank<N> {
+impl<N: Node> AutofillBuilderBlank<N> {
     fn new() -> Self {
         Self(std::marker::PhantomData)
     }
 
-    pub fn with_entry<P>(self, entry_producer: P) -> FillGapsBuilder<N, P>
+    pub fn with_entry<P>(self, entry_producer: P) -> AutofillBuilder<N, P>
     where
         P: Fn() -> LogEntryOf<N>,
     {
-        FillGapsBuilder {
+        AutofillBuilder {
             entry_producer,
             batch_size: None,
             delay: None,
@@ -118,7 +117,7 @@ impl<N: Node> FillGapsBuilderBlank<N> {
     }
 }
 
-impl<N, P> FillGapsBuilder<N, P>
+impl<N, P> AutofillBuilder<N, P>
 where
     N: Node,
     P: Fn() -> LogEntryOf<N> + 'static,
@@ -147,8 +146,8 @@ where
         }
     }
 
-    fn build(self) -> FillGapsArgs<N, P> {
-        FillGapsArgs {
+    fn build(self) -> AutofillArgs<N, P> {
+        AutofillArgs {
             entry_producer: self.entry_producer,
             batch_size: self.batch_size.unwrap_or(1),
             delay: self.delay.unwrap_or_else(|| Duration::from_millis(400)),
@@ -160,7 +159,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct FillGapsArgs<N, P>
+pub struct AutofillArgs<N, P>
 where
     N: Node,
     P: 'static + Fn() -> LogEntryOf<N>,
@@ -174,13 +173,13 @@ where
 }
 
 #[derive(Debug)]
-pub struct FillGaps<N, P>
+pub struct Autofill<N, P>
 where
     N: Node,
     P: Fn() -> LogEntryOf<N> + 'static,
 {
     decorated: N,
-    arguments: FillGapsArgs<N, P>,
+    arguments: AutofillArgs<N, P>,
 
     disoriented: bool,
 
@@ -214,7 +213,7 @@ impl<R: RoundNum> PartialOrd for QueuedGap<R> {
     }
 }
 
-impl<N, P> FillGaps<N, P>
+impl<N, P> Autofill<N, P>
 where
     N: Node,
     P: Fn() -> LogEntryOf<N> + 'static,
@@ -321,12 +320,12 @@ where
     }
 }
 
-impl<N, P> Decoration for FillGaps<N, P>
+impl<N, P> Decoration for Autofill<N, P>
 where
     N: Node + 'static,
     P: Fn() -> LogEntryOf<N> + 'static,
 {
-    type Arguments = FillGapsArgs<N, P>;
+    type Arguments = AutofillArgs<N, P>;
     type Decorated = N;
 
     fn wrap(
@@ -358,7 +357,7 @@ where
     }
 }
 
-impl<N, P> Node for FillGaps<N, P>
+impl<N, P> Node for Autofill<N, P>
 where
     N: Node,
     P: Fn() -> LogEntryOf<N> + 'static,
@@ -421,7 +420,7 @@ where
                 }
 
                 crate::Event::Apply { round, .. } => {
-                    self.known_gaps.remove(&round);
+                    self.known_gaps.remove(round);
                 }
 
                 _ => {}

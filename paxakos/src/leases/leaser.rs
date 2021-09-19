@@ -15,10 +15,10 @@ use crate::applicable::ProjectedOf;
 use crate::invocation::Invocation;
 use crate::node::StateOf;
 
-pub type Result<T> = std::result::Result<T, LockError>;
+pub type Result<T> = std::result::Result<T, LeaseError>;
 
-const LOCK_STATE_HELD: u8 = 1;
-const LOCK_STATE_LOST: u8 = 0;
+const LEASE_STATE_HELD: u8 = 1;
+const LEASE_STATE_LOST: u8 = 0;
 
 pub trait IntoTake<T> {
     fn into_take(self, duration: std::time::Duration) -> T;
@@ -32,50 +32,50 @@ pub trait IntoRelease<R> {
     fn into_release(self) -> R;
 }
 
-pub trait LockResult<V = ()> {
-    type LockId: Copy + Eq + std::hash::Hash + Send + Sync + Unpin;
+pub trait LeaseResult<V = ()> {
+    type LeaseId: Copy + Eq + std::hash::Hash + Send + Sync + Unpin;
 
-    fn into_result(self) -> Result<Locked<Self::LockId, V>>;
+    fn into_result(self) -> Result<Leased<Self::LeaseId, V>>;
 }
 
-pub struct Locked<I, V = ()> {
-    lock_id: I,
+pub struct Leased<I, V = ()> {
+    lease_id: I,
     value: V,
     timeout: std::time::Instant,
 }
 
-impl<I: Copy> Locked<I> {
-    pub fn new(lock_id: I, timeout: std::time::Instant) -> Self {
+impl<I: Copy> Leased<I> {
+    pub fn new(lease_id: I, timeout: std::time::Instant) -> Self {
         Self {
-            lock_id,
+            lease_id,
             value: (),
             timeout,
         }
     }
 }
 
-impl<I: Copy, V> Locked<I, V> {
-    pub fn with_value<T>(&self, value: T) -> Locked<I, T> {
-        Locked {
-            lock_id: self.lock_id,
+impl<I: Copy, V> Leased<I, V> {
+    pub fn with_value<T>(&self, value: T) -> Leased<I, T> {
+        Leased {
+            lease_id: self.lease_id,
             value,
             timeout: self.timeout,
         }
     }
 
-    pub fn without_value(&self) -> Locked<I> {
+    pub fn without_value(&self) -> Leased<I> {
         self.with_value(())
     }
 }
 
 #[must_use]
-pub struct Lock<V = ()> {
+pub struct Lease<V = ()> {
     value: Option<V>,
     state: Arc<atomic::AtomicU8>,
-    unlock_sender: Option<oneshot::Sender<()>>,
+    release_sender: Option<oneshot::Sender<()>>,
 }
 
-impl<V> Lock<V> {
+impl<V> Lease<V> {
     pub fn get(&self) -> Option<&V> {
         self.value.as_ref()
     }
@@ -87,95 +87,95 @@ impl<V> Lock<V> {
     }
 
     pub fn test(&self) -> bool {
-        self.state.load(atomic::Ordering::Relaxed) == LOCK_STATE_HELD
+        self.state.load(atomic::Ordering::Relaxed) == LEASE_STATE_HELD
     }
 }
 
-impl<V> Drop for Lock<V> {
+impl<V> Drop for Lease<V> {
     fn drop(&mut self) {
-        let _ = self.unlock_sender.take().unwrap().send(());
+        let _ = self.release_sender.take().unwrap().send(());
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum LockError {
+pub enum LeaseError {
     // FIXME
     #[error("generic")]
     Generic,
 }
 
-impl<I: Invocation> From<crate::append::AppendError<I>> for LockError {
+impl<I: Invocation> From<crate::append::AppendError<I>> for LeaseError {
     fn from(_: crate::append::AppendError<I>) -> Self {
-        LockError::Generic
+        LeaseError::Generic
     }
 }
 
-impl From<crate::error::ShutDown> for LockError {
+impl From<crate::error::ShutDown> for LeaseError {
     fn from(_: crate::error::ShutDown) -> Self {
-        LockError::Generic
+        LeaseError::Generic
     }
 }
 
-impl From<futures::channel::mpsc::SendError> for LockError {
+impl From<futures::channel::mpsc::SendError> for LeaseError {
     fn from(_: futures::channel::mpsc::SendError) -> Self {
-        LockError::Generic
+        LeaseError::Generic
     }
 }
 
-impl From<futures::channel::oneshot::Canceled> for LockError {
+impl From<futures::channel::oneshot::Canceled> for LeaseError {
     fn from(_: futures::channel::oneshot::Canceled) -> Self {
-        LockError::Generic
+        LeaseError::Generic
     }
 }
 
 #[derive(Clone)]
-pub struct Locker<T, V = ()> {
-    sender: mpsc::Sender<(T, oneshot::Sender<Result<Lock<V>>>)>,
+pub struct Leaser<T, V = ()> {
+    sender: mpsc::Sender<(T, oneshot::Sender<Result<Lease<V>>>)>,
 }
 
-impl<T, V> std::fmt::Debug for Locker<T, V> {
+impl<T, V> std::fmt::Debug for Leaser<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "paxakos::locking::Locker")
+        write!(f, "paxakos::leases::leaser::Leaser")
     }
 }
 
-pub struct LockKeeper<N: crate::Node, T, E, R, I: Copy, V> {
+pub struct LeaseKeeper<N: crate::Node, T, E, R, I: Copy, V> {
     node_handle: crate::node::HandleFor<N>,
 
-    take_receiver: mpsc::Receiver<(T, oneshot::Sender<Result<Lock<V>>>)>,
+    take_receiver: mpsc::Receiver<(T, oneshot::Sender<Result<Lease<V>>>)>,
 
     taken_or_extended_sender: mpsc::Sender<TakenOrExtended<I>>,
     taken_or_extended_receiver: mpsc::Receiver<TakenOrExtended<I>>,
 
-    unlocks: futures::stream::FuturesUnordered<BoxFuture<'static, I>>,
+    releases: futures::stream::FuturesUnordered<BoxFuture<'static, I>>,
 
     appends: futures::stream::FuturesUnordered<BoxFuture<'static, ()>>,
 
-    queue: BinaryHeap<QueuedLock<I>>,
+    queue: BinaryHeap<QueuedLease<I>>,
 
     timer: Option<futures_timer::Delay>,
 
     _p: std::marker::PhantomData<(E, R, V)>,
 }
 
-impl<T, V> Locker<T, V> {
+impl<T, V> Leaser<T, V> {
     pub fn new<N, E, R, I>(
         node_handle: crate::node::HandleFor<N>,
-    ) -> (Self, LockKeeper<N, T, E, R, I, V>)
+    ) -> (Self, LeaseKeeper<N, T, E, R, I, V>)
     where
         N: crate::Node,
         T: crate::applicable::ApplicableTo<StateOf<N>>,
         E: crate::applicable::ApplicableTo<StateOf<N>>,
         R: crate::applicable::ApplicableTo<StateOf<N>>,
-        ProjectedOf<T, StateOf<N>>: LockResult<V, LockId = I>,
-        ProjectedOf<E, StateOf<N>>: LockResult<LockId = I>,
+        ProjectedOf<T, StateOf<N>>: LeaseResult<V, LeaseId = I>,
+        ProjectedOf<E, StateOf<N>>: LeaseResult<LeaseId = I>,
         I: Copy,
     {
         let (sender, take_receiver) = mpsc::channel(16);
         let (taken_or_extended_sender, taken_or_extended_receiver) = mpsc::channel(16);
 
-        let locker = Self { sender };
-        let keeper = LockKeeper {
+        let leaser = Self { sender };
+        let keeper = LeaseKeeper {
             node_handle,
 
             take_receiver,
@@ -183,7 +183,7 @@ impl<T, V> Locker<T, V> {
             taken_or_extended_sender,
             taken_or_extended_receiver,
 
-            unlocks: futures::stream::FuturesUnordered::new(),
+            releases: futures::stream::FuturesUnordered::new(),
 
             appends: futures::stream::FuturesUnordered::new(),
 
@@ -194,11 +194,11 @@ impl<T, V> Locker<T, V> {
             _p: std::marker::PhantomData,
         };
 
-        (locker, keeper)
+        (leaser, keeper)
     }
 
     // TODO args (timeout, extend, retry policy)
-    pub async fn take_lock<A>(&mut self, take: A) -> Result<Lock<V>>
+    pub async fn take_lease<A>(&mut self, take: A) -> Result<Lease<V>>
     where
         A: IntoTake<T>,
     {
@@ -212,13 +212,13 @@ impl<T, V> Locker<T, V> {
     }
 }
 
-impl<N, T, E, R, I, V> futures::stream::Stream for LockKeeper<N, T, E, R, I, V>
+impl<N, T, E, R, I, V> futures::stream::Stream for LeaseKeeper<N, T, E, R, I, V>
 where
     N: crate::Node,
     T: crate::applicable::ApplicableTo<StateOf<N>> + 'static,
-    ProjectedOf<T, StateOf<N>>: LockResult<V, LockId = I>,
+    ProjectedOf<T, StateOf<N>>: LeaseResult<V, LeaseId = I>,
     E: crate::applicable::ApplicableTo<StateOf<N>> + Unpin + 'static,
-    ProjectedOf<E, StateOf<N>>: LockResult<LockId = I>,
+    ProjectedOf<E, StateOf<N>>: LeaseResult<LeaseId = I>,
     R: crate::applicable::ApplicableTo<StateOf<N>> + Unpin + 'static,
     I: Copy + std::hash::Hash + Eq + Send + Sync + Unpin + 'static,
     I: IntoExtend<E>,
@@ -234,40 +234,40 @@ where
     ) -> std::task::Poll<Option<Self::Item>> {
         while let Poll::Ready(Some(toe)) = self.taken_or_extended_receiver.poll_next_unpin(cx) {
             match toe {
-                TakenOrExtended::Taken(locked, state, unlock) => {
+                TakenOrExtended::Taken(leased, state, release) => {
                     let now = std::time::Instant::now();
-                    let lock_id = locked.lock_id;
+                    let lease_id = leased.lease_id;
 
-                    self.queue.push(QueuedLock {
-                        lock_id,
+                    self.queue.push(QueuedLease {
+                        lease_id,
                         state,
                         // TODO introduce a policy
-                        extend: now + (locked.timeout - now) * 2 / 3,
+                        extend: now + (leased.timeout - now) * 2 / 3,
                     });
-                    self.unlocks.push(
+                    self.releases.push(
                         async move {
-                            unlock.await.expect("unwrap unlock sender");
+                            release.await.expect("unwrap release sender");
 
-                            lock_id
+                            lease_id
                         }
                         .boxed(),
                     );
                 }
-                TakenOrExtended::Extended(locked, state) => {
+                TakenOrExtended::Extended(leased, state) => {
                     let now = std::time::Instant::now();
 
-                    self.queue.push(QueuedLock {
-                        lock_id: locked.lock_id,
+                    self.queue.push(QueuedLease {
+                        lease_id: leased.lease_id,
                         state,
                         // TODO introduce a policy
-                        extend: now + (locked.timeout - now) * 2 / 3,
+                        extend: now + (leased.timeout - now) * 2 / 3,
                     });
                 }
             }
         }
 
-        while let Poll::Ready(Some(lock_id)) = self.unlocks.poll_next_unpin(cx) {
-            let release = lock_id.into_release();
+        while let Poll::Ready(Some(lease_id)) = self.releases.poll_next_unpin(cx) {
+            let release = lease_id.into_release();
 
             let append = self.node_handle.append(release, Default::default());
 
@@ -289,15 +289,15 @@ where
                 async move {
                     let (send, recv) = oneshot::channel();
 
-                    let state = Arc::new(atomic::AtomicU8::new(LOCK_STATE_HELD));
+                    let state = Arc::new(atomic::AtomicU8::new(LEASE_STATE_HELD));
                     let downgraded_state = Arc::downgrade(&state);
 
-                    let lock_result = async move {
+                    let lease_result = async move {
                         let commit = append.await?;
-                        let locked = commit.await?.into_result()?;
+                        let leased = commit.await?.into_result()?;
 
-                        let taken = locked.without_value();
-                        let value = locked.value;
+                        let taken = leased.without_value();
+                        let value = leased.value;
 
                         taken_sender
                             .send(TakenOrExtended::Taken(taken, downgraded_state, recv))
@@ -307,10 +307,10 @@ where
                     }
                     .await;
 
-                    let _ = reply.send(lock_result.map(|value| Lock {
+                    let _ = reply.send(lease_result.map(|value| Lease {
                         value: Some(value),
                         state,
-                        unlock_sender: Some(send),
+                        release_sender: Some(send),
                     }));
                 }
                 .boxed(),
@@ -329,18 +329,18 @@ where
                     // FIXME
                     let duration = std::time::Duration::from_secs(3);
 
-                    let extend = queued.lock_id.into_extend(duration);
+                    let extend = queued.lease_id.into_extend(duration);
                     let append = self.node_handle.append(extend, Default::default());
 
                     self.appends.push(
                         async move {
-                            let lock_result: Result<()> = async move {
+                            let lease_result: Result<()> = async move {
                                 let commit = append.await?;
-                                let locked = commit.await?.into_result()?;
+                                let leased = commit.await?.into_result()?;
 
                                 extended_sender
                                     .send(TakenOrExtended::Extended(
-                                        locked.without_value(),
+                                        leased.without_value(),
                                         queued.state,
                                     ))
                                     .await?;
@@ -349,8 +349,8 @@ where
                             }
                             .await;
 
-                            if lock_result.is_err() {
-                                state.store(LOCK_STATE_LOST, atomic::Ordering::Relaxed);
+                            if lease_result.is_err() {
+                                state.store(LEASE_STATE_LOST, atomic::Ordering::Relaxed);
                             }
                         }
                         .boxed(),
@@ -378,31 +378,31 @@ where
 }
 
 enum TakenOrExtended<I: Copy> {
-    Taken(Locked<I>, Weak<atomic::AtomicU8>, oneshot::Receiver<()>),
-    Extended(Locked<I>, Weak<atomic::AtomicU8>),
+    Taken(Leased<I>, Weak<atomic::AtomicU8>, oneshot::Receiver<()>),
+    Extended(Leased<I>, Weak<atomic::AtomicU8>),
 }
 
-struct QueuedLock<I> {
-    lock_id: I,
+struct QueuedLease<I> {
+    lease_id: I,
     state: Weak<atomic::AtomicU8>,
     extend: std::time::Instant,
 }
 
-impl<I> Eq for QueuedLock<I> {}
+impl<I> Eq for QueuedLease<I> {}
 
-impl<I> PartialEq for QueuedLock<I> {
+impl<I> PartialEq for QueuedLease<I> {
     fn eq(&self, other: &Self) -> bool {
         self.extend.eq(&other.extend)
     }
 }
 
-impl<I> Ord for QueuedLock<I> {
+impl<I> Ord for QueuedLease<I> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.extend.cmp(&other.extend).reverse()
     }
 }
 
-impl<I> PartialOrd for QueuedLock<I> {
+impl<I> PartialOrd for QueuedLease<I> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }

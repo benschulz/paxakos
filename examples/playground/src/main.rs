@@ -13,12 +13,12 @@ use futures::lock::Mutex;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use paxakos::append::AppendArgs;
-use paxakos::deco::EnsureLeadershipBuilderExt;
-use paxakos::deco::FillGapsBuilderExt;
-use paxakos::deco::LeadershipAwareNode;
-use paxakos::deco::SendHeartbeatsBuilderExt;
-use paxakos::deco::TrackLeadershipBuilderExt;
+use paxakos::autofill::AutofillBuilderExt;
+use paxakos::heartbeats::SendHeartbeatsBuilderExt;
 use paxakos::invocation::Invocation;
+use paxakos::leadership::ensure::EnsureLeadershipBuilderExt;
+use paxakos::leadership::track::LeadershipAwareNode;
+use paxakos::leadership::track::TrackLeadershipBuilderExt;
 use paxakos::node::Participation;
 use paxakos::node::Snapshot;
 use paxakos::prototyping::DirectCommunicatorError;
@@ -512,7 +512,7 @@ impl<N, I> HeartbeatConfig<N, I> {
     }
 }
 
-impl<N, I> paxakos::deco::send_heartbeats::Config for HeartbeatConfig<N, I>
+impl<N, I> paxakos::heartbeats::Config for HeartbeatConfig<N, I>
 where
     N: LeadershipAwareNode<I, Invocation = PlaygroundInvocation>,
 {

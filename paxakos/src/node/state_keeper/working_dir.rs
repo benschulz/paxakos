@@ -376,7 +376,7 @@ impl<R: RoundNum> WorkingDir<R> {
 
         let (path, file) = self
             .applied_entry_logs
-            .get_mut(&log_handle)
+            .get_mut(log_handle)
             .expect("applied entry log given handle");
 
         match Self::read_applied_entry(path, file, *offset) {

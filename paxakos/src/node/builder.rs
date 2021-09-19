@@ -3,7 +3,7 @@ use futures::future::LocalBoxFuture;
 use futures::future::TryFutureExt;
 
 use crate::communicator::Communicator;
-use crate::deco::Decoration;
+use crate::decoration::Decoration;
 use crate::error::SpawnError;
 use crate::invocation::AbstainOf;
 use crate::invocation::CommunicationErrorOf;
