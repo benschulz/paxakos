@@ -3,6 +3,7 @@ use std::sync::atomic;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::task::Poll;
+use std::time::Duration;
 
 use futures::channel::mpsc;
 use futures::channel::oneshot;
@@ -128,9 +129,11 @@ impl From<futures::channel::oneshot::Canceled> for LeaseError {
     }
 }
 
+type LeaseRequest<T, V> = (T, LeaseArgs, oneshot::Sender<Result<Lease<V>>>);
+
 #[derive(Clone)]
 pub struct Leaser<T, V = ()> {
-    sender: mpsc::Sender<(T, oneshot::Sender<Result<Lease<V>>>)>,
+    sender: mpsc::Sender<LeaseRequest<T, V>>,
 }
 
 impl<T, V> std::fmt::Debug for Leaser<T, V> {
@@ -139,10 +142,26 @@ impl<T, V> std::fmt::Debug for Leaser<T, V> {
     }
 }
 
+pub struct LeaseArgs {
+    pub initial_duration: Duration,
+    pub extension_threshold: Duration,
+    pub extension_duration: Duration,
+}
+
+impl From<Duration> for LeaseArgs {
+    fn from(d: Duration) -> Self {
+        Self {
+            initial_duration: d,
+            extension_threshold: d / 4,
+            extension_duration: d,
+        }
+    }
+}
+
 pub struct LeaseKeeper<N: crate::Node, T, E, R, I: Copy, V> {
     node_handle: crate::node::HandleFor<N>,
 
-    take_receiver: mpsc::Receiver<(T, oneshot::Sender<Result<Lease<V>>>)>,
+    take_receiver: mpsc::Receiver<LeaseRequest<T, V>>,
 
     taken_or_extended_sender: mpsc::Sender<TakenOrExtended<I>>,
     taken_or_extended_receiver: mpsc::Receiver<TakenOrExtended<I>>,
@@ -197,16 +216,16 @@ impl<T, V> Leaser<T, V> {
         (leaser, keeper)
     }
 
-    // TODO args (timeout, extend, retry policy)
-    pub async fn take_lease<A>(&mut self, take: A) -> Result<Lease<V>>
+    pub async fn take_lease<A, P>(&mut self, take: A, args: P) -> Result<Lease<V>>
     where
         A: IntoTake<T>,
+        P: Into<LeaseArgs>,
     {
-        // TODO timeout
-        let take = take.into_take(std::time::Duration::from_secs(3));
+        let args = args.into();
+        let take = take.into_take(args.initial_duration);
 
         let (send, recv) = oneshot::channel();
-        self.sender.send((take, send)).await?;
+        self.sender.send((take, args, send)).await?;
 
         recv.await?
     }
@@ -234,15 +253,14 @@ where
     ) -> std::task::Poll<Option<Self::Item>> {
         while let Poll::Ready(Some(toe)) = self.taken_or_extended_receiver.poll_next_unpin(cx) {
             match toe {
-                TakenOrExtended::Taken(leased, state, release) => {
-                    let now = std::time::Instant::now();
+                TakenOrExtended::Taken(leased, args, state, release) => {
                     let lease_id = leased.lease_id;
 
                     self.queue.push(QueuedLease {
                         lease_id,
                         state,
-                        // TODO introduce a policy
-                        extend: now + (leased.timeout - now) * 2 / 3,
+                        extend: leased.timeout - args.extension_threshold,
+                        args,
                     });
                     self.releases.push(
                         async move {
@@ -253,14 +271,12 @@ where
                         .boxed(),
                     );
                 }
-                TakenOrExtended::Extended(leased, state) => {
-                    let now = std::time::Instant::now();
-
+                TakenOrExtended::Extended(leased, args, state) => {
                     self.queue.push(QueuedLease {
                         lease_id: leased.lease_id,
                         state,
-                        // TODO introduce a policy
-                        extend: now + (leased.timeout - now) * 2 / 3,
+                        extend: leased.timeout - args.extension_threshold,
+                        args,
                     });
                 }
             }
@@ -280,7 +296,7 @@ where
         }
 
         // FIXME terminate
-        while let Poll::Ready(Some((take, reply))) = self.take_receiver.poll_next_unpin(cx) {
+        while let Poll::Ready(Some((take, args, reply))) = self.take_receiver.poll_next_unpin(cx) {
             let mut taken_sender = self.taken_or_extended_sender.clone();
 
             let append = self.node_handle.append(take, ());
@@ -300,7 +316,7 @@ where
                         let value = leased.value;
 
                         taken_sender
-                            .send(TakenOrExtended::Taken(taken, downgraded_state, recv))
+                            .send(TakenOrExtended::Taken(taken, args, downgraded_state, recv))
                             .await?;
 
                         Ok(value)
@@ -326,8 +342,7 @@ where
                 if let Some(state) = queued.state.upgrade() {
                     let mut extended_sender = self.taken_or_extended_sender.clone();
 
-                    // FIXME
-                    let duration = std::time::Duration::from_secs(3);
+                    let duration = queued.args.extension_duration;
 
                     let extend = queued.lease_id.into_extend(duration);
                     let append = self.node_handle.append(extend, ());
@@ -341,6 +356,7 @@ where
                                 extended_sender
                                     .send(TakenOrExtended::Extended(
                                         leased.without_value(),
+                                        queued.args,
                                         queued.state,
                                     ))
                                     .await?;
@@ -378,14 +394,20 @@ where
 }
 
 enum TakenOrExtended<I: Copy> {
-    Taken(Leased<I>, Weak<atomic::AtomicU8>, oneshot::Receiver<()>),
-    Extended(Leased<I>, Weak<atomic::AtomicU8>),
+    Taken(
+        Leased<I>,
+        LeaseArgs,
+        Weak<atomic::AtomicU8>,
+        oneshot::Receiver<()>,
+    ),
+    Extended(Leased<I>, LeaseArgs, Weak<atomic::AtomicU8>),
 }
 
 struct QueuedLease<I> {
     lease_id: I,
     state: Weak<atomic::AtomicU8>,
     extend: std::time::Instant,
+    args: LeaseArgs,
 }
 
 impl<I> Eq for QueuedLease<I> {}
