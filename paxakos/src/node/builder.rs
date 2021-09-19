@@ -32,6 +32,7 @@ use super::snapshot::Snapshot;
 use super::CommunicatorOf;
 use super::InvocationOf;
 use super::NodeKernel;
+use super::NodeKit;
 use super::RequestHandlerFor;
 
 #[derive(Default)]
@@ -230,6 +231,7 @@ where
         let snapshot = snapshot.into();
 
         NodeBuilder {
+            kit: NodeKit::new(),
             working_dir: self.working_dir,
             node_id: self.node_id,
             communicator: self.communicator,
@@ -249,6 +251,7 @@ type Finisher<N> =
     dyn FnOnce(NodeKernel<InvocationOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
 
 pub struct NodeBuilder<N: Node, V = IndiscriminateVoterFor<N>> {
+    kit: NodeKit<InvocationOf<N>>,
     working_dir: Option<std::path::PathBuf>,
     node_id: node::NodeIdOf<N>,
     voter: V,
@@ -262,18 +265,16 @@ pub struct NodeBuilder<N: Node, V = IndiscriminateVoterFor<N>> {
     tracer: Option<Box<dyn Tracer<InvocationOf<N>>>>,
 }
 
-impl<I, C, V> NodeBuilder<NodeKernel<I, C>, V>
+impl<N, V> NodeBuilder<N, V>
 where
-    I: Invocation,
-    C: Communicator<
-        Node = NodeOf<I>,
-        RoundNum = RoundNumOf<I>,
-        CoordNum = CoordNumOf<I>,
-        LogEntry = LogEntryOf<I>,
-        Error = CommunicationErrorOf<I>,
-        Yea = YeaOf<I>,
-        Nay = NayOf<I>,
-        Abstain = AbstainOf<I>,
+    N: Node + 'static,
+    V: Voter<
+        State = node::StateOf<N>,
+        RoundNum = node::RoundNumOf<N>,
+        CoordNum = node::CoordNumOf<N>,
+        Abstain = node::AbstainOf<N>,
+        Yea = node::YeaOf<N>,
+        Nay = node::NayOf<N>,
     >,
 {
     pub fn limiting_applied_entry_logs_to(mut self, limit: usize) -> Self {
@@ -291,14 +292,15 @@ where
     }
 
     #[cfg(feature = "tracer")]
-    pub fn traced_by<T: Into<Box<dyn Tracer<I>>>>(mut self, tracer: T) -> Self {
+    pub fn traced_by<T: Into<Box<dyn Tracer<InvocationOf<N>>>>>(mut self, tracer: T) -> Self {
         self.tracer = Some(tracer.into());
 
         self
     }
 
-    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<NodeKernel<I, C>, T> {
+    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<N, T> {
         NodeBuilder {
+            kit: self.kit,
             working_dir: self.working_dir,
             node_id: self.node_id,
             voter,
@@ -312,20 +314,13 @@ where
             tracer: self.tracer,
         }
     }
-}
 
-impl<N, V> NodeBuilder<N, V>
-where
-    N: Node + 'static,
-    V: Voter<
-        State = node::StateOf<N>,
-        RoundNum = node::RoundNumOf<N>,
-        CoordNum = node::CoordNumOf<N>,
-        Abstain = node::AbstainOf<N>,
-        Yea = node::YeaOf<N>,
-        Nay = node::NayOf<N>,
-    >,
-{
+    pub fn using(mut self, kit: NodeKit<InvocationOf<N>>) -> Self {
+        self.kit = kit;
+
+        self
+    }
+
     pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V>
     where
         D: Decoration<
@@ -337,6 +332,7 @@ where
         let finisher = self.finisher;
 
         NodeBuilder {
+            kit: self.kit,
             working_dir: self.working_dir,
             node_id: self.node_id,
             communicator: self.communicator,
@@ -365,6 +361,7 @@ where
         let finisher = self.finisher;
 
         NodeKernel::spawn(
+            self.kit,
             self.node_id,
             self.communicator,
             super::SpawnArgs {

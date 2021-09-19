@@ -380,6 +380,7 @@ pub use node::NodeBuilder;
 pub use node::NodeHandle;
 pub use node::NodeInfo;
 pub use node::NodeKernel;
+pub use node::NodeKit;
 pub use node::NodeStatus;
 pub use node::RequestHandler;
 pub use node::Shutdown;

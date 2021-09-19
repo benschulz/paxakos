@@ -42,6 +42,7 @@ use super::CommitFor;
 use super::EventFor;
 use super::Node;
 use super::NodeHandle;
+use super::NodeKit;
 use super::NodeStatus;
 use super::Participation;
 use super::RequestHandler;
@@ -221,6 +222,7 @@ where
     >,
 {
     pub(crate) async fn spawn<V>(
+        kit: NodeKit<I>,
         id: NodeIdOf<I>,
         communicator: C,
         args: super::SpawnArgs<I, V>,
@@ -235,15 +237,15 @@ where
             Nay = NayOf<C>,
         >,
     {
-        let (initial_status, initial_participation, events, state_keeper, proof_of_life) =
-            StateKeeper::spawn(args).await?;
+        let state_keeper = kit.state_keeper.handle();
+
+        let (initial_status, initial_participation, events, proof_of_life) =
+            StateKeeper::spawn(kit.state_keeper, args).await?;
 
         let req_handler = RequestHandler::new(state_keeper.clone());
         let commits = Commits::new();
 
         let inner = NodeInner::new(id, communicator, state_keeper.clone(), commits.clone());
-
-        let (handle_send, handle_recv) = mpsc::channel(32);
 
         let inner = Rc::new(inner);
 
@@ -255,8 +257,8 @@ where
             events,
             status: initial_status,
             participation: initial_participation,
-            handle_send,
-            handle_recv,
+            handle_send: kit.sender,
+            handle_recv: kit.receiver,
             handle_appends: FuturesUnordered::new(),
         };
 

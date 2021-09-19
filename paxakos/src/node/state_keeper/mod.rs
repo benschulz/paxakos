@@ -128,6 +128,26 @@ type RoundNumRequest<I> = (RangeInclusive<RoundNumOf<I>>, ResponseSender<I>);
 type AcceptedEntry<I> = (CoordNumOf<I>, Arc<LogEntryOf<I>>);
 type PendingCommit<I> = (Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
 
+pub struct StateKeeperKit<I: Invocation> {
+    handle: StateKeeperHandle<I>,
+    receiver: mpsc::Receiver<RequestAndResponseSender<I>>,
+}
+
+impl<I: Invocation> StateKeeperKit<I> {
+    pub fn new() -> Self {
+        let (sender, receiver) = mpsc::channel(32);
+
+        Self {
+            handle: StateKeeperHandle::new(sender),
+            receiver,
+        }
+    }
+
+    pub fn handle(&self) -> StateKeeperHandle<I> {
+        self.handle.clone()
+    }
+}
+
 pub struct StateKeeper<I, V>
 where
     I: Invocation,
@@ -235,26 +255,24 @@ where
     >,
 {
     pub async fn spawn(
+        kit: StateKeeperKit<I>,
         args: SpawnArgs<I, V>,
     ) -> Result<
         (
             NodeStatus,
             super::Participation<RoundNumOf<I>>,
             EventStream<I>,
-            StateKeeperHandle<I>,
             ProofOfLife,
         ),
         SpawnError,
     > {
-        let (req_send, req_recv) = mpsc::channel(32);
-
         let (evt_send, evt_recv) = mpsc::channel(32);
 
         let proof_of_life = ProofOfLife::new();
 
         let (send, recv) = oneshot::channel();
 
-        Self::start_and_run_new(args, send, req_recv, evt_send);
+        Self::start_and_run_new(args, send, kit.receiver, evt_send);
 
         let start_result = recv.await.expect("StateKeeper failed to start");
 
@@ -263,7 +281,6 @@ where
                 initial_status,
                 initial_participation,
                 EventStream { delegate: evt_recv },
-                StateKeeperHandle::new(req_send),
                 proof_of_life,
             )
         })

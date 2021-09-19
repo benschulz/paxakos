@@ -12,6 +12,7 @@ mod status;
 
 use std::sync::Arc;
 
+use futures::channel::mpsc;
 use futures::future::BoxFuture;
 use futures::future::LocalBoxFuture;
 
@@ -37,6 +38,8 @@ pub use shutdown::DefaultShutdown;
 pub use shutdown::Shutdown;
 pub use snapshot::Snapshot;
 pub use status::NodeStatus;
+
+use state_keeper::StateKeeperKit;
 
 pub type AbstainOf<N> = invocation::AbstainOf<InvocationOf<N>>;
 pub type CommunicationErrorOf<N> = invocation::CommunicationErrorOf<InvocationOf<N>>;
@@ -197,4 +200,33 @@ pub enum Participation<R> {
     /// the lower bound is found, an [`Event::Activate`] event will be emitted
     /// and the node transitions into `PartiallyActive` participation.
     Passive,
+}
+
+/// Allows getting a `NodeHandle` before the `Node` itself is built.
+pub struct NodeKit<I: Invocation> {
+    state_keeper: StateKeeperKit<I>,
+    sender: mpsc::Sender<handle::RequestAndResponseSender<I>>,
+    receiver: mpsc::Receiver<handle::RequestAndResponseSender<I>>,
+}
+
+impl<I: Invocation> NodeKit<I> {
+    pub fn new() -> Self {
+        let (sender, receiver) = mpsc::channel(16);
+
+        Self {
+            state_keeper: StateKeeperKit::new(),
+            sender,
+            receiver,
+        }
+    }
+
+    pub fn handle(&self) -> NodeHandle<I> {
+        NodeHandle::new(self.sender.clone(), self.state_keeper.handle())
+    }
+}
+
+impl<I: Invocation> Default for NodeKit<I> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
