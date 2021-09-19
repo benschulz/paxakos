@@ -7,7 +7,6 @@ use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 
 use crate::append::AppendArgs;
-use crate::append::DoNotRetry;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
@@ -30,6 +29,7 @@ use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::YeaOf;
+use crate::retry::DoNotRetry;
 use crate::voting::Voter;
 use crate::Node;
 

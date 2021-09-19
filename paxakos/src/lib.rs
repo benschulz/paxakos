@@ -362,6 +362,7 @@ mod log;
 pub mod node;
 #[cfg(feature = "prototyping")]
 pub mod prototyping;
+pub mod retry;
 pub mod state;
 #[cfg(feature = "tracer")]
 pub mod tracer;

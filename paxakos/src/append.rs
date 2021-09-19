@@ -1,6 +1,5 @@
 use std::ops::RangeInclusive;
 
-use async_trait::async_trait;
 use num_traits::Bounded;
 use num_traits::Zero;
 use thiserror::Error;
@@ -11,6 +10,8 @@ use crate::invocation::CommunicationErrorOf;
 use crate::invocation::Invocation;
 use crate::invocation::NayOf;
 use crate::invocation::RoundNumOf;
+use crate::retry::DoNotRetry;
+use crate::retry::RetryPolicy;
 
 pub struct AppendArgs<I: Invocation> {
     pub round: RangeInclusive<RoundNumOf<I>>,
@@ -149,33 +150,3 @@ impl<I: Invocation> std::fmt::Debug for AppendError<I> {
         }
     }
 }
-
-#[async_trait]
-pub trait RetryPolicy {
-    type Invocation: Invocation;
-
-    async fn eval(&mut self, err: AppendError<Self::Invocation>) -> Result<(), BoxError>;
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct DoNotRetry<I>(crate::util::PhantomSend<I>);
-
-impl<I> DoNotRetry<I> {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self(crate::util::PhantomSend::new())
-    }
-}
-
-#[async_trait]
-impl<I: Invocation> RetryPolicy for DoNotRetry<I> {
-    type Invocation = I;
-
-    async fn eval(&mut self, _err: AppendError<Self::Invocation>) -> Result<(), BoxError> {
-        Err(Box::new(AbortedError))
-    }
-}
-
-#[derive(Clone, Debug, Error)]
-#[error("append was aborted")]
-pub struct AbortedError;

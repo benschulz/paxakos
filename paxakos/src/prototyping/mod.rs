@@ -12,7 +12,6 @@ use futures::stream::Stream;
 use thiserror::Error;
 
 use crate::append::AppendError;
-use crate::append::RetryPolicy;
 use crate::communicator::Acceptance;
 use crate::communicator::AcceptanceFor;
 use crate::communicator::Committed;
@@ -29,6 +28,7 @@ use crate::invocation::NodeIdOf;
 use crate::invocation::NodeOf;
 use crate::invocation::RoundNumOf;
 use crate::invocation::YeaOf;
+use crate::retry::RetryPolicy;
 use crate::LogEntry;
 use crate::NodeInfo;
 use crate::RequestHandler;
