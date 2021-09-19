@@ -331,9 +331,6 @@
 //! [State::cluster_at]: crate::state::State::cluster_at
 
 //
-// Nightly features
-#![feature(array_windows)]
-//
 // Lint configuration
 #![warn(rust_2018_idioms)]
 #![warn(clippy::wildcard_imports)]

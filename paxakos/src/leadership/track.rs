@@ -176,10 +176,13 @@ impl<N: Node> TrackLeadership<N> {
             let mandates = self.mandates.iter().collect::<Vec<_>>();
 
             self.leadership.clear();
-            for [(r1, m), (r2, _)] in mandates.array_windows::<2>() {
+            for ms in mandates.windows(2) {
+                let (r1, m) = ms[0];
+                let (r2, _) = ms[1];
+
                 self.leadership.push(Leadership {
                     leader: m.leader,
-                    rounds: **r1..=(**r2 - One::one()),
+                    rounds: *r1..=(*r2 - One::one()),
                     mandate: m.mandate,
                     last_directive_at: m.last_directive_at,
                 });
