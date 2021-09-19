@@ -32,6 +32,7 @@ use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::YeaOf;
+use crate::util::NumberIter;
 use crate::voting::Voter;
 use crate::Node;
 use crate::RoundNum;
@@ -406,7 +407,7 @@ where
 
                     let new_gaps = gaps
                         .iter()
-                        .flat_map(|g| g.rounds.clone())
+                        .flat_map(|g| NumberIter::from_range(g.rounds.clone()))
                         .filter(|r| !self.known_gaps.contains(r))
                         .collect::<Vec<_>>();
                     for gap in &new_gaps {

@@ -1,5 +1,7 @@
 use std::future::Future;
+use std::ops::RangeBounds;
 
+use num_traits::One;
 use pin_project::pin_project;
 
 use crate::Number;
@@ -76,5 +78,64 @@ unsafe impl<T> Send for PhantomSend<T> {}
 impl<T> PhantomSend<T> {
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
+    }
+}
+
+pub struct NumberIter<N: Number> {
+    next: Option<N>,
+    last: N,
+}
+
+impl<N: Number> NumberIter<N> {
+    pub fn from_range<R: RangeBounds<N>>(range: R) -> Self {
+        let next = match range.start_bound() {
+            std::ops::Bound::Included(n) => Some(*n),
+            std::ops::Bound::Excluded(n) => {
+                if *n == N::min_value() {
+                    None
+                } else {
+                    Some(*n - One::one())
+                }
+            }
+            std::ops::Bound::Unbounded => Some(N::min_value()),
+        };
+
+        let last = match range.end_bound() {
+            std::ops::Bound::Included(n) => Some(*n),
+            std::ops::Bound::Excluded(n) => {
+                if *n == N::min_value() {
+                    None
+                } else {
+                    Some(*n - One::one())
+                }
+            }
+            std::ops::Bound::Unbounded => Some(N::max_value()),
+        };
+
+        match (next, last) {
+            (Some(n), Some(last)) if n <= last => NumberIter { next, last },
+            _ => NumberIter {
+                next: None,
+                last: N::min_value(),
+            },
+        }
+    }
+}
+
+impl<N: Number> std::iter::Iterator for NumberIter<N> {
+    type Item = N;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(n) = self.next {
+            if n == self.last {
+                self.next = None;
+            } else {
+                self.next = Some(n + One::one());
+            }
+
+            Some(n)
+        } else {
+            None
+        }
     }
 }

@@ -371,7 +371,6 @@
 #![feature(drain_filter)]
 #![feature(map_first_last)]
 #![feature(never_type)]
-#![feature(step_trait)]
 #![feature(with_options)]
 //
 // Lint configuration
@@ -446,7 +445,6 @@ pub trait Number:
     + Hash
     + Debug
     + std::fmt::Display
-    + std::iter::Step
     + Into<u128>
     + TryFrom<u128>
     + TryFrom<usize>
@@ -468,7 +466,6 @@ impl<T> Number for T where
         + Hash
         + Debug
         + std::fmt::Display
-        + std::iter::Step
         + Into<u128>
         + TryFrom<u128>
         + TryFrom<usize>

@@ -57,6 +57,7 @@ use crate::node::NodeInfo;
 use crate::state::State;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
+use crate::util::NumberIter;
 use crate::voting;
 use crate::voting::Voter;
 use crate::Condition;
@@ -480,7 +481,7 @@ where
                     let range =
                         *range.start()..=std::cmp::min(round + concurrency_bound, *range.end());
 
-                    for round_num in range {
+                    for round_num in NumberIter::from_range(range) {
                         if !acquireds.contains(&round_num) && !deferreds.contains_key(&round_num) {
                             acquireds.insert(round_num);
 
