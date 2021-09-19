@@ -95,7 +95,7 @@ pub enum AcquireRoundNumError {
 impl<I: Invocation> From<AcquireRoundNumError> for AppendError<I> {
     fn from(e: AcquireRoundNumError) -> Self {
         match e {
-            AcquireRoundNumError::Converged => AppendError::Converged,
+            AcquireRoundNumError::Converged => AppendError::Converged { caught_up: true },
             AcquireRoundNumError::Disoriented => AppendError::Disoriented,
             AcquireRoundNumError::ShutDown => AppendError::ShutDown,
         }
@@ -118,7 +118,7 @@ impl<I: Invocation> From<ClusterError<RoundNumOf<I>>> for AppendError<I> {
     fn from(e: ClusterError<RoundNumOf<I>>) -> Self {
         match e {
             ClusterError::Disoriented => AppendError::Disoriented,
-            ClusterError::Converged(_) => AppendError::Converged,
+            ClusterError::Converged(_) => AppendError::Converged { caught_up: true },
             ClusterError::ShutDown => AppendError::ShutDown,
         }
     }

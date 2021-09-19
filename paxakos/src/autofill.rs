@@ -308,7 +308,7 @@ where
             .map(move |res| {
                 match res {
                     Ok(_) => None,
-                    Err(AppendError::Converged) => None,
+                    Err(AppendError::Converged { caught_up: true }) => None,
                     // TODO this may be too pessimistic
                     // TODO what about Passive?
                     Err(_) => Some(round_num),

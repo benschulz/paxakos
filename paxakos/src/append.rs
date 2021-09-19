@@ -77,7 +77,11 @@ pub enum AppendError<I: Invocation> {
 
     /// The chosen round had already converged.
     #[error("round had already converged")]
-    Converged,
+    Converged {
+        /// Whether this node has already learned the converged on value for
+        /// this round.
+        caught_up: bool,
+    },
 
     /// Node does not currently know the shared state.
     #[error("node is disoriented")]
@@ -121,7 +125,10 @@ impl<I: Invocation> std::fmt::Debug for AppendError<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppendError::Aborted(err) => f.debug_tuple("AppendError::Aborted").field(err).finish(),
-            AppendError::Converged => f.debug_tuple("AppendError::Converged").finish(),
+            AppendError::Converged { caught_up } => f
+                .debug_struct("AppendError::Converged")
+                .field("caught_up", caught_up)
+                .finish(),
             AppendError::Disoriented => f.debug_tuple("AppendError::Disoriented").finish(),
             AppendError::Exiled => f.debug_tuple("AppendError::Exiled").finish(),
             AppendError::Lost => f.debug_tuple("AppendError::Lost").finish(),

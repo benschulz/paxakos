@@ -139,7 +139,9 @@ impl<I: Invocation> From<PrepareError<I>> for AppendError<I> {
                 rejections: Vec::new(),
             },
             PrepareError::Supplanted(_) => AppendError::Lost,
-            PrepareError::Converged(_, _) => AppendError::Converged,
+            PrepareError::Converged(_, log_entry) => AppendError::Converged {
+                caught_up: log_entry.is_some(),
+            },
             PrepareError::Passive => AppendError::Passive,
             PrepareError::ShutDown => AppendError::ShutDown,
         }
@@ -191,7 +193,9 @@ impl<I: Invocation> From<AcceptError<I>> for AppendError<I> {
     fn from(e: AcceptError<I>) -> Self {
         match e {
             AcceptError::Supplanted(_) => AppendError::Lost,
-            AcceptError::Converged(_, _) => AppendError::Converged,
+            AcceptError::Converged(_, log_entry) => AppendError::Converged {
+                caught_up: log_entry.is_some(),
+            },
             AcceptError::Passive => AppendError::Passive,
             AcceptError::Rejected(reason) => AppendError::NoQuorum {
                 abstentions: Vec::new(),

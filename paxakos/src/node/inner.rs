@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::convert::Infallible;
 use std::convert::TryFrom;
 use std::future::Future;
 use std::ops::RangeInclusive;
@@ -360,22 +361,30 @@ where
                         .into_iter()
                         .collect::<FuturesUnordered<_>>();
 
+                    let mut converged = false;
+
                     while let Some(response) = pending_responses.next().await {
                         if let Ok(Vote::Conflicted(rejection)) = response {
                             self.state_keeper
                                 .observe_coord_num(rejection.coord_num())
                                 .await?;
 
-                            if let Conflict::Converged {
-                                log_entry: Some((coord_num, entry)),
-                                ..
-                            } = &rejection
-                            {
-                                self.state_keeper
-                                    .commit_entry(round_num, *coord_num, Arc::clone(entry))
-                                    .await?;
+                            if let Conflict::Converged { log_entry, .. } = &rejection {
+                                converged = true;
+
+                                if let Some((coord_num, entry)) = log_entry {
+                                    self.state_keeper
+                                        .commit_entry(round_num, *coord_num, Arc::clone(entry))
+                                        .await?;
+
+                                    return Err(AppendError::Converged { caught_up: true });
+                                }
                             }
                         }
+                    }
+
+                    if converged {
+                        return Err(AppendError::Converged { caught_up: false });
                     }
                 }
 
@@ -466,7 +475,7 @@ where
                 Err(AppendError::Lost)
             }
 
-            Vote::Abstained(_) => {
+            Vote::Abstained(_infallible) => {
                 unreachable!()
             }
         }
@@ -480,7 +489,7 @@ where
             Item = impl Future<Output = Result<VoteFor<I>, ErrorOf<C>>>,
         >,
         own_promise: PromiseFor<I>,
-    ) -> Result<VoteFor<I>, AppendError<I>> {
+    ) -> Result<Vote<RoundNumOf<I>, CoordNumOf<I>, LogEntryOf<I>, Infallible>, AppendError<I>> {
         if quorum == 0 {
             return Ok(Vote::Given(own_promise));
         }
@@ -642,21 +651,23 @@ where
                         .commit_entry(round_num, coord_num, entry)
                         .await?;
 
-                    return Err(AppendError::Converged);
+                    return Err(AppendError::Converged { caught_up: true });
                 }
                 rejection_or_failure => {
                     match rejection_or_failure {
                         Err(err) => {
                             communication_errors.push(err);
                         }
-                        Ok(Acceptance::Conflicted(Conflict::Supplanted { coord_num })) => {
+                        Ok(Acceptance::Conflicted(
+                            Conflict::Supplanted { coord_num }
+                            | Conflict::Converged { coord_num, .. },
+                        )) => {
                             conflict = conflict
                                 .map(|c| std::cmp::max(c, coord_num))
                                 .or(Some(coord_num));
                         }
                         Ok(Acceptance::Refused(rejection)) => rejections.push(rejection),
-                        Ok(Acceptance::Given(_))
-                        | Ok(Acceptance::Conflicted(Conflict::Converged { .. })) => {
+                        Ok(Acceptance::Given(_)) => {
                             // covered in outer match
                             unreachable!()
                         }
