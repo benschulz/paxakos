@@ -337,7 +337,6 @@
 #![feature(drain_filter)]
 #![feature(map_first_last)]
 #![feature(never_type)]
-#![feature(with_options)]
 //
 // Lint configuration
 #![warn(rust_2018_idioms)]

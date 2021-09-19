@@ -345,11 +345,11 @@ impl<R: RoundNum> WorkingDir<R> {
         let mut path = self.path.clone();
         path.push(format!("applied_entry.log.{}", Base62Of(round_num.into())));
 
-        let mut file = fs::File::with_options()
-            .create(true)
-            .write(true)
-            .open(&path)
-            .map_err(io::to_failed_to_open(&path))?;
+        let mut options = fs::OpenOptions::new();
+        options.create(true);
+        options.write(true);
+
+        let mut file = options.open(&path).map_err(io::to_failed_to_open(&path))?;
 
         io::write_u32_to(&path, &mut file, MAGIC_BYTES)?;
 

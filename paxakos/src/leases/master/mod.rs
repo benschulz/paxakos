@@ -39,7 +39,7 @@ use crate::NodeBuilder;
 use crate::NodeInfo;
 use crate::State;
 
-pub trait MasterLeaseMaintainingNode<I>: Node {
+pub trait MasterLeasingNode<I>: Node {
     fn read_master_lax(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>>;
 
     fn read_master_strict(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>>;
@@ -310,14 +310,14 @@ where
     }
 }
 
-impl<D, I> MasterLeaseMaintainingNode<(I,)> for D
+impl<D, I> MasterLeasingNode<(I,)> for D
 where
     D: Decoration
         + Node<
             Invocation = InvocationOf<<D as Decoration>::Decorated>,
             Communicator = CommunicatorOf<<D as Decoration>::Decorated>,
         >,
-    <D as Decoration>::Decorated: MasterLeaseMaintainingNode<I>,
+    <D as Decoration>::Decorated: MasterLeasingNode<I>,
 {
     fn read_master_lax(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>> {
         Decoration::peek_into(self).read_master_lax()
@@ -328,7 +328,7 @@ where
     }
 }
 
-impl<N, C> MasterLeaseMaintainingNode<()> for MasterLeases<N, C>
+impl<N, C> MasterLeasingNode<()> for MasterLeases<N, C>
 where
     N: Node + 'static,
     C: Config<Node = N>,
