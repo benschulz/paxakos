@@ -109,17 +109,20 @@ impl<N: Node> TrackLeadership<N> {
     fn react_to_apply(&mut self, round: RoundNumOf<N>) {
         let affects_first_mandate = self
             .mandates
-            .first_key_value()
+            .iter()
+            .next()
             .filter(|(r, _)| **r <= round)
             .is_some();
 
         if affects_first_mandate {
             let next_round = round + One::one();
-            let mandate = self.mandates.pop_first().unwrap().1;
+            let first_key = *self.mandates.keys().next().unwrap();
+            let mandate = self.mandates.remove(&first_key).unwrap();
 
             let obsolete = self
                 .mandates
-                .first_key_value()
+                .iter()
+                .next()
                 .filter(|(r, _)| **r == next_round)
                 .is_some();
 

@@ -250,9 +250,10 @@ impl<R: RoundNum> WorkingDir<R> {
             while !self.applied_entry_logs.is_empty()
                 && self.applied_entry_logs.len() >= self.log_keeping.logs_kept
             {
-                let (_handle, (path, _file)) = self
+                let first_key = *self.applied_entry_logs.keys().next().unwrap();
+                let (path, _file) = self
                     .applied_entry_logs
-                    .pop_first()
+                    .remove(&first_key)
                     .expect("oldest applied log entry");
 
                 if let Err(err) = fs::remove_file(&path) {

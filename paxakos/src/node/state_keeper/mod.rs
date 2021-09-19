@@ -994,7 +994,7 @@ where
         //
         // What we give up here is the ability for a node to become leader for rounds
         // `r1..r2` while another node _remains_ leader for rounds `r2..`.
-        let strongest_promise = *self.promises.last_key_value().expect("last promise").1;
+        let strongest_promise = *self.promises.values().rev().next().expect("last promise");
 
         // Paxos requires that we reject requests whose coordination number is less than
         // or equal to the one of the previously accepted proposal. Because of how we
@@ -1376,9 +1376,9 @@ where
         );
         overriding_insert(&mut self.promises, Zero::zero(), first_non_obsolete_promise);
 
-        while let Some(first_accepted_entry) = self.accepted_entries.first_entry() {
-            if *first_accepted_entry.key() <= self.state_round {
-                first_accepted_entry.remove();
+        while let Some(first_accepted_key) = self.accepted_entries.keys().next().copied() {
+            if first_accepted_key <= self.state_round {
+                self.accepted_entries.remove(&first_accepted_key);
             } else {
                 break;
             }

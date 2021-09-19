@@ -133,10 +133,7 @@ where
     type Node = N;
     type Voter = V;
 
-    fn send_heartbeats<C>(
-        self,
-        config: C,
-    ) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter>
+    fn send_heartbeats<C>(self, config: C) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter>
     where
         C: Config<Node = Self::Node> + 'static,
     {
