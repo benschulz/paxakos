@@ -369,7 +369,6 @@
 #![feature(array_windows)]
 #![feature(btree_drain_filter)]
 #![feature(drain_filter)]
-#![feature(duration_zero)]
 #![feature(map_first_last)]
 #![feature(never_type)]
 #![feature(step_trait)]
