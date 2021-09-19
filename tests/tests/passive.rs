@@ -1,8 +1,5 @@
-#![feature(assert_matches)]
-
 mod calc_app;
 
-use std::assert_matches::assert_matches;
 use std::task::Poll;
 
 use futures::channel::oneshot;
@@ -115,22 +112,22 @@ fn worst_case() {
         }
     }
 
-    assert_matches!(node.participation(), Participation::Passive);
+    assert!(matches!(node.participation(), Participation::Passive));
 
     // Act III
     //
     // Nodes n3 are reachable once more and participating.
     for r in first_unsettled_round..(first_unsettled_round + concurrency as u64) {
-        assert_matches!(
+        assert!(matches!(
             node.participation(),
             Participation::Passive | Participation::PartiallyActive(_)
-        );
+        ));
 
         for r2 in 1..(first_unsettled_round + concurrency as u64) {
-            assert_matches!(
+            assert!(matches!(
                 futures::executor::block_on(req_handler.handle_prepare(r2, 100,)).unwrap_err(),
                 PrepareError::Passive
-            );
+            ));
 
             while let Poll::Ready(e) = node.poll_events(&mut cx) {
                 println!("{:?}", e);
@@ -152,7 +149,7 @@ fn worst_case() {
         }
 
         let entry_id = uuid::Uuid::new_v4();
-        assert_matches!(
+        assert!(matches!(
             futures::executor::block_on(req_handler.handle_proposal(
                 r,
                 10,
@@ -160,7 +157,7 @@ fn worst_case() {
             ))
             .unwrap_err(),
             AcceptError::Passive
-        );
+        ));
         while let Poll::Ready(e) = node.poll_events(&mut cx) {
             println!("{:?}", e);
         }
@@ -172,13 +169,13 @@ fn worst_case() {
             println!("{:?}", e);
         }
 
-        assert_matches!(
+        assert!(matches!(
             node.participation(),
             Participation::PartiallyActive(_) | Participation::Active
-        );
+        ));
     }
 
-    assert_matches!(node.participation(), Participation::Active);
+    assert!(matches!(node.participation(), Participation::Active));
 }
 
 #[test]
