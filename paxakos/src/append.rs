@@ -22,10 +22,20 @@ pub struct AppendArgs<I: Invocation> {
 
 impl<C: Invocation> Default for AppendArgs<C> {
     fn default() -> Self {
+        DoNotRetry::new().into()
+    }
+}
+
+impl<I, P> From<P> for AppendArgs<I>
+where
+    I: Invocation,
+    P: RetryPolicy<Invocation = I> + Send + 'static,
+{
+    fn from(retry_policy: P) -> Self {
         Self {
             round: Zero::zero()..=Bounded::max_value(),
             importance: Importance::GainLeadership,
-            retry_policy: Box::new(DoNotRetry::new()),
+            retry_policy: Box::new(retry_policy),
         }
     }
 }
