@@ -9,6 +9,7 @@ use std::task::Poll;
 use futures::channel::oneshot;
 use futures::future::Either;
 use paxakos::invocation::Invocation;
+use paxakos::prototyping::RetryIndefinitely;
 use rand::Rng;
 use uuid::Uuid;
 
@@ -209,7 +210,10 @@ fn become_active() {
             futures::executor::block_on(async {
                 for _i in 0usize..10 {
                     node_handle
-                        .append(CalcOp::Add(1.0, Uuid::new_v4()), Default::default())
+                        .append(
+                            CalcOp::Add(1.0, Uuid::new_v4()),
+                            RetryIndefinitely::without_pausing().into(),
+                        )
                         .await
                         .unwrap()
                         .await
