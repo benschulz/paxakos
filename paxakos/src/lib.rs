@@ -32,12 +32,10 @@
 //! use std::collections::HashSet;
 //! # use std::convert::Infallible;
 //!
-//! # use async_trait::async_trait;
-//! # use futures::io::AsyncRead;
 //! use paxakos::{LogEntry, State};
 //! use uuid::Uuid;
 //!
-//! #[derive(Clone, Copy, Debug)]
+//! #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
 //! pub enum CalcOp {
 //!     Add(f64, Uuid),
 //!     Div(f64, Uuid),
@@ -45,25 +43,9 @@
 //!     Sub(f64, Uuid),
 //! }
 //!
-//! # #[async_trait]
 //! impl LogEntry for CalcOp {
 //!     type Id = Uuid;
 //!
-//! #   type Reader = std::io::Cursor<Vec<u8>>;
-//! #   type ReadError = Infallible;
-//! #   
-//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
-//! #       unimplemented!()
-//! #   }
-//! #   
-//! #   fn size(&self) -> usize {
-//! #       unimplemented!()
-//! #   }
-//! #   
-//! #   fn to_reader(&self) -> Self::Reader {
-//! #       unimplemented!()
-//! #   }
-//! #
 //!     fn id(&self) -> Self::Id {
 //!         match self {
 //!             CalcOp::Add(_, id)
@@ -82,7 +64,6 @@
 //!     value: f64,
 //! }
 //!
-//! # #[async_trait]
 //! impl State for CalcState {
 //!     type Context = ();
 //!
@@ -90,22 +71,7 @@
 //!     type Outcome = f64;
 //!     type Event = f64;
 //!
-//! #   type Reader = std::io::Cursor<Vec<u8>>;
-//! #   type ReadError = Infallible;
-//! #   
 //! #   type Node = ();
-//! #   
-//! #   async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
-//! #       unimplemented!()
-//! #   }
-//! #   
-//! #   fn size(&self) -> usize {
-//! #       unimplemented!()
-//! #   }
-//! #   
-//! #   fn to_reader(&self) -> Self::Reader {
-//! #       unimplemented!()
-//! #   }
 //! #   
 //! #   fn cluster_at(&self, round_offset: std::num::NonZeroUsize) -> Vec<Self::Node> {
 //! #       vec![()]
@@ -405,9 +371,6 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 // TODO move these three into the communicator module
 pub use error::AcceptError;
 pub use error::CommitError;
@@ -449,8 +412,9 @@ pub trait Number:
     + TryFrom<u128>
     + TryFrom<usize>
     + TryInto<usize>
-    + serde::de::DeserializeOwned
-    + serde::Serialize
+where
+    Self: serde::Serialize,
+    for<'de> Self: serde::Deserialize<'de>,
 {
 }
 
@@ -496,7 +460,7 @@ pub trait Identifier: 'static + Copy + Debug + Eq + Hash + Send + Sync + Unpin {
 impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifier for T {}
 
 /// A condition for a [Promise].
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct Condition<R, C, E> {
     pub round_num: R,
     pub coord_num: C,
@@ -524,7 +488,7 @@ impl<R, C, E> From<(R, C, Arc<E>)> for Condition<R, C, E> {
 /// A promise not to accept certain proposals anymore.
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct Promise<R, C, E>(Vec<Condition<R, C, E>>);
 
 impl<R: RoundNum, C, E> From<Vec<Condition<R, C, E>>> for Promise<R, C, E> {
@@ -629,7 +593,7 @@ impl<R: RoundNum, C: CoordNum, E> Promise<R, C, E> {
 /// Conflict to a prepare request or a proposal.
 ///
 /// Please refer to the [description of the protocol](crate#protocol).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub enum Conflict<C, E> {
     Supplanted {
         coord_num: C,

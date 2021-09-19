@@ -1,35 +1,28 @@
 use std::collections::BTreeMap;
-use std::convert::TryInto;
-use std::io::Read;
 use std::sync::Arc;
 
-use futures::io;
-use futures::io::AsyncRead;
-use futures::io::AsyncReadExt;
 use num_traits::One;
 use num_traits::Zero;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::state::LogEntryOf;
 use crate::state::State;
 use crate::CoordNum;
 use crate::RoundNum;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(bound(
-    serialize = "S: Serialize, S::LogEntry: Serialize",
-    deserialize = "S: Deserialize<'de>, S::LogEntry: Deserialize<'de>"
+    serialize = "S: serde::Serialize",
+    deserialize = "S: serde::Deserialize<'de>"
 ))]
 pub struct Snapshot<S: State, R: RoundNum, C: CoordNum> {
     identity: Arc<()>,
     inner: Arc<SnapshotInner<S, R, C>>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(bound(
-    serialize = "S: Serialize, S::LogEntry: Serialize",
-    deserialize = "S: Deserialize<'de>, S::LogEntry: Deserialize<'de>"
+    serialize = "S: serde::Serialize",
+    deserialize = "S: serde::Deserialize<'de>"
 ))]
 struct SnapshotInner<S: State, R: RoundNum, C: CoordNum> {
     meta_state: MetaState<S, R, C>,
@@ -44,10 +37,10 @@ pub(crate) struct DeconstructedSnapshot<S: State, R: RoundNum, C: CoordNum> {
     pub(crate) accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(bound(
-    serialize = "S::LogEntry: Serialize",
-    deserialize = "S::LogEntry: Deserialize<'de>"
+    serialize = "S: serde::Serialize",
+    deserialize = "S: serde::Deserialize<'de>"
 ))]
 struct MetaState<S: State, R: RoundNum, C: CoordNum> {
     state_round: R,
@@ -91,47 +84,6 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
         )
     }
 
-    pub async fn from_reader<T: AsyncRead + Send + Unpin>(
-        mut read: T,
-    ) -> Result<Self, crate::error::BoxError>
-    where
-        LogEntryOf<S>: serde::de::DeserializeOwned,
-    {
-        let mut meta_state_len = [0; 64 / 8];
-        read.read_exact(&mut meta_state_len).await?;
-        let meta_state_len = u64::from_be_bytes(meta_state_len);
-
-        let mut meta_state = vec![0; meta_state_len.try_into().unwrap()];
-        read.read_exact(&mut meta_state).await?;
-
-        let meta_state: MetaState<S, R, C> = bincode::deserialize(&meta_state)?;
-
-        let state = <S as State>::from_reader(read).await?;
-
-        Ok(Self {
-            identity: Arc::new(()),
-            inner: Arc::new(SnapshotInner {
-                meta_state,
-                state: Arc::new(state),
-            }),
-        })
-    }
-
-    pub fn to_reader(&self) -> SnapshotReader<S>
-    where
-        LogEntryOf<S>: Serialize,
-    {
-        // TODO eliminate bincode dependency
-        let meta_state = bincode::serialize(&self.inner.meta_state).unwrap();
-        let meta_state_len: u64 = meta_state.len().try_into().unwrap();
-        let meta_state_len = meta_state_len.to_be_bytes();
-        let meta_state_len = std::io::Cursor::new(meta_state_len);
-        let meta_state = std::io::Cursor::new(meta_state);
-        let state = self.inner.state.to_reader();
-
-        SnapshotReader(meta_state_len.chain(meta_state.chain(state)))
-    }
-
     pub fn round(&self) -> R {
         self.inner.meta_state.state_round
     }
@@ -156,18 +108,5 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
                 promises: s.meta_state.promises.clone(),
                 accepted_entries: s.meta_state.accepted_entries.clone(),
             })
-    }
-}
-
-type MetaStateLenAndMetaStateAndState<S> =
-    std::io::Chain<std::io::Cursor<[u8; 64 / 8]>, MetaStateAndState<S>>;
-
-type MetaStateAndState<S> = std::io::Chain<std::io::Cursor<Vec<u8>>, <S as State>::Reader>;
-
-pub struct SnapshotReader<S: State>(MetaStateLenAndMetaStateAndState<S>);
-
-impl<S: State> Read for SnapshotReader<S> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
     }
 }

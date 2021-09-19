@@ -1,8 +1,5 @@
 use std::fmt::Debug;
 
-use async_trait::async_trait;
-use futures::io::AsyncRead;
-
 use crate::LogEntry;
 use crate::NodeInfo;
 
@@ -30,11 +27,7 @@ pub type OutcomeOf<S> = <S as State>::Outcome;
 pub type EventOf<S> = <S as State>::Event;
 
 /// Distributed state to which log entries are applied.
-#[async_trait]
 pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
-    type Reader: std::io::Read;
-    type ReadError: std::error::Error + Send + Sync + 'static;
-
     type LogEntry: LogEntry;
 
     /// An execution context.
@@ -56,20 +49,6 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
     type Event: 'static + Send + Debug;
 
     type Node: NodeInfo;
-
-    /// Deserializes state that was previously serialized using `to_reader()`.
-    ///
-    /// While implementations need not detect arbitrary data corruption, they
-    /// must not panic.
-    async fn from_reader<R: AsyncRead + Send + Unpin>(read: R) -> Result<Self, Self::ReadError>;
-
-    /// Number of bytes the result of `to_reader()` will emit.
-    fn size(&self) -> usize;
-
-    /// Serializes the state to enable snapshots.
-    ///
-    /// `State::from_reader(s.to_reader())` must yield an equivalent state.
-    fn to_reader(&self) -> Self::Reader;
 
     /// Applies the given log entry to this state object.
     ///

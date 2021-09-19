@@ -316,7 +316,9 @@ impl<R: RoundNum> WorkingDir<R> {
         let offset = io::seek_in(path, file, SeekFrom::End(0))?;
 
         io::write_u32_to(path, file, APPLY)?;
-        io::write_usize_as_u32_to(path, file, log_entry.size())?;
+        let serialized = rmp_serde::to_vec_named(&log_entry)
+            .map_err(|err| IoError::invalid_data("Could not serialize log entry.", err))?;
+        io::write_usize_as_u32_to(path, file, serialized.len())?;
 
         let mut checksumming_write = io::Checksumming::from(file);
 
@@ -325,7 +327,7 @@ impl<R: RoundNum> WorkingDir<R> {
 
         io::copy_from_to(
             format!("log-entry://{:?}", log_entry.id()),
-            &mut log_entry.to_reader(),
+            &mut std::io::Cursor::new(serialized),
             path.display(),
             &mut checksumming_write,
         )?;
@@ -410,8 +412,7 @@ impl<R: RoundNum> WorkingDir<R> {
         })?;
         let coord_num = io::recover_coord_num(coord_num)?;
         let log_entry = io::recover_log_entry(
-            futures::executor::block_on(E::from_reader(futures::io::AllowStdIo::new(file)))
-                .map_err::<BoxError, _>(|e| Box::new(e)),
+            rmp_serde::from_read(file).map_err::<BoxError, _>(|e| Box::new(e)),
         )?;
 
         Ok((coord_num, Arc::new(log_entry)))

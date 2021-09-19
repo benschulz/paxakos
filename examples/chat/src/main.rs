@@ -2,10 +2,6 @@
 //! consensus is a bad idea, but makes a neat example.
 #![feature(never_type)]
 
-use std::convert::Infallible;
-
-use async_trait::async_trait;
-use futures::io::AsyncRead;
 use paxakos::append::AppendArgs;
 use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::DirectCommunicators;
@@ -133,30 +129,15 @@ impl Invocation for ChatInvocation {
     type CommunicationError = DirectCommunicatorError;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct ChatMessage {
     id: Uuid,
     sender: String,
     message: String,
 }
 
-#[async_trait]
 impl LogEntry for ChatMessage {
     type Id = Uuid;
-    type Reader = std::io::Cursor<Vec<u8>>;
-    type ReadError = Infallible;
-
-    async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
-        unimplemented!()
-    }
-
-    fn size(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn to_reader(&self) -> Self::Reader {
-        unimplemented!()
-    }
 
     fn id(&self) -> Self::Id {
         self.id
@@ -175,30 +156,14 @@ impl ChatState {
     }
 }
 
-#[async_trait]
 impl State for ChatState {
     type Context = ();
-
-    type Reader = std::io::Cursor<Vec<u8>>;
-    type ReadError = Infallible;
 
     type LogEntry = ChatMessage;
     type Outcome = ();
     type Event = ();
 
     type Node = PrototypingNode;
-
-    async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
-        unimplemented!()
-    }
-
-    fn size(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn to_reader(&self) -> Self::Reader {
-        unimplemented!()
-    }
 
     fn apply(
         &mut self,

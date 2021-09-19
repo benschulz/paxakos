@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::convert::Infallible;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
@@ -154,7 +153,7 @@ fn get_index_html() -> Html<String> {
     Html(std::fs::read_to_string("./examples/playground/src/index.html").unwrap())
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PostClusterArguments {
     node_count: usize,
@@ -164,14 +163,14 @@ struct PostClusterArguments {
     e2e_delay_std_dev: f32,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PostClusterResult {
     id: String,
     nodes: Vec<ClusterNode>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClusterNode {
     id: String,
@@ -551,7 +550,7 @@ where
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 enum ClusterPatch {
     #[serde(rename_all = "camelCase")]
@@ -641,7 +640,7 @@ async fn patch_cluster(
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Packet {
     from: String,
@@ -651,21 +650,21 @@ struct Packet {
     response: Option<&'static str>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Action {
     node: String,
     action: &'static str,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppendResult {
     append: String,
     outcome: &'static str,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SnapshotEvent {
     id: String,
@@ -674,14 +673,14 @@ struct SnapshotEvent {
     resumable_by: Option<String>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TerminationEvent {
     node: String,
     event: &'static str,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PacketLossPatched {
     from: String,
@@ -689,7 +688,7 @@ struct PacketLossPatched {
     packet_loss: f32,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct E2eDelayPatched {
     from: String,
@@ -698,7 +697,7 @@ struct E2eDelayPatched {
     e2e_delay_std_dev: f32,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Event {
     node: String,
@@ -707,21 +706,21 @@ struct Event {
     action: &'static str,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Activate {
     node: String,
     event: &'static str,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NewLeader {
     node: String,
     leader: Option<String>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PostNodeAppendArguments {
     amount: usize,
@@ -729,7 +728,7 @@ struct PostNodeAppendArguments {
     until_round: Option<u32>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PostNodeAppendResult {
     id: String,
@@ -793,7 +792,7 @@ async fn post_node_crash(clusters: &rocket::State<Clusters>, cluster_id: String,
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PostNodeRecoverArguments {
     snapshot: String,
@@ -844,7 +843,7 @@ async fn post_node_recover(
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PostNodeResumeArguments {
     snapshot: String,
@@ -995,7 +994,7 @@ impl Invocation for PlaygroundInvocation {
     type CommunicationError = DirectCommunicatorError;
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
 pub enum PlaygroundLogEntry {
     Regular(Uuid),
     Heartbeat(Uuid),
@@ -1014,25 +1013,8 @@ impl PlaygroundLogEntry {
     }
 }
 
-#[async_trait::async_trait]
 impl LogEntry for PlaygroundLogEntry {
     type Id = Uuid;
-    type Reader = Cursor<Vec<u8>>;
-    type ReadError = Infallible;
-
-    async fn from_reader<R: futures::io::AsyncRead + Send + Unpin>(
-        _read: R,
-    ) -> Result<Self, Self::ReadError> {
-        unimplemented!()
-    }
-
-    fn size(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn to_reader(&self) -> Self::Reader {
-        unimplemented!()
-    }
 
     fn id(&self) -> Self::Id {
         match *self {
@@ -1061,32 +1043,14 @@ impl PlaygroundState {
     }
 }
 
-#[async_trait::async_trait]
 impl State for PlaygroundState {
     type Context = ();
-
-    type Reader = Cursor<Vec<u8>>;
-    type ReadError = Infallible;
 
     type LogEntry = PlaygroundLogEntry;
     type Outcome = usize;
     type Event = usize;
 
     type Node = PrototypingNode;
-
-    async fn from_reader<R: futures::io::AsyncRead + Send + Unpin>(
-        _read: R,
-    ) -> Result<Self, Self::ReadError> {
-        unimplemented!()
-    }
-
-    fn size(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn to_reader(&self) -> Self::Reader {
-        unimplemented!()
-    }
 
     fn apply(
         &mut self,

@@ -1,14 +1,10 @@
 use std::collections::HashSet;
-use std::convert::Infallible;
 
-use async_trait::async_trait;
-use futures::io::AsyncRead;
 use paxakos::invocation::Invocation;
 use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::LogEntry;
 use paxakos::State;
-use serde::Serialize;
 use uuid::Uuid;
 
 pub struct CalcInvocation;
@@ -26,7 +22,7 @@ impl Invocation for CalcInvocation {
     type CommunicationError = DirectCommunicatorError;
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
 pub enum CalcOp {
     Add(f64, Uuid),
@@ -35,23 +31,8 @@ pub enum CalcOp {
     Sub(f64, Uuid),
 }
 
-#[async_trait]
 impl LogEntry for CalcOp {
     type Id = Uuid;
-    type Reader = std::io::Cursor<Vec<u8>>;
-    type ReadError = Infallible;
-
-    async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
-        unimplemented!()
-    }
-
-    fn size(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn to_reader(&self) -> Self::Reader {
-        unimplemented!()
-    }
 
     fn id(&self) -> Self::Id {
         match self {
@@ -93,30 +74,14 @@ impl CalcState {
     }
 }
 
-#[async_trait]
 impl State for CalcState {
     type Context = ();
-
-    type Reader = std::io::Cursor<Vec<u8>>;
-    type ReadError = Infallible;
 
     type LogEntry = CalcOp;
     type Outcome = f64;
     type Event = (f64, blake3::Hash);
 
     type Node = PrototypingNode;
-
-    async fn from_reader<R: AsyncRead + Send + Unpin>(_read: R) -> Result<Self, Self::ReadError> {
-        unimplemented!()
-    }
-
-    fn size(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn to_reader(&self) -> Self::Reader {
-        unimplemented!()
-    }
 
     fn apply(
         &mut self,

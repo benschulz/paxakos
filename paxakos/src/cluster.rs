@@ -1,9 +1,6 @@
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 pub trait ClusterLogEntry<N> {
     fn concurrency(&self) -> Option<NonZeroUsize>;
 
@@ -58,7 +55,7 @@ pub trait ClusterLogEntry<N> {
 /// | Log Entry             |   | c ≔ 2 |       |       |       |       |   |
 /// | Target Concurrency    | 5 |     2 |     2 |     2 |     2 |     2 | … |
 /// | Effective Concurrency | 5 |     5 |     4 |     3 |     2 |     2 | … |
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct Cluster<N> {
     /// Effective node set for the next round and up to `concurrency_at_offset
     /// -1` previous rounds.

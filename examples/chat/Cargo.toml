@@ -9,4 +9,5 @@ publish = false
 async-trait = "0.1"
 futures = "0.3"
 paxakos = { path = "../../paxakos", features = [ "prototyping" ] }
+serde = { version = "1", features = [ "derive" ] }
 uuid = { version = "0.8", features = [ "serde", "v4" ] }
