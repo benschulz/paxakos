@@ -306,11 +306,6 @@
 //! of master leases. Assuming a scheme to delegate to the current master, this
 //! combination is highly efficient.
 //!
-//! ## Nightly Features
-//!
-//! Paxakos currently relies on several nightly features. None of them are
-//! crucial, but there hasn't been any need become compatible with stable Rust.
-//!
 //! # Future Direction
 //!
 //! This is a side project. I will work on the following as my time allows (in
