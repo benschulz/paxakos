@@ -2,7 +2,10 @@
 
 mod calc_app;
 
+use std::time::Duration;
+
 use futures::stream::StreamExt;
+use paxakos::autofill;
 use paxakos::invocation::Invocation;
 use uuid::Uuid;
 
@@ -24,6 +27,7 @@ use paxakos::RequestHandler;
 use calc_app::CalcInvocation;
 use calc_app::CalcOp;
 use calc_app::CalcState;
+use calc_app::PlusZero;
 
 type CalcNode = NodeKernel<CalcInvocation, DirectCommunicator<CalcInvocation>>;
 
@@ -85,11 +89,10 @@ fn auto_fill_gaps() {
             .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 10))
-            .fill_gaps(|b| {
-                b.with_entry(|| CalcOp::Add(0f64, Uuid::new_v4()))
-                    .in_batches_of(10)
-                    .after(std::time::Duration::from_millis(10))
-            })
+            .fill_gaps(autofill::StaticConfig::<_, PlusZero>::new(
+                10,
+                Duration::from_millis(10),
+            ))
             .spawn_in(()),
     )
     .unwrap();

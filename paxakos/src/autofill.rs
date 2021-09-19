@@ -22,8 +22,8 @@ use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventFor;
+use crate::node::EventOf;
 use crate::node::InvocationOf;
-use crate::node::LogEntryOf;
 use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeStatus;
@@ -33,42 +33,83 @@ use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::YeaOf;
 use crate::retry::DoNotRetry;
+use crate::retry::RetryPolicy;
 use crate::util::NumberIter;
 use crate::voting::Voter;
 use crate::Node;
 use crate::RoundNum;
 
+pub trait Config {
+    type Node: Node;
+    type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
+
+    fn init(&mut self, node: &Self::Node, state: &StateOf<Self::Node>);
+
+    fn update(&mut self, event: &EventOf<Self::Node>);
+
+    fn batch_size(&self) -> usize;
+
+    fn delay(&self) -> Duration;
+
+    fn new_filler(&self) -> Self::Applicable;
+
+    fn retry_policy(&self) -> Box<dyn RetryPolicy<Invocation = InvocationOf<Self::Node>> + Send> {
+        Box::new(DoNotRetry::new())
+    }
+}
+
+pub struct StaticConfig<N, A> {
+    batch_size: usize,
+    delay: Duration,
+    _p: std::marker::PhantomData<(N, A)>,
+}
+
+impl<N, A> StaticConfig<N, A>
+where
+    N: Node,
+    A: ApplicableTo<StateOf<N>> + Default + 'static,
+{
+    pub fn new(batch_size: usize, delay: Duration) -> Self {
+        Self {
+            batch_size,
+            delay,
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<N, A> Config for StaticConfig<N, A>
+where
+    N: Node,
+    A: ApplicableTo<StateOf<N>> + Default + 'static,
+{
+    type Node = N;
+    type Applicable = A;
+
+    fn init(&mut self, _node: &Self::Node, _state: &StateOf<Self::Node>) {}
+
+    fn update(&mut self, _event: &EventOf<Self::Node>) {}
+
+    fn batch_size(&self) -> usize {
+        self.batch_size
+    }
+
+    fn delay(&self) -> Duration {
+        self.delay
+    }
+
+    fn new_filler(&self) -> Self::Applicable {
+        Self::Applicable::default()
+    }
+}
+
 pub trait AutofillBuilderExt: Sized {
     type Node: Node;
     type Voter: Voter;
 
-    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilder<Autofill<Self::Node, P>, Self::Voter>
+    fn fill_gaps<C>(self, config: C) -> NodeBuilder<Autofill<Self::Node, C>, Self::Voter>
     where
-        C: FnOnce(AutofillBuilderBlank<Self::Node>) -> AutofillBuilder<Self::Node, P>,
-        P: Fn() -> LogEntryOf<Self::Node> + 'static;
-
-    fn fill_gaps_with<P>(
-        self,
-        entry_producer: P,
-    ) -> NodeBuilder<Autofill<Self::Node, P>, Self::Voter>
-    where
-        P: 'static + Fn() -> LogEntryOf<Self::Node>,
-    {
-        self.fill_gaps(|b| b.with_entry(entry_producer))
-    }
-}
-
-pub struct AutofillBuilder<N, P>
-where
-    N: Node,
-    P: Fn() -> LogEntryOf<N>,
-{
-    entry_producer: P,
-    batch_size: Option<usize>,
-    delay: Option<Duration>,
-    retry_interval: Option<Duration>,
-
-    _node: std::marker::PhantomData<N>,
+        C: Config<Node = Self::Node> + 'static;
 }
 
 impl<N, V> AutofillBuilderExt for NodeBuilder<N, V>
@@ -86,100 +127,18 @@ where
     type Node = N;
     type Voter = V;
 
-    fn fill_gaps<C, P>(self, configure: C) -> NodeBuilder<Autofill<N, P>, V>
+    fn fill_gaps<C>(self, config: C) -> NodeBuilder<Autofill<N, C>, V>
     where
-        C: FnOnce(AutofillBuilderBlank<N>) -> AutofillBuilder<N, P>,
-        P: Fn() -> LogEntryOf<N> + 'static,
+        C: Config<Node = Self::Node> + 'static,
     {
-        self.decorated_with(configure(AutofillBuilderBlank::new()).build())
-    }
-}
-
-pub struct AutofillBuilderBlank<N: Node>(std::marker::PhantomData<N>);
-
-impl<N: Node> AutofillBuilderBlank<N> {
-    fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-
-    pub fn with_entry<P>(self, entry_producer: P) -> AutofillBuilder<N, P>
-    where
-        P: Fn() -> LogEntryOf<N>,
-    {
-        AutofillBuilder {
-            entry_producer,
-            batch_size: None,
-            delay: None,
-            retry_interval: None,
-
-            _node: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<N, P> AutofillBuilder<N, P>
-where
-    N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
-{
-    pub fn in_batches_of(self, size: usize) -> Self {
-        Self {
-            batch_size: Some(size),
-
-            ..self
-        }
-    }
-
-    pub fn after(self, delay: Duration) -> Self {
-        Self {
-            delay: Some(delay),
-
-            ..self
-        }
-    }
-
-    pub fn retry_every<I: Into<Option<Duration>>>(self, interval: I) -> Self {
-        Self {
-            retry_interval: interval.into(),
-
-            ..self
-        }
-    }
-
-    fn build(self) -> AutofillArgs<N, P> {
-        AutofillArgs {
-            entry_producer: self.entry_producer,
-            batch_size: self.batch_size.unwrap_or(1),
-            delay: self.delay.unwrap_or_else(|| Duration::from_millis(400)),
-            retry_interval: self.retry_interval,
-
-            _node: std::marker::PhantomData,
-        }
+        self.decorated_with(config)
     }
 }
 
 #[derive(Debug)]
-pub struct AutofillArgs<N, P>
-where
-    N: Node,
-    P: 'static + Fn() -> LogEntryOf<N>,
-{
-    entry_producer: P,
-    batch_size: usize,
-    delay: Duration,
-    retry_interval: Option<Duration>,
-
-    _node: std::marker::PhantomData<N>,
-}
-
-#[derive(Debug)]
-pub struct Autofill<N, P>
-where
-    N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
-{
+pub struct Autofill<N: Node, C> {
     decorated: N,
-    arguments: AutofillArgs<N, P>,
+    config: C,
 
     disoriented: bool,
 
@@ -189,7 +148,9 @@ where
     timer: Option<futures_timer::Delay>,
     time_out_corner: VecDeque<std::time::Instant>,
 
-    appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, Option<RoundNumOf<N>>>>,
+    appends: futures::stream::FuturesUnordered<
+        LocalBoxFuture<'static, Option<AppendError<InvocationOf<N>>>>,
+    >,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -213,11 +174,20 @@ impl<R: RoundNum> PartialOrd for QueuedGap<R> {
     }
 }
 
-impl<N, P> Autofill<N, P>
+impl<N, C> Autofill<N, C>
 where
     N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
+    C: Config<Node = N>,
 {
+    fn handle_new_status(&mut self, new_status: NodeStatus) {
+        self.disoriented = matches!(new_status, NodeStatus::Disoriented);
+
+        if self.disoriented {
+            self.queued_gaps.clear();
+            self.known_gaps.clear();
+        }
+    }
+
     fn fill_gaps(&mut self, cx: &mut std::task::Context<'_>) {
         let now = std::time::Instant::now();
 
@@ -230,11 +200,13 @@ where
             self.time_out_corner.pop_front();
         }
 
+        let batch_size = self.config.batch_size();
+
         loop {
             while let Some(&QueuedGap { round, .. }) =
                 self.queued_gaps.peek().filter(|g| g.due_time <= now)
             {
-                if self.appends.len() >= self.arguments.batch_size - self.time_out_corner.len() {
+                if self.appends.len() >= batch_size - self.time_out_corner.len() {
                     break;
                 }
 
@@ -243,16 +215,18 @@ where
             }
 
             let mut none = true;
+
             while let Poll::Ready(Some(result)) = self.appends.poll_next_unpin(cx) {
                 none = false;
 
-                if let (Some(round), Some(retry_interval)) = (result, self.arguments.retry_interval)
-                {
-                    if self.known_gaps.contains(&round) {
-                        self.queued_gaps.push(QueuedGap {
-                            round,
-                            due_time: now + retry_interval,
-                        });
+                if let Some(err) = result {
+                    match err {
+                        AppendError::Converged { caught_up: true } => {
+                            // this is the hoped for result for follower nodes
+                        }
+                        err => {
+                            tracing::debug!("Failed to close gap: {}", err);
+                        }
                     }
                 }
             }
@@ -266,7 +240,7 @@ where
         let time_b = self
             .queued_gaps
             .peek()
-            .filter(|_| self.appends.len() < self.arguments.batch_size - self.time_out_corner.len())
+            .filter(|_| self.appends.len() < batch_size - self.time_out_corner.len())
             .map(|queued| queued.due_time);
 
         let wake_time = time_a
@@ -293,7 +267,7 @@ where
     }
 
     fn initiate_append(&mut self, round_num: RoundNumOf<N>) {
-        let log_entry = (self.arguments.entry_producer)();
+        let log_entry = self.config.new_filler();
 
         let append = self
             .decorated
@@ -302,30 +276,22 @@ where
                 AppendArgs {
                     round: round_num..=round_num,
                     importance: Importance::MaintainLeadership(Peeryness::Peery),
-                    retry_policy: Box::new(DoNotRetry::new()),
+                    retry_policy: self.config.retry_policy(),
                 },
             )
-            .map(move |res| {
-                match res {
-                    Ok(_) => None,
-                    Err(AppendError::Converged { caught_up: true }) => None,
-                    // TODO this may be too pessimistic
-                    // TODO what about Passive?
-                    Err(_) => Some(round_num),
-                }
-            })
+            .map(Result::err)
             .boxed_local();
 
         self.appends.push(append);
     }
 }
 
-impl<N, P> Decoration for Autofill<N, P>
+impl<N, C> Decoration for Autofill<N, C>
 where
-    N: Node + 'static,
-    P: Fn() -> LogEntryOf<N> + 'static,
+    N: Node,
+    C: Config<Node = N> + 'static,
 {
-    type Arguments = AutofillArgs<N, P>;
+    type Arguments = C;
     type Decorated = N;
 
     fn wrap(
@@ -334,7 +300,7 @@ where
     ) -> Result<Self, crate::error::SpawnError> {
         Ok(Self {
             decorated,
-            arguments,
+            config: arguments,
 
             disoriented: false,
 
@@ -357,10 +323,10 @@ where
     }
 }
 
-impl<N, P> Node for Autofill<N, P>
+impl<N, C> Node for Autofill<N, C>
 where
     N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
+    C: Config<Node = N>,
 {
     type Invocation = InvocationOf<N>;
     type Communicator = CommunicatorOf<N>;
@@ -383,26 +349,28 @@ where
 
         if let Poll::Ready(event) = &event {
             match event {
-                crate::Event::Init {
-                    status: new_status, ..
-                }
-                | crate::Event::StatusChange { new_status, .. } => {
-                    self.disoriented = matches!(new_status, NodeStatus::Disoriented);
+                crate::Event::Init { status, state, .. } => {
+                    self.handle_new_status(*status);
 
-                    if self.disoriented {
-                        self.queued_gaps.clear();
-                        self.known_gaps.clear();
+                    if let Some(state) = state {
+                        self.config.init(&self.decorated, &**state);
                     }
                 }
 
-                crate::Event::Install { .. } => {
+                crate::Event::StatusChange { new_status, .. } => {
+                    self.handle_new_status(*new_status);
+                }
+
+                crate::Event::Install { state, .. } => {
                     self.queued_gaps.clear();
                     self.known_gaps.clear();
+
+                    self.config.init(&self.decorated, &**state);
                 }
 
                 crate::Event::Gaps(ref gaps) => {
                     let now = std::time::Instant::now();
-                    let delay = self.arguments.delay;
+                    let delay = self.config.delay();
 
                     let new_gaps = gaps
                         .iter()
@@ -419,8 +387,10 @@ where
                     self.known_gaps.extend(new_gaps);
                 }
 
-                crate::Event::Apply { round, .. } => {
+                crate::Event::Apply { round, result, .. } => {
                     self.known_gaps.remove(round);
+
+                    self.config.update(result);
                 }
 
                 _ => {}

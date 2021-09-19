@@ -13,6 +13,7 @@ use futures::lock::Mutex;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use paxakos::append::AppendArgs;
+use paxakos::autofill;
 use paxakos::autofill::AutofillBuilderExt;
 use paxakos::heartbeats::SendHeartbeatsBuilderExt;
 use paxakos::invocation::Invocation;
@@ -306,27 +307,7 @@ async fn spawn_node(
                 .communicating_via(communicators.create_communicator_for(n.id()))
                 .with_snapshot_and_participation(snapshot, participation)
                 .track_leadership()
-                .fill_gaps(|c| {
-                    c.with_entry(move || {
-                        let listeners = listeners_gaps.clone();
-
-                        rt_gaps.spawn(async move {
-                            emit_event(
-                                &*listeners,
-                                Action {
-                                    node: node_id.to_string(),
-                                    action: "fill",
-                                },
-                            )
-                            .await
-                        });
-
-                        PlaygroundLogEntry::Fill(Uuid::new_v4())
-                    })
-                    .in_batches_of(10)
-                    .after(std::time::Duration::from_millis(1000))
-                    .retry_every(std::time::Duration::from_millis(2000))
-                })
+                .fill_gaps(AutofillConfig::new(rt_gaps, listeners_gaps))
                 .send_heartbeats(HeartbeatConfig::new(rt_heartbeat, listeners_heartbeat))
                 .ensure_leadership(|c| {
                     c.with_entry(move || {
@@ -345,7 +326,7 @@ async fn spawn_node(
 
                         PlaygroundLogEntry::EnsureLeadership(Uuid::new_v4())
                     })
-                    .every(std::time::Duration::from_secs(10))
+                    .every(Duration::from_secs(10))
                 })
                 .spawn(),
         )
@@ -541,12 +522,69 @@ where
         PlaygroundLogEntry::Heartbeat(Uuid::new_v4())
     }
 
-    fn interval(&self, node: &Self::Node) -> Option<std::time::Duration> {
+    fn interval(&self, node: &Self::Node) -> Option<Duration> {
         if node.leadership().first().map(|l| l.leader) == Some(node.id()) {
             Some(Duration::from_secs(3))
         } else {
             Some(Duration::from_secs(5))
         }
+    }
+}
+
+struct AutofillConfig<N> {
+    runtime: rocket::tokio::runtime::Handle,
+    listeners: Arc<Mutex<Vec<Listener>>>,
+    node_id: usize,
+
+    _p: std::marker::PhantomData<N>,
+}
+
+impl<N> AutofillConfig<N> {
+    fn new(runtime: rocket::tokio::runtime::Handle, listeners: Arc<Mutex<Vec<Listener>>>) -> Self {
+        Self {
+            runtime,
+            listeners,
+            node_id: usize::MAX,
+
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<N: Node<Invocation = PlaygroundInvocation>> autofill::Config for AutofillConfig<N> {
+    type Node = N;
+    type Applicable = PlaygroundLogEntry;
+
+    fn init(&mut self, node: &Self::Node, _state: &paxakos::node::StateOf<Self::Node>) {
+        self.node_id = node.id();
+    }
+
+    fn update(&mut self, _event: &paxakos::node::EventOf<Self::Node>) {}
+
+    fn batch_size(&self) -> usize {
+        10
+    }
+
+    fn delay(&self) -> Duration {
+        Duration::from_millis(1000)
+    }
+
+    fn new_filler(&self) -> Self::Applicable {
+        let node_id = self.node_id;
+        let listeners = Arc::clone(&self.listeners);
+
+        self.runtime.spawn(async move {
+            emit_event(
+                &*listeners,
+                Action {
+                    node: node_id.to_string(),
+                    action: "fill",
+                },
+            )
+            .await
+        });
+
+        PlaygroundLogEntry::Fill(Uuid::new_v4())
     }
 }
 
@@ -753,9 +791,7 @@ async fn post_node_append(
         queue.push(node_handle.append(
             PlaygroundLogEntry::Regular(Uuid::new_v4()),
             AppendArgs {
-                retry_policy: Box::new(RetryIndefinitely::pausing_up_to(
-                    std::time::Duration::from_secs(4),
-                )),
+                retry_policy: Box::new(RetryIndefinitely::pausing_up_to(Duration::from_secs(4))),
                 round: args.from_round.unwrap_or(0)..=args.until_round.unwrap_or(u32::MAX),
                 ..Default::default()
             },

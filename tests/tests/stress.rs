@@ -10,6 +10,7 @@ use futures::channel::oneshot;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use paxakos::autofill;
 use paxakos::invocation::Invocation;
 use rand::seq::SliceRandom;
 use uuid::Uuid;
@@ -29,6 +30,7 @@ use paxakos::Shutdown;
 use calc_app::CalcInvocation;
 use calc_app::CalcOp;
 use calc_app::CalcState;
+use calc_app::PlusZero;
 use tracer::StabilityChecker;
 
 type CalcCommunicators = DirectCommunicators<CalcInvocation>;
@@ -168,11 +170,10 @@ fn spawn_node(
                 .communicating_via(communicators.create_communicator_for(node_info.id()))
                 .with_initial_state(CalcState::new(all_nodes, 5))
                 .traced_by(tracer)
-                .fill_gaps(|c| {
-                    c.with_entry(|| CalcOp::Sub(0.0, Uuid::new_v4()))
-                        .after(std::time::Duration::from_millis(50))
-                        .retry_every(std::time::Duration::from_millis(20))
-                })
+                .fill_gaps(autofill::StaticConfig::<_, PlusZero>::new(
+                    1,
+                    std::time::Duration::from_millis(50),
+                ))
                 .send_heartbeats(HeartbeatConfig::new())
                 .track_leadership()
                 .ensure_leadership(|c| {

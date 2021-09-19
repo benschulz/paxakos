@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use paxakos::applicable::ApplicableTo;
+use paxakos::applicable::Identity;
 use paxakos::invocation::Invocation;
 use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::PrototypingNode;
@@ -29,6 +31,17 @@ pub enum CalcOp {
     Div(f64, Uuid),
     Mul(f64, Uuid),
     Sub(f64, Uuid),
+}
+
+#[derive(Default)]
+pub struct PlusZero;
+
+impl ApplicableTo<CalcState> for PlusZero {
+    type Projection = Identity;
+
+    fn into_log_entry(self) -> std::sync::Arc<paxakos::state::LogEntryOf<CalcState>> {
+        CalcOp::Add(0.0, Uuid::new_v4()).into()
+    }
 }
 
 impl LogEntry for CalcOp {
