@@ -278,11 +278,19 @@ fn spawn_node(
     })
 }
 
-struct HeartbeatConfig<N>(std::marker::PhantomData<N>);
+struct HeartbeatConfig<N> {
+    node_id: usize,
+
+    _p: std::marker::PhantomData<N>,
+}
 
 impl<N> HeartbeatConfig<N> {
     fn new() -> Self {
-        Self(std::marker::PhantomData)
+        Self {
+            node_id: usize::MAX,
+
+            _p: std::marker::PhantomData,
+        }
     }
 }
 
@@ -293,17 +301,19 @@ where
     type Node = N;
     type Applicable = CalcOp;
 
-    fn init(&mut self, _state: &paxakos::node::StateOf<Self::Node>) {}
+    fn init(&mut self, node: &Self::Node, _state: &paxakos::node::StateOf<Self::Node>) {
+        self.node_id = node.id();
+    }
 
     fn update(&mut self, _event: &paxakos::node::EventOf<Self::Node>) {}
 
-    fn new_heartbeat(&self, node: &Self::Node) -> Self::Applicable {
-        tracing::info!("Node {:?} is sending a heartbeat.", node.id());
+    fn new_heartbeat(&self) -> Self::Applicable {
+        tracing::info!("Node {:?} is sending a heartbeat.", self.node_id);
 
         CalcOp::Mul(1.0, Uuid::new_v4())
     }
 
-    fn interval(&self, _node: &Self::Node) -> Option<std::time::Duration> {
+    fn interval(&self) -> Option<std::time::Duration> {
         Some(std::time::Duration::from_millis(200))
     }
 }

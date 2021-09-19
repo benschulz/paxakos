@@ -478,6 +478,7 @@ async fn spawn_node(
 struct HeartbeatConfig<N, I> {
     runtime: rocket::tokio::runtime::Handle,
     listeners: Arc<Mutex<Vec<Listener>>>,
+    node_id: usize,
 
     _p: std::marker::PhantomData<(N, I)>,
 }
@@ -487,6 +488,7 @@ impl<N, I> HeartbeatConfig<N, I> {
         Self {
             runtime,
             listeners,
+            node_id: usize::MAX,
 
             _p: std::marker::PhantomData,
         }
@@ -500,12 +502,22 @@ where
     type Node = N;
     type Applicable = PlaygroundLogEntry;
 
-    fn init(&mut self, _state: &paxakos::node::StateOf<Self::Node>) {}
+    fn init(&mut self, node: &Self::Node, _state: &paxakos::node::StateOf<Self::Node>) {
+        self.node_id = node.id();
+    }
 
     fn update(&mut self, _event: &paxakos::node::EventOf<Self::Node>) {}
 
-    fn new_heartbeat(&self, node: &Self::Node) -> Self::Applicable {
-        let node_id = node.id();
+    fn leader_interval(&self) -> Option<Duration> {
+        Some(Duration::from_secs(3))
+    }
+
+    fn interval(&self) -> Option<Duration> {
+        Some(Duration::from_secs(5))
+    }
+
+    fn new_heartbeat(&self) -> Self::Applicable {
+        let node_id = self.node_id;
         let listeners = Arc::clone(&self.listeners);
 
         self.runtime.spawn(async move {
@@ -520,14 +532,6 @@ where
         });
 
         PlaygroundLogEntry::Heartbeat(Uuid::new_v4())
-    }
-
-    fn interval(&self, node: &Self::Node) -> Option<Duration> {
-        if node.leadership().first().map(|l| l.leader) == Some(node.id()) {
-            Some(Duration::from_secs(3))
-        } else {
-            Some(Duration::from_secs(5))
-        }
     }
 }
 
