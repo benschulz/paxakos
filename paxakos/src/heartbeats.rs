@@ -106,19 +106,19 @@ where
     }
 }
 
-pub trait SendHeartbeatsBuilderExt<I = ()> {
+pub trait HeartbeatsBuilderExt<I = ()> {
     type Node: MaybeLeadershipAwareNode<I> + 'static;
     type Voter: Voter;
 
     fn send_heartbeats<C>(
         self,
         config: C,
-    ) -> NodeBuilder<SendHeartbeats<Self::Node, C, I>, Self::Voter>
+    ) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V, I> SendHeartbeatsBuilderExt<I> for NodeBuilder<N, V>
+impl<N, V, I> HeartbeatsBuilderExt<I> for NodeBuilder<N, V>
 where
     N: MaybeLeadershipAwareNode<I> + 'static,
     V: Voter<
@@ -136,7 +136,7 @@ where
     fn send_heartbeats<C>(
         self,
         config: C,
-    ) -> NodeBuilder<SendHeartbeats<Self::Node, C, I>, Self::Voter>
+    ) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter>
     where
         C: Config<Node = Self::Node> + 'static,
     {
@@ -145,7 +145,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct SendHeartbeats<N, C, I = ()>
+pub struct Heartbeats<N, C, I = ()>
 where
     N: MaybeLeadershipAwareNode<I> + 'static,
     C: Config<Node = N>,
@@ -162,7 +162,7 @@ where
     _p: std::marker::PhantomData<I>,
 }
 
-impl<N, C, I> SendHeartbeats<N, C, I>
+impl<N, C, I> Heartbeats<N, C, I>
 where
     N: MaybeLeadershipAwareNode<I> + 'static,
     C: Config<Node = N>,
@@ -213,7 +213,7 @@ where
     }
 }
 
-impl<N, C, I> Decoration for SendHeartbeats<N, C, I>
+impl<N, C, I> Decoration for Heartbeats<N, C, I>
 where
     N: MaybeLeadershipAwareNode<I> + 'static,
     C: Config<Node = N> + 'static,
@@ -248,7 +248,7 @@ where
     }
 }
 
-impl<N, C, I> Node for SendHeartbeats<N, C, I>
+impl<N, C, I> Node for Heartbeats<N, C, I>
 where
     N: MaybeLeadershipAwareNode<I> + 'static,
     C: Config<Node = N>,

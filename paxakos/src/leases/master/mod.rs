@@ -45,7 +45,7 @@ pub trait MasterLeaseMaintainingNode<I>: Node {
     fn read_master_strict(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>>;
 }
 
-pub trait MaintainMasterLeaseBuilderExt {
+pub trait MasterLeasesBuilderExt {
     type Node: Node + 'static;
     type Voter: Voter;
 
@@ -54,12 +54,12 @@ pub trait MaintainMasterLeaseBuilderExt {
         communicator_subscription: communicator::Subscription<NodeIdOf<Self::Node>>,
         voter_subscription: voter::Subscription<NodeIdOf<Self::Node>>,
         config: C,
-    ) -> NodeBuilder<MaintainMasterLease<Self::Node, C>, Self::Voter>
+    ) -> NodeBuilder<MasterLeases<Self::Node, C>, Self::Voter>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V> MaintainMasterLeaseBuilderExt for NodeBuilder<N, V>
+impl<N, V> MasterLeasesBuilderExt for NodeBuilder<N, V>
 where
     N: Node + 'static,
     V: Voter<
@@ -79,7 +79,7 @@ where
         communicator_subscription: communicator::Subscription<NodeIdOf<Self::Node>>,
         voter_subscription: voter::Subscription<NodeIdOf<Self::Node>>,
         config: C,
-    ) -> NodeBuilder<MaintainMasterLease<Self::Node, C>, Self::Voter>
+    ) -> NodeBuilder<MasterLeases<Self::Node, C>, Self::Voter>
     where
         C: Config<Node = Self::Node> + 'static,
     {
@@ -123,7 +123,7 @@ impl<I: Eq> PartialOrd for QueuedLease<I> {
 }
 
 #[derive(Debug)]
-pub struct MaintainMasterLease<N, C>
+pub struct MasterLeases<N, C>
 where
     N: Node,
     C: Config<Node = N>,
@@ -139,7 +139,7 @@ where
 }
 
 // TODO defensively subtract some duration to account for clock drift
-impl<N, C> MaintainMasterLease<N, C>
+impl<N, C> MasterLeases<N, C>
 where
     N: Node + 'static,
     C: Config<Node = N>,
@@ -176,7 +176,7 @@ where
     }
 }
 
-impl<N, C> Decoration for MaintainMasterLease<N, C>
+impl<N, C> Decoration for MasterLeases<N, C>
 where
     N: Node + 'static,
     C: Config<Node = N> + 'static,
@@ -209,7 +209,7 @@ where
     }
 }
 
-impl<N, C> Node for MaintainMasterLease<N, C>
+impl<N, C> Node for MasterLeases<N, C>
 where
     N: Node + 'static,
     C: Config<Node = N>,
@@ -328,7 +328,7 @@ where
     }
 }
 
-impl<N, C> MasterLeaseMaintainingNode<()> for MaintainMasterLease<N, C>
+impl<N, C> MasterLeaseMaintainingNode<()> for MasterLeases<N, C>
 where
     N: Node + 'static,
     C: Config<Node = N>,

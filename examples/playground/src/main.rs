@@ -15,7 +15,7 @@ use futures::stream::StreamExt;
 use paxakos::append::AppendArgs;
 use paxakos::autofill;
 use paxakos::autofill::AutofillBuilderExt;
-use paxakos::heartbeats::SendHeartbeatsBuilderExt;
+use paxakos::heartbeats::HeartbeatsBuilderExt;
 use paxakos::invocation::Invocation;
 use paxakos::leadership::ensure::EnsureLeadershipBuilderExt;
 use paxakos::leadership::track::LeadershipAwareNode;

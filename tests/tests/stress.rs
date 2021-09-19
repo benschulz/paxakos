@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use paxakos::append::AppendArgs;
 use paxakos::autofill::AutofillBuilderExt;
-use paxakos::heartbeats::SendHeartbeatsBuilderExt;
+use paxakos::heartbeats::HeartbeatsBuilderExt;
 use paxakos::leadership::ensure::EnsureLeadershipBuilderExt;
 use paxakos::leadership::track::TrackLeadershipBuilderExt;
 use paxakos::prototyping::DirectCommunicators;
