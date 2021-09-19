@@ -706,13 +706,19 @@ where
             impl 'static + Future<Output = (NodeIdOf<I>, Result<AcceptanceFor<I>, ErrorOf<C>>)>,
         >,
     ) -> Result<CommitFor<I>, AppendError<I>> {
-        let accepted = other_nodes
-            .drain_filter(|n| accepted.contains(&n.id()))
+        let accepted_nodes = other_nodes
+            .iter()
+            .cloned()
+            .filter(|n| accepted.contains(&n.id()))
             .collect::<Vec<_>>();
+        other_nodes.retain(|n| !accepted.contains(&n.id()));
 
-        let rejected_or_failed = other_nodes
-            .drain_filter(|n| rejected_or_failed.contains(&n.id()))
+        let rejected_or_failed_nodes = other_nodes
+            .iter()
+            .cloned()
+            .filter(|n| rejected_or_failed.contains(&n.id()))
             .collect::<Vec<_>>();
+        other_nodes.retain(|n| !rejected_or_failed.contains(&n.id()));
 
         let mut pending_nodes_by_id = other_nodes
             .into_iter()
@@ -727,14 +733,14 @@ where
 
         self.communicator
             .borrow_mut()
-            .send_commit_by_id(&accepted, round_num, coord_num, cle_id)
+            .send_commit_by_id(&accepted_nodes, round_num, coord_num, cle_id)
             .into_iter()
             .for_each(|(_n, f)| commits.submit(f.map(|_| ())));
 
         self.communicator
             .borrow_mut()
             .send_commit(
-                &rejected_or_failed,
+                &rejected_or_failed_nodes,
                 round_num,
                 coord_num,
                 Arc::clone(&log_entry_for_others),

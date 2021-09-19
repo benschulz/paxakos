@@ -1388,7 +1388,7 @@ where
             .awaiters
             .iter_mut()
             .filter_map(|(eid, senders)| {
-                senders.drain_filter(|sender| sender.is_canceled());
+                senders.retain(|sender| !sender.is_canceled());
 
                 if senders.is_empty() {
                     Some(*eid)

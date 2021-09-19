@@ -334,7 +334,6 @@
 // Nightly features
 #![feature(array_windows)]
 #![feature(btree_drain_filter)]
-#![feature(drain_filter)]
 //
 // Lint configuration
 #![warn(rust_2018_idioms)]
