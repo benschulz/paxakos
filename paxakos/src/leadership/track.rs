@@ -162,7 +162,7 @@ impl<N: Node> TrackLeadership<N> {
             }
         } else {
             self.mandates
-                .drain_filter(|r, m| *r >= round_num && coord_num >= m.mandate);
+                .retain(|r, m| *r < round_num || coord_num < m.mandate);
 
             self.mandates.insert(
                 round_num,

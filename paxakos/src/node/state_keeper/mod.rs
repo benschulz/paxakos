@@ -1424,7 +1424,7 @@ fn overriding_insert<R: RoundNum, C: CoordNum>(
     round_num: R,
     coord_num: C,
 ) {
-    map.drain_filter(|r, c| *r > round_num && *c <= coord_num);
+    map.retain(|r, c| *r <= round_num || *c > coord_num);
     map.insert(round_num, coord_num);
 }
 
