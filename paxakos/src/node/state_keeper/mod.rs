@@ -54,6 +54,7 @@ use crate::invocation::StateOf;
 use crate::invocation::YeaOf;
 use crate::log::LogEntry;
 use crate::node::NodeInfo;
+use crate::state;
 use crate::state::State;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
@@ -127,6 +128,42 @@ type SpawnResult<I> = Result<(NodeStatus, super::Participation<RoundNumOf<I>>), 
 type RoundNumRequest<I> = (RangeInclusive<RoundNumOf<I>>, ResponseSender<I>);
 type AcceptedEntry<I> = (CoordNumOf<I>, Arc<LogEntryOf<I>>);
 type PendingCommit<I> = (Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
+
+struct Init<S: State, R: RoundNum, C: CoordNum> {
+    state_round: R,
+    state: Option<Arc<S>>,
+    highest_observed_coord_num: C,
+    promises: BTreeMap<R, C>,
+    accepted_entries: BTreeMap<R, (C, Arc<state::LogEntryOf<S>>)>,
+}
+
+impl<S: State, R: RoundNum, C: CoordNum> Default for Init<S, R, C> {
+    fn default() -> Self {
+        Self {
+            state_round: Zero::zero(),
+            state: None,
+            highest_observed_coord_num: One::one(),
+            promises: {
+                let mut promises = BTreeMap::new();
+                promises.insert(Zero::zero(), One::one());
+                promises
+            },
+            accepted_entries: BTreeMap::new(),
+        }
+    }
+}
+
+impl<S: State, R: RoundNum, C: CoordNum> From<DeconstructedSnapshot<S, R, C>> for Init<S, R, C> {
+    fn from(s: DeconstructedSnapshot<S, R, C>) -> Self {
+        Self {
+            state_round: s.state_round,
+            state: Some(s.state),
+            highest_observed_coord_num: s.highest_observed_coord_num,
+            promises: s.promises,
+            accepted_entries: s.accepted_entries,
+        }
+    }
+}
 
 pub struct StateKeeperKit<I: Invocation> {
     handle: StateKeeperHandle<I>,
@@ -309,38 +346,15 @@ where
                 .map(|_| NodeStatus::Lagging)
                 .unwrap_or(NodeStatus::Disoriented);
 
-            let (state_round, state, highest_observed_coord_num, promises, accepted_entries) =
-                snapshot
-                    .map(|s| {
-                        let DeconstructedSnapshot {
-                            state_round,
-                            state,
-                            highest_observed_coord_num,
-                            promises,
-                            accepted_entries,
-                        } = s.deconstruct();
-
-                        (
-                            state_round,
-                            Some(state),
-                            highest_observed_coord_num,
-                            promises,
-                            accepted_entries,
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        (
-                            Zero::zero(),
-                            None,
-                            One::one(),
-                            {
-                                let mut promises = BTreeMap::new();
-                                promises.insert(Zero::zero(), One::one());
-                                promises
-                            },
-                            BTreeMap::new(),
-                        )
-                    });
+            let Init {
+                state_round,
+                state,
+                highest_observed_coord_num,
+                promises,
+                accepted_entries,
+            } = snapshot
+                .map(|s| Init::from(s.deconstruct()))
+                .unwrap_or_default();
 
             let (start_result, working_dir) = match working_dir {
                 Some(working_dir) => match WorkingDir::init(working_dir, log_keeping) {
