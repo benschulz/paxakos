@@ -266,7 +266,7 @@ async fn post_cluster_start(clusters_state: &rocket::State<Clusters>, cluster_id
                 cluster.nodes.clone(),
                 cluster.args.concurrency,
             )),
-            Participation::Active,
+            false,
         )
         .await;
 
@@ -284,7 +284,7 @@ async fn spawn_node(
     listeners: Arc<Mutex<Vec<Listener>>>,
     mut terminator: oneshot::Receiver<Termination>,
     snapshot: Snapshot<PlaygroundState, R, C>,
-    participation: Participation<R>,
+    passive: bool,
 ) -> PlaygroundNodeHandle {
     let node_id = n.id();
 
@@ -303,7 +303,7 @@ async fn spawn_node(
                 .for_node(n.id())
                 .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(n.id()))
-                .with_snapshot_and_participation(snapshot, participation)
+                .with_snapshot_and_passivity(snapshot, passive)
                 .track_leadership()
                 .fill_gaps(AutofillConfig::new(rt_gaps, listeners_gaps))
                 .send_heartbeats(HeartbeatConfig::new(rt_heartbeat, listeners_heartbeat))
@@ -872,7 +872,7 @@ async fn post_node_recover(
             Arc::clone(&cluster.listeners),
             terminator_recv,
             snapshot,
-            Participation::Passive,
+            true,
         )
         .await;
 
@@ -918,7 +918,7 @@ async fn post_node_resume(
             Arc::clone(&cluster.listeners),
             terminator_recv,
             snapshot,
-            Participation::Active,
+            false,
         )
         .await;
 

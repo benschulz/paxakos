@@ -67,6 +67,7 @@ use crate::Promise;
 use crate::RoundNum;
 
 use super::snapshot::DeconstructedSnapshot;
+use super::snapshot::Participation;
 use super::snapshot::Snapshot;
 use super::status::NodeStatus;
 use super::SpawnArgs;
@@ -94,31 +95,6 @@ macro_rules! assert_unreachable {
     }};
 }
 
-#[derive(Debug)]
-enum Participation<R, C> {
-    Active,
-    PartiallyActive(R),
-    Passive { observed_proposals: HashSet<(R, C)> },
-}
-
-impl<R, C> Participation<R, C> {
-    pub fn passive() -> Self {
-        Self::Passive {
-            observed_proposals: HashSet::new(),
-        }
-    }
-}
-
-impl<R, C> From<super::Participation<R>> for Participation<R, C> {
-    fn from(p: super::Participation<R>) -> Self {
-        match p {
-            super::Participation::Active => Self::Active,
-            super::Participation::Passive => Self::passive(),
-            super::Participation::PartiallyActive(_) => unreachable!(),
-        }
-    }
-}
-
 enum AcceptPolicy<I: Invocation> {
     Irrejectable,
     Rejectable(Option<NodeOf<I>>),
@@ -132,7 +108,9 @@ type PendingCommit<I> = (Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
 struct Init<S: State, R: RoundNum, C: CoordNum> {
     state_round: R,
     state: Option<Arc<S>>,
+    highest_observed_round_num: Option<R>,
     highest_observed_coord_num: C,
+    participation: Participation<R, C>,
     promises: BTreeMap<R, C>,
     accepted_entries: BTreeMap<R, (C, Arc<state::LogEntryOf<S>>)>,
 }
@@ -142,7 +120,9 @@ impl<S: State, R: RoundNum, C: CoordNum> Default for Init<S, R, C> {
         Self {
             state_round: Zero::zero(),
             state: None,
+            highest_observed_round_num: None,
             highest_observed_coord_num: One::one(),
+            participation: Participation::Active,
             promises: {
                 let mut promises = BTreeMap::new();
                 promises.insert(Zero::zero(), One::one());
@@ -158,7 +138,9 @@ impl<S: State, R: RoundNum, C: CoordNum> From<DeconstructedSnapshot<S, R, C>> fo
         Self {
             state_round: s.state_round,
             state: Some(s.state),
+            highest_observed_round_num: s.highest_observed_round_num,
             highest_observed_coord_num: s.highest_observed_coord_num,
+            participation: s.participation,
             promises: s.promises,
             accepted_entries: s.accepted_entries,
         }
@@ -208,10 +190,12 @@ where
     release_sender: mpsc::UnboundedSender<Release<RoundNumOf<I>>>,
     release_receiver: mpsc::UnboundedReceiver<Release<RoundNumOf<I>>>,
 
-    // TODO persist in snapshots
+    /// The highest _observed_ round number so far.
+    ///
+    /// This number is used to determine whether this node is lagging.
     highest_observed_round_num: Option<RoundNumOf<I>>,
 
-    /// The highest coordination _observed_ number so far.
+    /// The highest _observed_  coordination number so far.
     ///
     /// Naively it might make sense to track these in a BTreeMap, similar to
     /// promises. However, the highest observed coordination number is only used
@@ -264,7 +248,6 @@ where
     pending_commits: BTreeMap<RoundNumOf<I>, PendingCommit<I>>,
     awaiters: HashMap<LogEntryIdOf<I>, Vec<Awaiter<I>>>,
 
-    // TODO persist in snapshots
     participation: Participation<RoundNumOf<I>, CoordNumOf<I>>,
     /// last status that was observable from the outside
     status: NodeStatus,
@@ -335,7 +318,7 @@ where
             let node_id = spawn_args.node_id;
             let voter = spawn_args.voter;
             let snapshot = spawn_args.snapshot;
-            let participation = spawn_args.participation;
+            let force_passive = spawn_args.force_passive;
             let log_keeping = spawn_args.log_keeping;
             #[cfg(feature = "tracer")]
             let tracer = spawn_args.tracer;
@@ -349,12 +332,20 @@ where
             let Init {
                 state_round,
                 state,
+                highest_observed_round_num,
                 highest_observed_coord_num,
+                participation,
                 promises,
                 accepted_entries,
             } = snapshot
                 .map(|s| Init::from(s.deconstruct()))
                 .unwrap_or_default();
+
+            let participation = if force_passive {
+                Participation::passive()
+            } else {
+                participation
+            };
 
             let (start_result, working_dir) = match working_dir {
                 Some(working_dir) => match WorkingDir::init(working_dir, log_keeping) {
@@ -365,7 +356,9 @@ where
             };
 
             let failed = start_result.is_err();
-            let _ = start_result_sender.send(start_result.map(|_| (initial_status, participation)));
+            let _ = start_result_sender.send(
+                start_result.map(|_| (initial_status, super::Participation::from(&participation))),
+            );
 
             if failed {
                 return;
@@ -395,13 +388,13 @@ where
                 round_num_requests: VecDeque::new(),
                 acquired_round_nums: HashSet::new(),
 
-                highest_observed_round_num: None,
+                highest_observed_round_num,
                 highest_observed_coord_num,
 
                 pending_commits: BTreeMap::new(),
                 awaiters: HashMap::new(),
 
-                participation: participation.into(),
+                participation,
                 status: initial_status,
 
                 queued_events: VecDeque::new(),
@@ -927,7 +920,9 @@ where
         Ok(Snapshot::new(
             self.state_round,
             Arc::clone(state),
+            self.highest_observed_round_num,
             self.highest_observed_coord_num,
+            self.participation.clone(),
             self.promises.clone(),
             self.accepted_entries.clone(),
         ))
@@ -946,15 +941,18 @@ where
         let DeconstructedSnapshot {
             state_round,
             state,
+            highest_observed_round_num,
             highest_observed_coord_num,
             promises,
             accepted_entries,
+            ..
         } = snapshot.deconstruct();
 
         self.become_passive();
 
         self.state_round = state_round;
         self.state = Some(Arc::clone(&state));
+        self.highest_observed_round_num = highest_observed_round_num;
         self.highest_observed_coord_num = highest_observed_coord_num;
         self.promises = promises;
         self.accepted_entries = accepted_entries;

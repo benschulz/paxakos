@@ -163,7 +163,7 @@ pub struct SpawnArgs<I: Invocation, V> {
     pub node_id: invocation::NodeIdOf<I>,
     pub voter: V,
     pub snapshot: Option<invocation::SnapshotFor<I>>,
-    pub participation: Participation<invocation::RoundNumOf<I>>,
+    pub force_passive: bool,
     pub log_keeping: LogKeeping,
     #[cfg(feature = "tracer")]
     pub tracer: Option<Box<dyn Tracer<I>>>,

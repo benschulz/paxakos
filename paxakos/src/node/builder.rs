@@ -19,7 +19,6 @@ use crate::invocation::StateOf;
 use crate::invocation::YeaOf;
 use crate::log::LogKeeping;
 use crate::node;
-use crate::node::Participation;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::voting::IndiscriminateVoter;
@@ -123,7 +122,7 @@ where
 {
     /// Starts the node without any state and in passive mode.
     pub fn without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
-        self.with_snapshot_and_participation(None, Participation::Passive)
+        self.with_snapshot_and_passivity(None, false)
     }
 
     /// Starts a new cluster with the given initial state.
@@ -133,10 +132,7 @@ where
         self,
         initial_state: S,
     ) -> NodeBuilder<NodeKernel<I, C>> {
-        self.with_snapshot_and_participation(
-            initial_state.into().map(Snapshot::initial),
-            Participation::Active,
-        )
+        self.with_snapshot_and_passivity(initial_state.into().map(Snapshot::initial), false)
     }
 
     /// Resume operation from the given snapshot.
@@ -157,7 +153,7 @@ where
         self,
         snapshot: S,
     ) -> NodeBuilder<NodeKernel<I, C>> {
-        self.with_snapshot_and_participation(snapshot, Participation::Active)
+        self.with_snapshot_and_passivity(snapshot, false)
     }
 
     /// Resume operation from the given snapshot.
@@ -168,7 +164,7 @@ where
         self,
         snapshot: S,
     ) -> NodeBuilder<NodeKernel<I, C>> {
-        self.with_snapshot_and_participation(snapshot, Participation::Passive)
+        self.with_snapshot_and_passivity(snapshot, true)
     }
 
     /// Resume operation without a snapshot.
@@ -176,7 +172,7 @@ where
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
     pub fn recovering_without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
-        self.with_snapshot_and_participation(None, Participation::Passive)
+        self.with_snapshot_and_passivity(None, true)
     }
 
     /// Commence operation from the given snapshot.
@@ -197,7 +193,7 @@ where
         self,
         snapshot: S,
     ) -> NodeBuilder<NodeKernel<I, C>> {
-        self.with_snapshot_and_participation(snapshot, Participation::Active)
+        self.with_snapshot_and_passivity(snapshot, false)
     }
 
     /// Commence operation without a snapshot.
@@ -215,19 +211,15 @@ where
     /// [recovering_without]:
     /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_without
     pub fn joining_without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
-        self.with_snapshot_and_participation(None, Participation::Active)
+        self.with_snapshot_and_passivity(None, false)
     }
 
     #[doc(hidden)]
-    pub fn with_snapshot_and_participation<S: Into<Option<SnapshotFor<I>>>>(
+    pub fn with_snapshot_and_passivity<S: Into<Option<SnapshotFor<I>>>>(
         self,
         snapshot: S,
-        participation: Participation<RoundNumOf<I>>,
+        force_passive: bool,
     ) -> NodeBuilder<NodeKernel<I, C>> {
-        if matches!(participation, Participation::PartiallyActive(_)) {
-            panic!("Unsupported: {:?}", participation);
-        }
-
         let snapshot = snapshot.into();
 
         NodeBuilder {
@@ -236,7 +228,7 @@ where
             node_id: self.node_id,
             communicator: self.communicator,
             snapshot,
-            participation,
+            force_passive,
             voter: IndiscriminateVoter::new(),
             log_keeping: Default::default(),
             finisher: Box::new(Ok),
@@ -257,7 +249,7 @@ pub struct NodeBuilder<N: Node, V = IndiscriminateVoterFor<N>> {
     voter: V,
     communicator: CommunicatorOf<N>,
     snapshot: Option<node::SnapshotFor<N>>,
-    participation: Participation<node::RoundNumOf<N>>,
+    force_passive: bool,
     log_keeping: LogKeeping,
     finisher: Box<Finisher<N>>,
 
@@ -306,7 +298,7 @@ where
             voter,
             communicator: self.communicator,
             snapshot: self.snapshot,
-            participation: self.participation,
+            force_passive: self.force_passive,
             log_keeping: self.log_keeping,
             finisher: self.finisher,
 
@@ -337,7 +329,7 @@ where
             node_id: self.node_id,
             communicator: self.communicator,
             snapshot: self.snapshot,
-            participation: self.participation,
+            force_passive: self.force_passive,
             voter: self.voter,
             log_keeping: self.log_keeping,
             finisher: Box::new(move |x| ((finisher)(x)).and_then(|node| D::wrap(node, arguments))),
@@ -370,7 +362,7 @@ where
                 node_id: self.node_id,
                 voter: self.voter,
                 snapshot: self.snapshot,
-                participation: self.participation,
+                force_passive: self.force_passive,
                 log_keeping: self.log_keeping,
                 #[cfg(feature = "tracer")]
                 tracer: self.tracer,
