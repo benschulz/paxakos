@@ -33,6 +33,7 @@ use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
 use crate::error::PrepareSnapshotError;
 use crate::error::ReadStaleError;
+use crate::event::DirectiveKind;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
 use crate::invocation::AbstainOf;
@@ -637,7 +638,7 @@ where
                 let result = self.prepare_entry(round_num, coord_num);
 
                 if result.is_ok() {
-                    self.emit_directive(round_num, coord_num);
+                    self.emit_directive(DirectiveKind::Prepare, round_num, coord_num);
                 }
 
                 Response::PrepareEntry(result)
@@ -654,7 +655,7 @@ where
                 let result = self.accept_entry(round_num, coord_num, entry);
 
                 if result.is_ok() {
-                    self.emit_directive(round_num, coord_num);
+                    self.emit_directive(DirectiveKind::Accept, round_num, coord_num);
                 }
 
                 Response::AcceptEntry(result)
@@ -684,7 +685,7 @@ where
 
                 if let Some(round_num) = round_num {
                     if result.is_ok() {
-                        self.emit_directive(round_num, coord_num);
+                        self.emit_directive(DirectiveKind::Accept, round_num, coord_num);
                     }
                 }
 
@@ -702,7 +703,7 @@ where
                 let result = self.commit_entry(round_num, coord_num, entry);
 
                 if result.is_ok() {
-                    self.emit_directive(round_num, coord_num);
+                    self.emit_directive(DirectiveKind::Commit, round_num, coord_num);
                 }
 
                 Response::CommitEntry(result)
@@ -724,7 +725,7 @@ where
                         let result = self.commit_entry(round_num, coord_num, e);
 
                         if result.is_ok() {
-                            self.emit_directive(round_num, coord_num);
+                            self.emit_directive(DirectiveKind::Commit, round_num, coord_num);
                         }
 
                         Response::CommitEntryById(result)
@@ -805,9 +806,15 @@ where
         });
     }
 
-    fn emit_directive(&mut self, round_num: RoundNumOf<I>, coord_num: CoordNumOf<I>) {
+    fn emit_directive(
+        &mut self,
+        kind: DirectiveKind,
+        round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
+    ) {
         if let Some(leader) = self.deduce_node(round_num, coord_num) {
             self.emit(Event::Directive {
+                kind,
                 leader,
                 round_num,
                 coord_num,

@@ -68,6 +68,7 @@ pub enum Event<I: Invocation> {
     ///
     /// This event is not emitted when this node is disoriented or lagging.
     Directive {
+        kind: DirectiveKind,
         leader: NodeOf<I>,
         round_num: RoundNumOf<I>,
         coord_num: CoordNumOf<I>,
@@ -119,12 +120,14 @@ impl<I: Invocation> std::fmt::Debug for Event<I> {
                 .finish(),
             Event::Gaps(gaps) => f.debug_tuple("Event::Gaps").field(gaps).finish(),
             Event::Directive {
+                kind,
                 leader,
                 round_num,
                 coord_num,
                 timestamp,
             } => f
                 .debug_struct("Event::Directive")
+                .field("kind", kind)
                 .field("leader", leader)
                 .field("round_num", round_num)
                 .field("coord_num", coord_num)
@@ -141,6 +144,13 @@ pub struct Gap<R: RoundNum> {
 
     /// The locations of the gap within the log.
     pub rounds: std::ops::Range<R>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectiveKind {
+    Prepare,
+    Accept,
+    Commit,
 }
 
 /// Emitted by `Shutdown`'s [`poll_shutdown`][crate::Shutdown::poll_shutdown]

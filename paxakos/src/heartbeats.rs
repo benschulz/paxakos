@@ -178,7 +178,7 @@ where
     C: Config<Node = N>,
 {
     fn new_timer(&mut self) -> Option<futures_timer::Delay> {
-        let delay = match self.decorated.leadership() {
+        let delay = match self.decorated.strict_leadership() {
             Some(leadership) => {
                 if leadership.first().map(|l| l.leader) == Some(self.id()) {
                     self.config

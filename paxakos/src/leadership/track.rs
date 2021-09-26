@@ -15,6 +15,7 @@ use crate::buffer::Buffer;
 use crate::communicator::Communicator;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
+use crate::event::DirectiveKind;
 use crate::invocation;
 use crate::invocation::Invocation;
 use crate::node::builder::NodeBuilder;
@@ -50,13 +51,20 @@ pub trait LeadershipAwareNode<I>: Node {
     /// number observed for that round. That means neither that the node managed
     /// to achieve a quorum with that number, nor that no other node
     /// achieved a quorum with an even higher number.
-    // TODO consider renaming to "lax_leadership" and introducing a strict version
-    //      which disregards prepare messages
-    fn leadership(&self) -> &[LeadershipFor<Self>];
+    fn lax_leadership(&self) -> &[LeadershipFor<Self>];
+
+    /// Leadership as assumed by this node.
+    ///
+    /// Note: This information is unreliable. Strict leadership is inferred when
+    /// a node sent a proposal or a commit message. That means the node was
+    /// leader at some point, but anothor node may have supplanted it by now.
+    fn strict_leadership(&self) -> &[LeadershipFor<Self>];
 }
 
 pub trait MaybeLeadershipAwareNode<I>: Node {
-    fn leadership(&self) -> Option<&[LeadershipFor<Self>]>;
+    fn lax_leadership(&self) -> Option<&[LeadershipFor<Self>]>;
+
+    fn strict_leadership(&self) -> Option<&[LeadershipFor<Self>]>;
 }
 
 pub trait TrackLeadershipBuilderExt {
@@ -101,6 +109,11 @@ pub struct TrackLeadership<N: Node> {
     decorated: N,
     suspended: bool,
     min_round: RoundNumOf<N>,
+    lax_inferrer: Inferrer<N>,
+    strict_inferrer: Inferrer<N>,
+}
+
+struct Inferrer<N: Node> {
     mandates: BTreeMap<RoundNumOf<N>, Mandate<N>>,
     leadership: Vec<LeadershipFor<N>>,
 }
@@ -118,7 +131,19 @@ pub struct Leadership<N, R: RoundNum, C> {
     pub last_directive_at: Instant,
 }
 
-impl<N: Node> TrackLeadership<N> {
+impl<N: Node> Inferrer<N> {
+    fn new() -> Self {
+        Self {
+            mandates: BTreeMap::new(),
+            leadership: Vec::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.mandates.clear();
+        self.leadership.clear();
+    }
+
     fn react_to_apply(&mut self, round: RoundNumOf<N>) {
         let affects_first_mandate = self
             .mandates
@@ -228,8 +253,8 @@ where
             decorated,
             suspended: false,
             min_round: Zero::zero(),
-            mandates: BTreeMap::new(),
-            leadership: Vec::new(),
+            lax_inferrer: Inferrer::new(),
+            strict_inferrer: Inferrer::new(),
         })
     }
 
@@ -270,15 +295,15 @@ where
                 crate::Event::Init { round, .. } | crate::Event::Install { round, .. } => {
                     self.suspended = true;
                     self.min_round = *round + One::one();
-                    self.mandates.clear();
-                    self.leadership.clear();
+                    self.lax_inferrer.reset();
+                    self.strict_inferrer.reset();
                 }
                 crate::Event::StatusChange { new_status, .. } => match new_status {
                     NodeStatus::Lagging | NodeStatus::Disoriented => {
                         if !self.suspended {
                             self.suspended = true;
-                            self.mandates.clear();
-                            self.leadership.clear();
+                            self.lax_inferrer.reset();
+                            self.strict_inferrer.reset();
                         }
                     }
                     NodeStatus::Following | NodeStatus::Leading => self.suspended = false,
@@ -287,17 +312,25 @@ where
                     self.min_round = *round + One::one();
 
                     if !self.suspended {
-                        self.react_to_apply(*round);
+                        self.lax_inferrer.react_to_apply(*round);
+                        self.strict_inferrer.react_to_apply(*round);
                     }
                 }
                 crate::Event::Directive {
+                    kind,
                     leader,
                     round_num,
                     coord_num,
                     timestamp,
                 } => {
                     if !self.suspended && *round_num >= self.min_round {
-                        self.react_to_directive(leader, *round_num, *coord_num, *timestamp);
+                        self.lax_inferrer
+                            .react_to_directive(leader, *round_num, *coord_num, *timestamp);
+
+                        if *kind != DirectiveKind::Prepare {
+                            self.strict_inferrer
+                                .react_to_directive(leader, *round_num, *coord_num, *timestamp);
+                        }
                     }
                 }
                 _ => {}
@@ -360,14 +393,22 @@ where
         >,
     <D as Decoration>::Decorated: LeadershipAwareNode<I>,
 {
-    fn leadership(&self) -> &[LeadershipFor<D>] {
-        Decoration::peek_into(self).leadership()
+    fn lax_leadership(&self) -> &[LeadershipFor<D>] {
+        Decoration::peek_into(self).lax_leadership()
+    }
+
+    fn strict_leadership(&self) -> &[LeadershipFor<D>] {
+        Decoration::peek_into(self).strict_leadership()
     }
 }
 
 impl<N: Node> LeadershipAwareNode<()> for TrackLeadership<N> {
-    fn leadership(&self) -> &[LeadershipFor<N>] {
-        &self.leadership
+    fn lax_leadership(&self) -> &[LeadershipFor<N>] {
+        &self.lax_inferrer.leadership
+    }
+
+    fn strict_leadership(&self) -> &[LeadershipFor<N>] {
+        &self.strict_inferrer.leadership
     }
 }
 
@@ -380,7 +421,7 @@ where
         > + 'static,
     <D as Decoration>::Decorated: MaybeLeadershipAwareNode<I>,
 {
-    fn leadership(&self) -> Option<&[LeadershipFor<D>]> {
+    fn lax_leadership(&self) -> Option<&[LeadershipFor<D>]> {
         if std::any::Any::type_id(self)
             == std::any::TypeId::of::<TrackLeadership<<D as Decoration>::Decorated>>()
         {
@@ -388,9 +429,23 @@ where
             let this = any
                 .downcast_ref::<TrackLeadership<<D as Decoration>::Decorated>>()
                 .unwrap();
-            Some(LeadershipAwareNode::leadership(this))
+            Some(LeadershipAwareNode::lax_leadership(this))
         } else {
-            Decoration::peek_into(self).leadership()
+            Decoration::peek_into(self).lax_leadership()
+        }
+    }
+
+    fn strict_leadership(&self) -> Option<&[LeadershipFor<D>]> {
+        if std::any::Any::type_id(self)
+            == std::any::TypeId::of::<TrackLeadership<<D as Decoration>::Decorated>>()
+        {
+            let any: &dyn std::any::Any = self;
+            let this = any
+                .downcast_ref::<TrackLeadership<<D as Decoration>::Decorated>>()
+                .unwrap();
+            Some(LeadershipAwareNode::strict_leadership(this))
+        } else {
+            Decoration::peek_into(self).strict_leadership()
         }
     }
 }
@@ -409,7 +464,11 @@ where
         Abstain = invocation::AbstainOf<I>,
     >,
 {
-    fn leadership(&self) -> Option<&[LeadershipFor<Self>]> {
+    fn lax_leadership(&self) -> Option<&[LeadershipFor<Self>]> {
+        None
+    }
+
+    fn strict_leadership(&self) -> Option<&[LeadershipFor<Self>]> {
         None
     }
 }

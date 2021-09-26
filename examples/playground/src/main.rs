@@ -449,7 +449,7 @@ async fn spawn_node(
                     .await;
                 }
 
-                let new_leader = node.leadership().get(0).map(|l| l.leader);
+                let new_leader = node.strict_leadership().get(0).map(|l| l.leader);
 
                 if new_leader != leader {
                     leader = new_leader;
