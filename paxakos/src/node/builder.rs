@@ -26,6 +26,7 @@ use crate::voting::IndiscriminateVoter;
 use crate::voting::IndiscriminateVoterFor;
 use crate::voting::Voter;
 use crate::Node;
+use crate::Shell;
 use crate::State;
 
 use super::snapshot::Snapshot;
@@ -328,7 +329,9 @@ where
         }
     }
 
-    pub fn spawn(self) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>>
+    pub fn spawn(
+        self,
+    ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, Shell<N>), SpawnError>>
     where
         node::StateOf<N>: State<Context = ()>,
     {
@@ -338,7 +341,7 @@ where
     pub fn spawn_in(
         self,
         context: node::ContextOf<N>,
-    ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>> {
+    ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, Shell<N>), SpawnError>> {
         let finisher = self.finisher;
 
         Core::spawn(
@@ -358,7 +361,7 @@ where
         )
         .map(Ok)
         .and_then(|(req_handler, core)| {
-            futures::future::ready(finisher(core).map(|node| (req_handler, node)))
+            futures::future::ready(finisher(core).map(|node| (req_handler, Shell::around(node))))
         })
         .boxed_local()
     }

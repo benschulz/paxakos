@@ -5,6 +5,7 @@ use std::time::Duration;
 use futures::stream::StreamExt;
 use paxakos::autofill;
 use paxakos::invocation::Invocation;
+use paxakos::Shell;
 use uuid::Uuid;
 
 use paxakos::communicator::Communicator;
@@ -27,7 +28,7 @@ use calc_app::CalcOp;
 use calc_app::CalcState;
 use calc_app::PlusZero;
 
-type CalcNode = Core<CalcInvocation, DirectCommunicator<CalcInvocation>>;
+type CalcNode = Shell<Core<CalcInvocation, DirectCommunicator<CalcInvocation>>>;
 
 #[test]
 fn emit_gaps_event_when_it_first_appears() {

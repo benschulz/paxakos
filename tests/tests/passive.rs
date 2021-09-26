@@ -19,13 +19,14 @@ use paxakos::Core;
 use paxakos::Node;
 use paxakos::NodeInfo;
 use paxakos::PrepareError;
+use paxakos::Shell;
 
 use calc_app::CalcInvocation;
 use calc_app::CalcOp;
 use calc_app::CalcState;
 
 type CalcCommunicator = DirectCommunicator<CalcInvocation>;
-type CalcNode = Core<CalcInvocation, CalcCommunicator>;
+type CalcNode = Shell<Core<CalcInvocation, CalcCommunicator>>;
 
 #[test]
 fn worst_case() {

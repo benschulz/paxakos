@@ -383,6 +383,7 @@ pub use node::NodeInfo;
 pub use node::NodeKit;
 pub use node::NodeStatus;
 pub use node::RequestHandler;
+pub use node::Shell;
 pub use node::Shutdown;
 #[doc(inline)]
 pub use state::State;

@@ -40,6 +40,7 @@ use crate::node::StateOf;
 use crate::node::YeaOf;
 use crate::voting::Voter;
 use crate::RoundNum;
+use crate::Shell;
 
 pub type LeadershipFor<N> = Leadership<NodeIdOf<N>, RoundNumOf<N>, CoordNumOf<N>>;
 
@@ -399,6 +400,19 @@ where
 
     fn strict_leadership(&self) -> &[LeadershipFor<D>] {
         Decoration::peek_into(self).strict_leadership()
+    }
+}
+
+impl<N, I> LeadershipAwareNode<(I,)> for Shell<N>
+where
+    N: Node + LeadershipAwareNode<I>,
+{
+    fn lax_leadership(&self) -> &[LeadershipFor<N>] {
+        self.wrapped.lax_leadership()
+    }
+
+    fn strict_leadership(&self) -> &[LeadershipFor<N>] {
+        self.wrapped.strict_leadership()
     }
 }
 
