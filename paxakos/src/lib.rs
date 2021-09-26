@@ -30,7 +30,6 @@
 //!
 //! ```
 //! use std::collections::HashSet;
-//! # use std::convert::Infallible;
 //!
 //! use paxakos::{LogEntry, State};
 //! use uuid::Uuid;
