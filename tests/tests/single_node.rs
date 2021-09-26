@@ -88,7 +88,7 @@ fn multiple_concurrent_appends() {
     assert!((target - state.value()).abs() < f64::EPSILON);
 }
 
-fn setup_node() -> paxakos::NodeKernel<CalcInvocation, DirectCommunicator<CalcInvocation>> {
+fn setup_node() -> paxakos::Core<CalcInvocation, DirectCommunicator<CalcInvocation>> {
     let node_info = PrototypingNode::new();
     let communicators = DirectCommunicators::<CalcInvocation>::new();
 

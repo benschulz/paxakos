@@ -50,8 +50,7 @@ use super::RequestHandler;
 use super::SnapshotFor;
 
 /// The default [`Node`][crate::Node] implementation.
-// TODO a better name may be needed…
-pub struct NodeKernel<I, C>
+pub struct Core<I, C>
 where
     I: Invocation,
     C: Communicator<
@@ -77,7 +76,7 @@ where
     handle_appends: FuturesUnordered<HandleAppend<I, C>>,
 }
 
-impl<I, C> Node for NodeKernel<I, C>
+impl<I, C> Node for Core<I, C>
 where
     I: Invocation,
     C: Communicator<
@@ -208,7 +207,7 @@ where
     }
 }
 
-impl<I, C> NodeKernel<I, C>
+impl<I, C> Core<I, C>
 where
     I: Invocation,
     C: Communicator<
@@ -227,7 +226,7 @@ where
         id: NodeIdOf<I>,
         communicator: C,
         args: super::SpawnArgs<I, V, B>,
-    ) -> (RequestHandler<I>, NodeKernel<I, C>)
+    ) -> (RequestHandler<I>, Core<I, C>)
     where
         V: Voter<
             State = StateOf<I>,
@@ -251,7 +250,7 @@ where
 
         let inner = Rc::new(inner);
 
-        let node = NodeKernel {
+        let node = Core {
             inner,
             state_keeper,
             proof_of_life,
@@ -306,7 +305,7 @@ where
         Abstain = invocation::AbstainOf<I>,
     >,
 {
-    append: LocalBoxFuture<'static, AppendResultFor<NodeKernel<I, C>, LogEntryOf<I>>>,
+    append: LocalBoxFuture<'static, AppendResultFor<Core<I, C>, LogEntryOf<I>>>,
     send: Option<oneshot::Sender<NodeHandleResponse<I>>>,
 }
 

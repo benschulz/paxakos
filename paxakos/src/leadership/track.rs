@@ -23,6 +23,7 @@ use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
+use crate::node::Core;
 use crate::node::EventFor;
 use crate::node::InvocationOf;
 use crate::node::LogEntryOf;
@@ -30,7 +31,6 @@ use crate::node::NayOf;
 use crate::node::Node;
 use crate::node::NodeIdOf;
 use crate::node::NodeInfo;
-use crate::node::NodeKernel;
 use crate::node::NodeOf;
 use crate::node::NodeStatus;
 use crate::node::Participation;
@@ -450,7 +450,7 @@ where
     }
 }
 
-impl<I, C> MaybeLeadershipAwareNode<()> for NodeKernel<I, C>
+impl<I, C> MaybeLeadershipAwareNode<()> for Core<I, C>
 where
     I: Invocation,
     C: Communicator<

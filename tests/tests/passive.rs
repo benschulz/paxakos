@@ -15,9 +15,9 @@ use paxakos::prototyping::DirectCommunicator;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::AcceptError;
+use paxakos::Core;
 use paxakos::Node;
 use paxakos::NodeInfo;
-use paxakos::NodeKernel;
 use paxakos::PrepareError;
 
 use calc_app::CalcInvocation;
@@ -25,7 +25,7 @@ use calc_app::CalcOp;
 use calc_app::CalcState;
 
 type CalcCommunicator = DirectCommunicator<CalcInvocation>;
-type CalcNode = NodeKernel<CalcInvocation, CalcCommunicator>;
+type CalcNode = Core<CalcInvocation, CalcCommunicator>;
 
 #[test]
 fn worst_case() {

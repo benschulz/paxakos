@@ -375,11 +375,11 @@ pub use log_entry::LogEntry;
 #[doc(inline)]
 pub use node::builder as node_builder;
 pub use node::Commit;
+pub use node::Core;
 pub use node::Node;
 pub use node::NodeBuilder;
 pub use node::NodeHandle;
 pub use node::NodeInfo;
-pub use node::NodeKernel;
 pub use node::NodeKit;
 pub use node::NodeStatus;
 pub use node::RequestHandler;

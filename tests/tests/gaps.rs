@@ -16,10 +16,10 @@ use paxakos::node::EventFor;
 use paxakos::prototyping::DirectCommunicator;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
+use paxakos::Core;
 use paxakos::Event;
 use paxakos::Node;
 use paxakos::NodeInfo;
-use paxakos::NodeKernel;
 use paxakos::RequestHandler;
 
 use calc_app::CalcInvocation;
@@ -27,7 +27,7 @@ use calc_app::CalcOp;
 use calc_app::CalcState;
 use calc_app::PlusZero;
 
-type CalcNode = NodeKernel<CalcInvocation, DirectCommunicator<CalcInvocation>>;
+type CalcNode = Core<CalcInvocation, DirectCommunicator<CalcInvocation>>;
 
 #[test]
 fn emit_gaps_event_when_it_first_appears() {

@@ -30,8 +30,8 @@ use crate::State;
 
 use super::snapshot::Snapshot;
 use super::CommunicatorOf;
+use super::Core;
 use super::InvocationOf;
-use super::NodeKernel;
 use super::NodeKit;
 use super::RequestHandlerFor;
 
@@ -93,7 +93,7 @@ where
     >,
 {
     /// Starts the node without any state and in passive mode.
-    pub fn without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
+    pub fn without_state(self) -> NodeBuilder<Core<I, C>> {
         self.with_snapshot_and_passivity(None, false)
     }
 
@@ -103,7 +103,7 @@ where
     pub fn with_initial_state<S: Into<Option<StateOf<I>>>>(
         self,
         initial_state: S,
-    ) -> NodeBuilder<NodeKernel<I, C>> {
+    ) -> NodeBuilder<Core<I, C>> {
         self.with_snapshot_and_passivity(initial_state.into().map(Snapshot::initial), false)
     }
 
@@ -124,7 +124,7 @@ where
     pub fn resuming_from<S: Into<Option<SnapshotFor<I>>>>(
         self,
         snapshot: S,
-    ) -> NodeBuilder<NodeKernel<I, C>> {
+    ) -> NodeBuilder<Core<I, C>> {
         self.with_snapshot_and_passivity(snapshot, false)
     }
 
@@ -135,7 +135,7 @@ where
     pub fn recovering_with<S: Into<Option<SnapshotFor<I>>>>(
         self,
         snapshot: S,
-    ) -> NodeBuilder<NodeKernel<I, C>> {
+    ) -> NodeBuilder<Core<I, C>> {
         self.with_snapshot_and_passivity(snapshot, true)
     }
 
@@ -143,7 +143,7 @@ where
     ///
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
-    pub fn recovering_without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
+    pub fn recovering_without_state(self) -> NodeBuilder<Core<I, C>> {
         self.with_snapshot_and_passivity(None, true)
     }
 
@@ -164,7 +164,7 @@ where
     pub fn joining_with<S: Into<Option<SnapshotFor<I>>>>(
         self,
         snapshot: S,
-    ) -> NodeBuilder<NodeKernel<I, C>> {
+    ) -> NodeBuilder<Core<I, C>> {
         self.with_snapshot_and_passivity(snapshot, false)
     }
 
@@ -182,7 +182,7 @@ where
     ///
     /// [recovering_without]:
     /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_without
-    pub fn joining_without_state(self) -> NodeBuilder<NodeKernel<I, C>> {
+    pub fn joining_without_state(self) -> NodeBuilder<Core<I, C>> {
         self.with_snapshot_and_passivity(None, false)
     }
 
@@ -191,7 +191,7 @@ where
         self,
         snapshot: S,
         force_passive: bool,
-    ) -> NodeBuilder<NodeKernel<I, C>> {
+    ) -> NodeBuilder<Core<I, C>> {
         let snapshot = snapshot.into();
 
         NodeBuilder {
@@ -210,8 +210,7 @@ where
     }
 }
 
-type Finisher<N> =
-    dyn FnOnce(NodeKernel<InvocationOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
+type Finisher<N> = dyn FnOnce(Core<InvocationOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
 
 pub struct NodeBuilder<
     N: Node,
@@ -342,7 +341,7 @@ where
     ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, N), SpawnError>> {
         let finisher = self.finisher;
 
-        NodeKernel::spawn(
+        Core::spawn(
             self.kit,
             self.node_id,
             self.communicator,
@@ -358,8 +357,8 @@ where
             },
         )
         .map(Ok)
-        .and_then(|(req_handler, kernel)| {
-            futures::future::ready(finisher(kernel).map(|node| (req_handler, node)))
+        .and_then(|(req_handler, core)| {
+            futures::future::ready(finisher(core).map(|node| (req_handler, node)))
         })
         .boxed_local()
     }

@@ -1,9 +1,9 @@
 pub mod builder;
 mod commits;
+mod core;
 mod handle;
 mod info;
 mod inner;
-mod kernel;
 mod req_handler;
 mod shutdown;
 mod snapshot;
@@ -28,11 +28,11 @@ use crate::invocation::Invocation;
 use crate::tracer::Tracer;
 use crate::Event;
 
+pub use self::core::Core;
 pub use builder::NodeBuilder;
 pub use commits::Commit;
 pub use handle::NodeHandle;
 pub use info::NodeInfo;
-pub use kernel::NodeKernel;
 pub use req_handler::RequestHandler;
 pub use shutdown::DefaultShutdown;
 pub use shutdown::Shutdown;
