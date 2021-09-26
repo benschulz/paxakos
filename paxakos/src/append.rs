@@ -120,9 +120,8 @@ pub enum AppendError<I: Invocation> {
     },
 
     /// Catch-all, this may be refined over time.
-    #[error("uncategorized error occured")]
-    // TODO remove, introduce new variant for decorations
-    Other(crate::error::BoxError),
+    #[error("a node decoration raised an error")]
+    Decoration(#[source] crate::error::BoxError),
 
     /// Node is in passive mode.
     #[error("node is passive")]
@@ -158,7 +157,9 @@ impl<I: Invocation> std::fmt::Debug for AppendError<I> {
                 .field("communication_errors", communication_errors)
                 .field("rejections", rejections)
                 .finish(),
-            AppendError::Other(err) => f.debug_tuple("AppendError::Other").field(err).finish(),
+            AppendError::Decoration(err) => {
+                f.debug_tuple("AppendError::Decoration").field(err).finish()
+            }
             AppendError::Passive => f.debug_tuple("AppendError::Passive").finish(),
             AppendError::Railroaded => f.debug_tuple("AppendError::Railroaded").finish(),
             AppendError::ShutDown => f.debug_tuple("AppendError::ShutDown").finish(),
