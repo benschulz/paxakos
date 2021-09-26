@@ -36,7 +36,7 @@ use std::collections::HashSet;
 use paxakos::{LogEntry, State};
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
 pub enum CalcOp {
     Add(f64, Uuid),
     Div(f64, Uuid),
@@ -72,6 +72,8 @@ impl State for CalcState {
     type Outcome = f64;
     type Event = f64;
 
+#
+#
     fn apply(
         &mut self,
         log_entry: &Self::LogEntry,
@@ -282,14 +284,12 @@ There is reason to be confident in its correctness.
 
 ### ⛅ Passive Mode ⛅
 
-[Passive mode][passive-mode] is implemented and superficially tested.
-Thorough testing is still needed.
+[Passive mode][crate::node::Participation] is implemented and superficially
+tested. Thorough testing is still needed.
 
-[passive-mode]: https://docs.rs/paxakos/*/paxakos/node/enum.Participation.html
+### ⛅ Serialization ⛅
 
-### 🌧️ Serialization 🌧️
-
-Snapshot serialization needs to be reworked to allow for backward compat.
+Snapshot serialization is serde based and still maturing.
 
 ### ⛅ API Stability ⛅
 
@@ -302,11 +302,6 @@ into the `State`.
 Paxakos supports concurrency and has a (for now rudimentary) implementation
 of master leases. Assuming a scheme to delegate to the current master, this
 combination is highly efficient.
-
-### Nightly Features
-
-Paxakos currently relies on several nightly features. None of them are
-crucial, but there hasn't been any need become compatible with stable Rust.
 
 ## Future Direction
 
