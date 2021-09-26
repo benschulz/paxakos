@@ -293,11 +293,9 @@ where
     type Node = N;
     type Applicable = CalcOp;
 
-    fn init(&mut self, node: &Self::Node, _state: &paxakos::node::StateOf<Self::Node>) {
+    fn init(&mut self, node: &Self::Node) {
         self.node_id = node.id();
     }
-
-    fn update(&mut self, _event: &paxakos::node::EventOf<Self::Node>) {}
 
     fn new_heartbeat(&self) -> Self::Applicable {
         tracing::info!("Node {:?} is sending a heartbeat.", self.node_id);

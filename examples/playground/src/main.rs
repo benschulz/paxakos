@@ -499,12 +499,9 @@ where
     type Node = N;
     type Applicable = PlaygroundLogEntry;
 
-    fn init(&mut self, node: &Self::Node, _state: &paxakos::node::StateOf<Self::Node>) {
+    fn init(&mut self, node: &Self::Node) {
         self.node_id = node.id();
     }
-
-    fn update(&mut self, _event: &paxakos::node::EventOf<Self::Node>) {}
-
     fn leader_interval(&self) -> Option<Duration> {
         Some(Duration::from_secs(3))
     }
@@ -556,11 +553,9 @@ impl<N: Node<Invocation = PlaygroundInvocation>> autofill::Config for AutofillCo
     type Node = N;
     type Applicable = PlaygroundLogEntry;
 
-    fn init(&mut self, node: &Self::Node, _state: &paxakos::node::StateOf<Self::Node>) {
+    fn init(&mut self, node: &Self::Node) {
         self.node_id = node.id();
     }
-
-    fn update(&mut self, _event: &paxakos::node::EventOf<Self::Node>) {}
 
     fn batch_size(&self) -> usize {
         10

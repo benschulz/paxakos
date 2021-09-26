@@ -20,7 +20,6 @@ use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventFor;
-use crate::node::EventOf;
 use crate::node::InvocationOf;
 use crate::node::LogEntryOf;
 use crate::node::NayOf;
@@ -38,9 +37,11 @@ pub trait Config {
     type Node: Node;
     type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
 
-    fn init(&mut self, node: &Self::Node, state: &StateOf<Self::Node>);
+    #[allow(unused_variables)]
+    fn init(&mut self, node: &Self::Node) {}
 
-    fn update(&mut self, event: &EventOf<Self::Node>);
+    #[allow(unused_variables)]
+    fn update(&mut self, event: &EventFor<Self::Node>) {}
 
     fn leader_interval(&self) -> Option<Duration> {
         None
@@ -89,10 +90,6 @@ where
 {
     type Node = N;
     type Applicable = A;
-
-    fn init(&mut self, _node: &Self::Node, _state: &StateOf<Self::Node>) {}
-
-    fn update(&mut self, _event: &EventOf<Self::Node>) {}
 
     fn leader_interval(&self) -> Option<Duration> {
         self.leader_interval
@@ -232,8 +229,10 @@ where
 
     fn wrap(
         decorated: Self::Decorated,
-        arguments: Self::Arguments,
+        mut arguments: Self::Arguments,
     ) -> Result<Self, crate::error::SpawnError> {
+        arguments.init(&decorated);
+
         Ok(Self {
             decorated,
             config: arguments,
@@ -282,6 +281,8 @@ where
         let event = self.decorated.poll_events(cx);
 
         if let Poll::Ready(event) = &event {
+            self.config.update(event);
+
             match event {
                 crate::Event::Init {
                     status: new_status, ..

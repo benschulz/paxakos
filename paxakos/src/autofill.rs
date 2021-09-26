@@ -23,7 +23,6 @@ use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventFor;
-use crate::node::EventOf;
 use crate::node::InvocationOf;
 use crate::node::LogEntryOf;
 use crate::node::NayOf;
@@ -45,9 +44,11 @@ pub trait Config {
     type Node: Node;
     type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
 
-    fn init(&mut self, node: &Self::Node, state: &StateOf<Self::Node>);
+    #[allow(unused_variables)]
+    fn init(&mut self, node: &Self::Node) {}
 
-    fn update(&mut self, event: &EventOf<Self::Node>);
+    #[allow(unused_variables)]
+    fn update(&mut self, event: &EventFor<Self::Node>) {}
 
     fn batch_size(&self) -> usize;
 
@@ -87,10 +88,6 @@ where
 {
     type Node = N;
     type Applicable = A;
-
-    fn init(&mut self, _node: &Self::Node, _state: &StateOf<Self::Node>) {}
-
-    fn update(&mut self, _event: &EventOf<Self::Node>) {}
 
     fn batch_size(&self) -> usize {
         self.batch_size
@@ -311,8 +308,10 @@ where
 
     fn wrap(
         decorated: Self::Decorated,
-        arguments: Self::Arguments,
+        mut arguments: Self::Arguments,
     ) -> Result<Self, crate::error::SpawnError> {
+        arguments.init(&decorated);
+
         Ok(Self {
             decorated,
             config: arguments,
@@ -363,24 +362,20 @@ where
         let event = self.decorated.poll_events(cx);
 
         if let Poll::Ready(event) = &event {
-            match event {
-                crate::Event::Init { status, state, .. } => {
-                    self.handle_new_status(*status);
+            self.config.update(event);
 
-                    if let Some(state) = state {
-                        self.config.init(&self.decorated, &**state);
-                    }
+            match event {
+                crate::Event::Init { status, .. } => {
+                    self.handle_new_status(*status);
                 }
 
                 crate::Event::StatusChange { new_status, .. } => {
                     self.handle_new_status(*new_status);
                 }
 
-                crate::Event::Install { state, .. } => {
+                crate::Event::Install { .. } => {
                     self.queued_gaps.clear();
                     self.known_gaps.clear();
-
-                    self.config.init(&self.decorated, &**state);
                 }
 
                 crate::Event::Gaps(ref gaps) => {
@@ -402,10 +397,8 @@ where
                     self.known_gaps.extend(new_gaps);
                 }
 
-                crate::Event::Apply { round, result, .. } => {
+                crate::Event::Apply { round, .. } => {
                     self.known_gaps.remove(round);
-
-                    self.config.update(result);
                 }
 
                 _ => {}
