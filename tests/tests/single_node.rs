@@ -95,7 +95,6 @@ fn setup_node() -> paxakos::NodeKernel<CalcInvocation, DirectCommunicator<CalcIn
     let (_, node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_info.id())
-            .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 1))
             .spawn_in(()),

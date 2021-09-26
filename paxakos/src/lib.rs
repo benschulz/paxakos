@@ -333,6 +333,7 @@ pub mod append;
 pub mod applicable;
 #[cfg(feature = "autofill")]
 pub mod autofill;
+pub mod buffer;
 pub mod cluster;
 pub mod communicator;
 pub mod decoration;
@@ -344,7 +345,7 @@ pub mod invocation;
 pub mod leadership;
 #[cfg(feature = "leases")]
 pub mod leases;
-mod log;
+mod log_entry;
 pub mod node;
 #[cfg(feature = "prototyping")]
 pub mod prototyping;
@@ -370,7 +371,7 @@ pub use event::ShutdownEvent;
 #[doc(inline)]
 pub use invocation::Invocation;
 #[doc(inline)]
-pub use log::LogEntry;
+pub use log_entry::LogEntry;
 #[doc(inline)]
 pub use node::builder as node_builder;
 pub use node::Commit;

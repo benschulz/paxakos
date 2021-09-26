@@ -11,6 +11,7 @@ use num_traits::Zero;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
+use crate::buffer::Buffer;
 use crate::communicator::Communicator;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
@@ -23,6 +24,7 @@ use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventFor;
 use crate::node::InvocationOf;
+use crate::node::LogEntryOf;
 use crate::node::NayOf;
 use crate::node::Node;
 use crate::node::NodeIdOf;
@@ -60,11 +62,18 @@ pub trait MaybeLeadershipAwareNode<I>: Node {
 pub trait TrackLeadershipBuilderExt {
     type Node: Node;
     type Voter: Voter;
+    type Buffer: Buffer<
+        RoundNum = RoundNumOf<Self::Node>,
+        CoordNum = CoordNumOf<Self::Node>,
+        Entry = LogEntryOf<Self::Node>,
+    >;
 
-    fn track_leadership(self) -> NodeBuilder<TrackLeadership<Self::Node>, Self::Voter>;
+    fn track_leadership(
+        self,
+    ) -> NodeBuilder<TrackLeadership<Self::Node>, Self::Voter, Self::Buffer>;
 }
 
-impl<N, V> TrackLeadershipBuilderExt for NodeBuilder<N, V>
+impl<N, V, B> TrackLeadershipBuilderExt for NodeBuilder<N, V, B>
 where
     N: Node + 'static,
     V: Voter<
@@ -75,11 +84,15 @@ where
         Yea = YeaOf<N>,
         Nay = NayOf<N>,
     >,
+    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
 {
     type Node = N;
     type Voter = V;
+    type Buffer = B;
 
-    fn track_leadership(self) -> NodeBuilder<TrackLeadership<N>, V> {
+    fn track_leadership(
+        self,
+    ) -> NodeBuilder<TrackLeadership<Self::Node>, Self::Voter, Self::Buffer> {
         self.decorated_with(())
     }
 }

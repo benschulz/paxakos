@@ -18,16 +18,11 @@ use crate::RoundNum;
 pub struct Snapshot<S: State, R: RoundNum, C: CoordNum>(VersionedSnapshot<S, R, C>);
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-#[serde(
-    bound(
-        serialize = "S: serde::Serialize",
-        deserialize = "S: serde::Deserialize<'de>"
-    ),
-    tag = "version"
-)]
+#[serde(bound(
+    serialize = "S: serde::Serialize",
+    deserialize = "S: serde::Deserialize<'de>"
+))]
 pub enum VersionedSnapshot<S: State, R: RoundNum, C: CoordNum> {
-    // TODO keep eye on https://github.com/serde-rs/serde/pull/2056
-    // maybe this can be renamed to `1` before `"V1"` is depended on
     V1(SnapshotV1<S, R, C>),
 }
 

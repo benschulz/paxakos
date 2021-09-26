@@ -301,7 +301,6 @@ async fn spawn_node(
         let (handler, mut node) = futures::executor::block_on(
             PlaygroundInvocation::node_builder()
                 .for_node(n.id())
-                .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(n.id()))
                 .with_snapshot_and_passivity(snapshot, passive)
                 .track_leadership()

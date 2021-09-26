@@ -12,6 +12,7 @@ use num_traits::One;
 use crate::append::AppendArgs;
 use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
+use crate::buffer::Buffer;
 use crate::communicator::AbstainOf;
 use crate::communicator::Communicator;
 use crate::communicator::CoordNumOf;
@@ -221,12 +222,12 @@ where
         Abstain = invocation::AbstainOf<I>,
     >,
 {
-    pub(crate) async fn spawn<V>(
+    pub(crate) async fn spawn<V, B>(
         kit: NodeKit<I>,
         id: NodeIdOf<I>,
         communicator: C,
-        args: super::SpawnArgs<I, V>,
-    ) -> Result<(RequestHandler<I>, NodeKernel<I, C>), crate::error::SpawnError>
+        args: super::SpawnArgs<I, V, B>,
+    ) -> (RequestHandler<I>, NodeKernel<I, C>)
     where
         V: Voter<
             State = StateOf<I>,
@@ -236,11 +237,12 @@ where
             Yea = YeaOf<C>,
             Nay = NayOf<C>,
         >,
+        B: Buffer<RoundNum = RoundNumOf<C>, CoordNum = CoordNumOf<C>, Entry = LogEntryOf<I>>,
     {
         let state_keeper = kit.state_keeper.handle();
 
         let (initial_status, initial_participation, events, proof_of_life) =
-            StateKeeper::spawn(kit.state_keeper, args).await?;
+            StateKeeper::spawn(kit.state_keeper, args).await;
 
         let req_handler = RequestHandler::new(state_keeper.clone());
         let commits = Commits::new();
@@ -262,7 +264,7 @@ where
             handle_appends: FuturesUnordered::new(),
         };
 
-        Ok((req_handler, node))
+        (req_handler, node)
     }
 
     fn poll_handle_reqs(&mut self, cx: &mut std::task::Context<'_>) {

@@ -13,43 +13,15 @@ use crate::invocation::NayOf;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
+#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum SpawnError {
-    #[error("invalid working directory")]
-    InvalidWorkingDir(std::path::PathBuf, #[source] BoxError),
-
-    #[error("I/O error")]
-    IoError(#[from] IoError),
-
-    #[error("other error")]
-    Other(#[source] BoxError),
-}
-
-#[derive(Debug, Error)]
-#[error("{0}")]
-pub struct IoError(String, #[source] std::io::Error);
-
-impl IoError {
-    pub(crate) fn new(context: impl Into<String>, source: std::io::Error) -> Self {
-        Self(context.into(), source)
-    }
-
-    pub(crate) fn invalid_data(
-        context: impl Into<String>,
-        source: impl Into<Box<dyn std::error::Error + Send + Sync>>,
-    ) -> Self {
-        Self::new(
-            context,
-            std::io::Error::new(std::io::ErrorKind::InvalidData, source),
-        )
-    }
+    #[error("a node decoration raised an error")]
+    Decoration(#[source] BoxError),
 }
 
 #[derive(Debug, Error)]
 pub enum PrepareSnapshotError {
-    #[error("I/O error")]
-    IoError(#[from] IoError),
-
     #[error("node is disoriented")]
     Disoriented,
 
@@ -59,9 +31,6 @@ pub enum PrepareSnapshotError {
 
 #[derive(Debug, Error)]
 pub enum AffirmSnapshotError {
-    #[error("I/O error")]
-    IoError(#[from] IoError),
-
     #[error("unknown snapshot")]
     Unknown,
 
@@ -71,9 +40,6 @@ pub enum AffirmSnapshotError {
 
 #[derive(Debug, Error)]
 pub enum InstallSnapshotError {
-    #[error("I/O error")]
-    IoError(#[from] IoError),
-
     #[error("snapshot is outdated")]
     Outdated,
 

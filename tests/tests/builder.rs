@@ -20,7 +20,6 @@ fn node_without_state_starts_as_lost() {
     let (_, node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_info.id())
-            .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .without_state()
             .spawn(),
@@ -38,7 +37,6 @@ fn node_given_immediately_ready_snapshot_starts_as_lagging() {
     let (_, node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_info.id())
-            .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .joining_with(Snapshot::initial(CalcState::new(vec![node_info], 1)))
             .spawn(),

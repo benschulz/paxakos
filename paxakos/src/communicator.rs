@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::invocation;
 use crate::invocation::Invocation;
-use crate::log::LogEntry;
+use crate::log_entry::LogEntry;
 use crate::AcceptError;
 use crate::CommitError;
 use crate::Conflict;

@@ -18,6 +18,7 @@ pub use voter::LeaseGrantingVoter;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
+use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::node::AbstainOf;
@@ -26,6 +27,7 @@ use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventFor;
 use crate::node::InvocationOf;
+use crate::node::LogEntryOf;
 use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::Participation;
@@ -48,18 +50,23 @@ pub trait MasterLeasingNode<I>: Node {
 pub trait MasterLeasesBuilderExt {
     type Node: Node + 'static;
     type Voter: Voter;
+    type Buffer: Buffer<
+        RoundNum = RoundNumOf<Self::Node>,
+        CoordNum = CoordNumOf<Self::Node>,
+        Entry = LogEntryOf<Self::Node>,
+    >;
 
     fn maintain_master_lease<C>(
         self,
         communicator_subscription: communicator::Subscription<NodeIdOf<Self::Node>>,
         voter_subscription: voter::Subscription<NodeIdOf<Self::Node>>,
         config: C,
-    ) -> NodeBuilder<MasterLeases<Self::Node, C>, Self::Voter>
+    ) -> NodeBuilder<MasterLeases<Self::Node, C>, Self::Voter, Self::Buffer>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V> MasterLeasesBuilderExt for NodeBuilder<N, V>
+impl<N, V, B> MasterLeasesBuilderExt for NodeBuilder<N, V, B>
 where
     N: Node + 'static,
     V: Voter<
@@ -70,16 +77,18 @@ where
         Yea = YeaOf<N>,
         Nay = NayOf<N>,
     >,
+    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
 {
     type Node = N;
     type Voter = V;
+    type Buffer = B;
 
     fn maintain_master_lease<C>(
         self,
         communicator_subscription: communicator::Subscription<NodeIdOf<Self::Node>>,
         voter_subscription: voter::Subscription<NodeIdOf<Self::Node>>,
         config: C,
-    ) -> NodeBuilder<MasterLeases<Self::Node, C>, Self::Voter>
+    ) -> NodeBuilder<MasterLeases<Self::Node, C>, Self::Voter, Self::Buffer>
     where
         C: Config<Node = Self::Node> + 'static,
     {
@@ -129,7 +138,7 @@ where
     C: Config<Node = N>,
 {
     decorated: N,
-    config: C,
+    _config: C,
 
     communicator_subscription: communicator::Subscription<NodeIdOf<N>>,
     voter_subscription: voter::Subscription<NodeIdOf<N>>,
@@ -190,7 +199,7 @@ where
     ) -> Result<Self, crate::error::SpawnError> {
         Ok(Self {
             decorated,
-            config: arguments.config,
+            _config: arguments.config,
 
             communicator_subscription: arguments.communicator_subscription,
             voter_subscription: arguments.voter_subscription,

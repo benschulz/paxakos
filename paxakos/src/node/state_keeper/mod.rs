@@ -1,8 +1,6 @@
 mod error;
 mod handle;
-mod io;
 mod msg;
-mod working_dir;
 
 use std::collections::btree_map;
 use std::collections::BTreeMap;
@@ -27,6 +25,7 @@ use smallvec::SmallVec;
 use tracing::debug;
 use tracing::info;
 
+use crate::buffer::Buffer;
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
@@ -34,7 +33,6 @@ use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
 use crate::error::PrepareSnapshotError;
 use crate::error::ReadStaleError;
-use crate::error::SpawnError;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
 use crate::invocation::AbstainOf;
@@ -52,7 +50,7 @@ use crate::invocation::RoundNumOf;
 use crate::invocation::SnapshotFor;
 use crate::invocation::StateOf;
 use crate::invocation::YeaOf;
-use crate::log::LogEntry;
+use crate::log_entry::LogEntry;
 use crate::node::NodeInfo;
 use crate::state;
 use crate::state::State;
@@ -78,7 +76,6 @@ pub use handle::StateKeeperHandle;
 use msg::Release;
 use msg::Request;
 use msg::Response;
-use working_dir::WorkingDir;
 
 type RequestAndResponseSender<I> = (Request<I>, ResponseSender<I>);
 type ResponseSender<I> = oneshot::Sender<Response<I>>;
@@ -100,7 +97,7 @@ enum AcceptPolicy<I: Invocation> {
     Rejectable(Option<NodeOf<I>>),
 }
 
-type SpawnResult<I> = Result<(NodeStatus, super::Participation<RoundNumOf<I>>), SpawnError>;
+type SpawnResult<I> = (NodeStatus, super::Participation<RoundNumOf<I>>);
 type RoundNumRequest<I> = (RangeInclusive<RoundNumOf<I>>, ResponseSender<I>);
 type AcceptedEntry<I> = (CoordNumOf<I>, Arc<LogEntryOf<I>>);
 type PendingCommit<I> = (Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
@@ -167,7 +164,7 @@ impl<I: Invocation> StateKeeperKit<I> {
     }
 }
 
-pub struct StateKeeper<I, V>
+pub struct StateKeeper<I, V, B>
 where
     I: Invocation,
     V: Voter<
@@ -178,9 +175,9 @@ where
         Nay = NayOf<I>,
         Abstain = AbstainOf<I>,
     >,
+    B: Buffer<RoundNum = RoundNumOf<I>, CoordNum = CoordNumOf<I>, Entry = LogEntryOf<I>>,
 {
     context: ContextOf<I>,
-    working_dir: Option<WorkingDir<RoundNumOf<I>>>,
 
     node_id: NodeIdOf<I>,
     voter: V,
@@ -256,13 +253,13 @@ where
     event_emitter: mpsc::Sender<ShutdownEvent<I>>,
     warn_counter: u16,
 
-    applied_entry_buffer: VecDeque<(CoordNumOf<I>, Arc<LogEntryOf<I>>)>,
+    applied_entry_buffer: B,
 
     #[cfg(feature = "tracer")]
     tracer: Option<Box<dyn Tracer<I>>>,
 }
 
-impl<I, V> StateKeeper<I, V>
+impl<I, V, B> StateKeeper<I, V, B>
 where
     I: Invocation,
     V: Voter<
@@ -273,19 +270,17 @@ where
         Nay = NayOf<I>,
         Abstain = AbstainOf<I>,
     >,
+    B: Buffer<RoundNum = RoundNumOf<I>, CoordNum = CoordNumOf<I>, Entry = LogEntryOf<I>>,
 {
     pub async fn spawn(
         kit: StateKeeperKit<I>,
-        args: SpawnArgs<I, V>,
-    ) -> Result<
-        (
-            NodeStatus,
-            super::Participation<RoundNumOf<I>>,
-            EventStream<I>,
-            ProofOfLife,
-        ),
-        SpawnError,
-    > {
+        args: SpawnArgs<I, V, B>,
+    ) -> (
+        NodeStatus,
+        super::Participation<RoundNumOf<I>>,
+        EventStream<I>,
+        ProofOfLife,
+    ) {
         let (evt_send, evt_recv) = mpsc::channel(32);
 
         let proof_of_life = ProofOfLife::new();
@@ -294,32 +289,30 @@ where
 
         Self::start_and_run_new(args, send, kit.receiver, evt_send);
 
-        let start_result = recv.await.expect("StateKeeper failed to start");
+        let (initial_status, initial_participation) =
+            recv.await.expect("StateKeeper failed to start");
 
-        start_result.map(move |(initial_status, initial_participation)| {
-            (
-                initial_status,
-                initial_participation,
-                EventStream { delegate: evt_recv },
-                proof_of_life,
-            )
-        })
+        (
+            initial_status,
+            initial_participation,
+            EventStream { delegate: evt_recv },
+            proof_of_life,
+        )
     }
 
     fn start_and_run_new(
-        spawn_args: SpawnArgs<I, V>,
+        spawn_args: SpawnArgs<I, V, B>,
         start_result_sender: oneshot::Sender<SpawnResult<I>>,
         receiver: mpsc::Receiver<RequestAndResponseSender<I>>,
         event_emitter: mpsc::Sender<ShutdownEvent<I>>,
     ) {
         std::thread::spawn(move || {
             let context = spawn_args.context;
-            let working_dir = spawn_args.working_dir;
             let node_id = spawn_args.node_id;
             let voter = spawn_args.voter;
             let snapshot = spawn_args.snapshot;
             let force_passive = spawn_args.force_passive;
-            let log_keeping = spawn_args.log_keeping;
+            let applied_entry_buffer = spawn_args.buffer;
             #[cfg(feature = "tracer")]
             let tracer = spawn_args.tracer;
 
@@ -347,28 +340,13 @@ where
                 participation
             };
 
-            let (start_result, working_dir) = match working_dir {
-                Some(working_dir) => match WorkingDir::init(working_dir, log_keeping) {
-                    Ok(d) => (Ok(()), Some(d)),
-                    Err(err) => (Err(err), None),
-                },
-                None => (Ok(()), None),
-            };
-
-            let failed = start_result.is_err();
-            let _ = start_result_sender.send(
-                start_result.map(|_| (initial_status, super::Participation::from(&participation))),
-            );
-
-            if failed {
-                return;
-            }
+            let _ = start_result_sender
+                .send((initial_status, super::Participation::from(&participation)));
 
             let (rel_send, rel_recv) = mpsc::unbounded();
 
             let state_keeper = StateKeeper {
                 context,
-                working_dir,
 
                 node_id,
                 voter,
@@ -401,8 +379,7 @@ where
                 event_emitter,
                 warn_counter: 0,
 
-                // TODO the capacity should be configurable
-                applied_entry_buffer: VecDeque::with_capacity(1024),
+                applied_entry_buffer,
 
                 #[cfg(feature = "tracer")]
                 tracer,
@@ -1101,17 +1078,14 @@ where
         &mut self,
         round_num: RoundNumOf<I>,
     ) -> Option<(CoordNumOf<I>, Arc<LogEntryOf<I>>)> {
-        if let Some(offset) = crate::util::try_usize_delta(self.state_round, round_num) {
-            if let Some((c, e)) = self.applied_entry_buffer.get(offset) {
-                return Some((*c, Arc::clone(e)));
+        match self.applied_entry_buffer.get(round_num) {
+            Ok(entry) => entry,
+            Err(err) => {
+                // TODO suppress after too many failures
+                tracing::warn!("Failed to get applied entry from buffer: {}", err);
+                None
             }
         }
-
-        if let Some(working_dir) = self.working_dir.as_mut() {
-            return working_dir.try_get_entry_applied_in(round_num);
-        }
-
-        None
     }
 
     fn accept_entry(
@@ -1366,17 +1340,8 @@ where
                 event
             };
 
-            if self.applied_entry_buffer.capacity() > 0 {
-                if self.applied_entry_buffer.len() == self.applied_entry_buffer.capacity() {
-                    self.applied_entry_buffer.pop_back();
-                }
-                self.applied_entry_buffer
-                    .push_front((coord_num, Arc::clone(&entry)));
-            }
-
-            if let Some(working_dir) = self.working_dir.as_mut() {
-                working_dir.log_entry_application(round, coord_num, &*entry);
-            }
+            self.applied_entry_buffer
+                .insert(round, coord_num, Arc::clone(&entry));
 
             self.emit(Event::Apply {
                 round,

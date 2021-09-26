@@ -84,7 +84,6 @@ fn auto_fill_gaps() {
     let (req_handler, mut node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_info.id())
-            .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 10))
             .fill_gaps(autofill::StaticConfig::<_, PlusZero>::new(
@@ -122,7 +121,6 @@ fn setup_node() -> (RequestHandler<CalcInvocation>, CalcNode) {
     let (req_handler, node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_info.id())
-            .working_ephemerally()
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 1))
             .spawn_in(()),

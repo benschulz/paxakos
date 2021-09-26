@@ -45,7 +45,6 @@ fn worst_case() {
     let (req_handler, mut node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_id)
-            .working_ephemerally()
             .communicating_via(
                 DirectCommunicators::<CalcInvocation>::new().create_communicator_for(node_id),
             )
@@ -91,7 +90,6 @@ fn worst_case() {
     let (req_handler, mut node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_id)
-            .working_ephemerally()
             .communicating_via(
                 DirectCommunicators::<CalcInvocation>::new().create_communicator_for(node_id),
             )
@@ -277,7 +275,6 @@ fn setup_node(
         futures::executor::block_on(
             CalcInvocation::node_builder()
                 .for_node(node_id)
-                .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(node_id))
                 .resuming_from(initial_snapshot)
                 .spawn_in(()),
@@ -287,7 +284,6 @@ fn setup_node(
         futures::executor::block_on(
             CalcInvocation::node_builder()
                 .for_node(node_id)
-                .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(node_id))
                 .recovering_with(initial_snapshot)
                 .spawn_in(()),

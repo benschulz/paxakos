@@ -10,6 +10,7 @@ use futures::stream::StreamExt;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
+use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
@@ -61,18 +62,23 @@ pub trait HasLeases {
 pub trait ReleaserBuilderExt {
     type Node: Node;
     type Voter: Voter;
+    type Buffer: Buffer<
+        RoundNum = RoundNumOf<Self::Node>,
+        CoordNum = CoordNumOf<Self::Node>,
+        Entry = LogEntryOf<Self::Node>,
+    >;
 
     fn release_leases<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilder<Releaser<Self::Node, P>, Self::Voter>
+    ) -> NodeBuilder<Releaser<Self::Node, P>, Self::Voter, Self::Buffer>
     where
         EventOf<Self::Node>: AsLeaseEvent,
         C: FnOnce(ReleaserBuilderBlank<Self::Node>) -> ReleaserBuilder<Self::Node, P>,
         P: Fn(LeaseIdOf<Self::Node>) -> LogEntryOf<Self::Node> + 'static;
 }
 
-impl<N, V> ReleaserBuilderExt for NodeBuilder<N, V>
+impl<N, V, B> ReleaserBuilderExt for NodeBuilder<N, V, B>
 where
     N: Node + 'static,
     EventOf<N>: AsLeaseEvent,
@@ -84,11 +90,16 @@ where
         Yea = YeaOf<N>,
         Nay = NayOf<N>,
     >,
+    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
 {
     type Node = N;
     type Voter = V;
+    type Buffer = B;
 
-    fn release_leases<C, P>(self, configure: C) -> NodeBuilder<Releaser<N, P>, V>
+    fn release_leases<C, P>(
+        self,
+        configure: C,
+    ) -> NodeBuilder<Releaser<Self::Node, P>, Self::Voter, Self::Buffer>
     where
         EventOf<N>: AsLeaseEvent,
         C: FnOnce(ReleaserBuilderBlank<N>) -> ReleaserBuilder<N, P>,

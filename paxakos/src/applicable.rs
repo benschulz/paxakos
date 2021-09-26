@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::log::LogEntry;
+use crate::log_entry::LogEntry;
 use crate::state::LogEntryOf;
 use crate::state::OutcomeOf;
 use crate::state::State;

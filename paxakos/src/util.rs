@@ -17,17 +17,6 @@ pub fn try_usize_delta<N: Number>(minuend: N, subtrahend: N) -> Option<usize> {
     std::convert::TryInto::<usize>::try_into(minuend - subtrahend).ok()
 }
 
-pub fn try_usize_sub<N: Number>(minuend: N, subtrahend: usize) -> Option<N> {
-    let subtrahend =
-        N::try_from(subtrahend).unwrap_or_else(|_| panic!("Out of range: {}", subtrahend));
-
-    if minuend >= subtrahend {
-        Some(minuend - subtrahend)
-    } else {
-        None
-    }
-}
-
 #[pin_project]
 pub struct Race<A, B, T>
 where

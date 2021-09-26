@@ -18,12 +18,12 @@ use futures::future::LocalBoxFuture;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
+use crate::buffer::Buffer;
 use crate::communicator::Communicator;
 use crate::error::Disoriented;
 use crate::error::ShutDown;
 use crate::invocation;
 use crate::invocation::Invocation;
-use crate::log::LogKeeping;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::Event;
@@ -157,14 +157,21 @@ pub trait Admin {
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 
-pub struct SpawnArgs<I: Invocation, V> {
+pub struct SpawnArgs<I, V, B>
+where
+    I: Invocation,
+    B: Buffer<
+        RoundNum = invocation::RoundNumOf<I>,
+        CoordNum = invocation::CoordNumOf<I>,
+        Entry = invocation::LogEntryOf<I>,
+    >,
+{
     pub context: invocation::ContextOf<I>,
-    pub working_dir: Option<std::path::PathBuf>,
     pub node_id: invocation::NodeIdOf<I>,
     pub voter: V,
     pub snapshot: Option<invocation::SnapshotFor<I>>,
     pub force_passive: bool,
-    pub log_keeping: LogKeeping,
+    pub buffer: B,
     #[cfg(feature = "tracer")]
     pub tracer: Option<Box<dyn Tracer<I>>>,
 }

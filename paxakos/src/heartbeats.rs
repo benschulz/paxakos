@@ -10,6 +10,7 @@ use crate::append::AppendArgs;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
+use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::leadership::track::MaybeLeadershipAwareNode;
@@ -21,6 +22,7 @@ use crate::node::CoordNumOf;
 use crate::node::EventFor;
 use crate::node::EventOf;
 use crate::node::InvocationOf;
+use crate::node::LogEntryOf;
 use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeStatus;
@@ -108,16 +110,22 @@ where
 pub trait HeartbeatsBuilderExt<I = ()> {
     type Node: MaybeLeadershipAwareNode<I> + 'static;
     type Voter: Voter;
+    type Buffer: Buffer<
+        RoundNum = RoundNumOf<Self::Node>,
+        CoordNum = CoordNumOf<Self::Node>,
+        Entry = LogEntryOf<Self::Node>,
+    >;
 
+    #[allow(clippy::type_complexity)]
     fn send_heartbeats<C>(
         self,
         config: C,
-    ) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter>
+    ) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter, Self::Buffer>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V, I> HeartbeatsBuilderExt<I> for NodeBuilder<N, V>
+impl<N, V, B, I> HeartbeatsBuilderExt<I> for NodeBuilder<N, V, B>
 where
     N: MaybeLeadershipAwareNode<I> + 'static,
     V: Voter<
@@ -128,11 +136,17 @@ where
         Yea = YeaOf<N>,
         Nay = NayOf<N>,
     >,
+    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
 {
     type Node = N;
     type Voter = V;
+    type Buffer = B;
 
-    fn send_heartbeats<C>(self, config: C) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter>
+    #[allow(clippy::type_complexity)]
+    fn send_heartbeats<C>(
+        self,
+        config: C,
+    ) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter, Self::Buffer>
     where
         C: Config<Node = Self::Node> + 'static,
     {

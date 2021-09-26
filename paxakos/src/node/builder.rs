@@ -2,6 +2,8 @@ use futures::future::FutureExt;
 use futures::future::LocalBoxFuture;
 use futures::future::TryFutureExt;
 
+use crate::buffer::Buffer;
+use crate::buffer::InMemoryBuffer;
 use crate::communicator::Communicator;
 use crate::decoration::Decoration;
 use crate::error::SpawnError;
@@ -17,7 +19,6 @@ use crate::invocation::RoundNumOf;
 use crate::invocation::SnapshotFor;
 use crate::invocation::StateOf;
 use crate::invocation::YeaOf;
-use crate::log::LogKeeping;
 use crate::node;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
@@ -52,34 +53,7 @@ pub struct NodeBuilderWithNodeId<I: Invocation> {
 }
 
 impl<I: Invocation> NodeBuilderWithNodeId<I> {
-    pub fn working_in(
-        self,
-        dir: impl AsRef<std::path::Path>,
-    ) -> NodeBuilderWithNodeIdAndWorkingDir<I> {
-        NodeBuilderWithNodeIdAndWorkingDir {
-            working_dir: Some(dir.as_ref().to_path_buf()),
-            node_id: self.node_id,
-        }
-    }
-
-    pub fn working_ephemerally(self) -> NodeBuilderWithNodeIdAndWorkingDir<I> {
-        NodeBuilderWithNodeIdAndWorkingDir {
-            working_dir: None,
-            node_id: self.node_id,
-        }
-    }
-}
-
-pub struct NodeBuilderWithNodeIdAndWorkingDir<I: Invocation> {
-    working_dir: Option<std::path::PathBuf>,
-    node_id: NodeIdOf<I>,
-}
-
-impl<I: Invocation> NodeBuilderWithNodeIdAndWorkingDir<I> {
-    pub fn communicating_via<C>(
-        self,
-        communicator: C,
-    ) -> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<I, C>
+    pub fn communicating_via<C>(self, communicator: C) -> NodeBuilderWithNodeIdAndCommunicator<I, C>
     where
         C: Communicator<
             Node = NodeOf<I>,
@@ -92,21 +66,19 @@ impl<I: Invocation> NodeBuilderWithNodeIdAndWorkingDir<I> {
             Abstain = AbstainOf<I>,
         >,
     {
-        NodeBuilderWithNodeIdAndWorkingDirAndCommunicator {
-            working_dir: self.working_dir,
+        NodeBuilderWithNodeIdAndCommunicator {
             node_id: self.node_id,
             communicator,
         }
     }
 }
 
-pub struct NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<I: Invocation, C: Communicator> {
-    working_dir: Option<std::path::PathBuf>,
+pub struct NodeBuilderWithNodeIdAndCommunicator<I: Invocation, C: Communicator> {
     node_id: NodeIdOf<I>,
     communicator: C,
 }
 
-impl<I, C> NodeBuilderWithNodeIdAndWorkingDirAndCommunicator<I, C>
+impl<I, C> NodeBuilderWithNodeIdAndCommunicator<I, C>
 where
     I: Invocation,
     C: Communicator<
@@ -224,13 +196,12 @@ where
 
         NodeBuilder {
             kit: NodeKit::new(),
-            working_dir: self.working_dir,
             node_id: self.node_id,
             communicator: self.communicator,
             snapshot,
             force_passive,
             voter: IndiscriminateVoter::new(),
-            log_keeping: Default::default(),
+            buffer: InMemoryBuffer::new(1024),
             finisher: Box::new(Ok),
 
             #[cfg(feature = "tracer")]
@@ -242,22 +213,25 @@ where
 type Finisher<N> =
     dyn FnOnce(NodeKernel<InvocationOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
 
-pub struct NodeBuilder<N: Node, V = IndiscriminateVoterFor<N>> {
+pub struct NodeBuilder<
+    N: Node,
+    V = IndiscriminateVoterFor<N>,
+    B = InMemoryBuffer<node::RoundNumOf<N>, node::CoordNumOf<N>, node::LogEntryOf<N>>,
+> {
     kit: NodeKit<InvocationOf<N>>,
-    working_dir: Option<std::path::PathBuf>,
     node_id: node::NodeIdOf<N>,
     voter: V,
     communicator: CommunicatorOf<N>,
     snapshot: Option<node::SnapshotFor<N>>,
     force_passive: bool,
-    log_keeping: LogKeeping,
+    buffer: B,
     finisher: Box<Finisher<N>>,
 
     #[cfg(feature = "tracer")]
     tracer: Option<Box<dyn Tracer<InvocationOf<N>>>>,
 }
 
-impl<N, V> NodeBuilder<N, V>
+impl<N, V, B> NodeBuilder<N, V, B>
 where
     N: Node + 'static,
     V: Voter<
@@ -268,19 +242,36 @@ where
         Yea = node::YeaOf<N>,
         Nay = node::NayOf<N>,
     >,
+    B: Buffer<
+        RoundNum = node::RoundNumOf<N>,
+        CoordNum = node::CoordNumOf<N>,
+        Entry = node::LogEntryOf<N>,
+    >,
 {
-    pub fn limiting_applied_entry_logs_to(mut self, limit: usize) -> Self {
-        self.log_keeping.logs_kept = limit;
+    pub fn buffering_applied_entries_in<
+        T: Buffer<
+            RoundNum = node::RoundNumOf<N>,
+            CoordNum = node::CoordNumOf<N>,
+            Entry = node::LogEntryOf<N>,
+        >,
+    >(
+        self,
+        buffer: T,
+    ) -> NodeBuilder<N, V, T> {
+        // https://github.com/rust-lang/rust/issues/86555
+        NodeBuilder {
+            kit: self.kit,
+            node_id: self.node_id,
+            voter: self.voter,
+            communicator: self.communicator,
+            snapshot: self.snapshot,
+            force_passive: self.force_passive,
+            buffer,
+            finisher: self.finisher,
 
-        self
-    }
-
-    pub fn limiting_entries_in_applied_entry_logs_to(mut self, limit: usize) -> Self {
-        assert!(limit > 0);
-
-        self.log_keeping.entry_limit = limit;
-
-        self
+            #[cfg(feature = "tracer")]
+            tracer: self.tracer,
+        }
     }
 
     #[cfg(feature = "tracer")]
@@ -290,16 +281,16 @@ where
         self
     }
 
-    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<N, T> {
+    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<N, T, B> {
+        // https://github.com/rust-lang/rust/issues/86555
         NodeBuilder {
             kit: self.kit,
-            working_dir: self.working_dir,
             node_id: self.node_id,
             voter,
             communicator: self.communicator,
             snapshot: self.snapshot,
             force_passive: self.force_passive,
-            log_keeping: self.log_keeping,
+            buffer: self.buffer,
             finisher: self.finisher,
 
             #[cfg(feature = "tracer")]
@@ -313,7 +304,7 @@ where
         self
     }
 
-    pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V>
+    pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V, B>
     where
         D: Decoration<
             Decorated = N,
@@ -325,13 +316,12 @@ where
 
         NodeBuilder {
             kit: self.kit,
-            working_dir: self.working_dir,
             node_id: self.node_id,
             communicator: self.communicator,
             snapshot: self.snapshot,
             force_passive: self.force_passive,
             voter: self.voter,
-            log_keeping: self.log_keeping,
+            buffer: self.buffer,
             finisher: Box::new(move |x| ((finisher)(x)).and_then(|node| D::wrap(node, arguments))),
 
             #[cfg(feature = "tracer")]
@@ -358,16 +348,16 @@ where
             self.communicator,
             super::SpawnArgs {
                 context,
-                working_dir: self.working_dir,
                 node_id: self.node_id,
                 voter: self.voter,
                 snapshot: self.snapshot,
                 force_passive: self.force_passive,
-                log_keeping: self.log_keeping,
+                buffer: self.buffer,
                 #[cfg(feature = "tracer")]
                 tracer: self.tracer,
             },
         )
+        .map(Ok)
         .and_then(|(req_handler, kernel)| {
             futures::future::ready(finisher(kernel).map(|node| (req_handler, node)))
         })

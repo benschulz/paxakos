@@ -7,6 +7,7 @@ use futures::stream::StreamExt;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
+use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
@@ -32,11 +33,16 @@ use crate::RoundNum;
 pub trait EnsureLeadershipBuilderExt {
     type Node: Node + 'static;
     type Voter: Voter;
+    type Buffer: Buffer<
+        RoundNum = RoundNumOf<Self::Node>,
+        CoordNum = CoordNumOf<Self::Node>,
+        Entry = LogEntryOf<Self::Node>,
+    >;
 
     fn ensure_leadership<C, P>(
         self,
         configure: C,
-    ) -> NodeBuilder<EnsureLeadership<Self::Node, P>, Self::Voter>
+    ) -> NodeBuilder<EnsureLeadership<Self::Node, P>, Self::Voter, Self::Buffer>
     where
         C: FnOnce(
             EnsureLeadershipBuilderBlank<Self::Node>,
@@ -52,7 +58,7 @@ pub struct EnsureLeadershipBuilder<N, P> {
     _node: std::marker::PhantomData<N>,
 }
 
-impl<N, V> EnsureLeadershipBuilderExt for NodeBuilder<N, V>
+impl<N, V, B> EnsureLeadershipBuilderExt for NodeBuilder<N, V, B>
 where
     N: Node + 'static,
     V: Voter<
@@ -63,11 +69,16 @@ where
         Yea = YeaOf<N>,
         Nay = NayOf<N>,
     >,
+    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
 {
     type Node = N;
     type Voter = V;
+    type Buffer = B;
 
-    fn ensure_leadership<C, P>(self, configure: C) -> NodeBuilder<EnsureLeadership<N, P>, V>
+    fn ensure_leadership<C, P>(
+        self,
+        configure: C,
+    ) -> NodeBuilder<EnsureLeadership<Self::Node, P>, Self::Voter, Self::Buffer>
     where
         C: FnOnce(EnsureLeadershipBuilderBlank<N>) -> EnsureLeadershipBuilder<N, P>,
         P: Fn() -> LogEntryOf<N> + 'static,

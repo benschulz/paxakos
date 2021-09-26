@@ -14,6 +14,7 @@ use crate::append::AppendError;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
+use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::node::builder::NodeBuilder;
@@ -24,6 +25,7 @@ use crate::node::CoordNumOf;
 use crate::node::EventFor;
 use crate::node::EventOf;
 use crate::node::InvocationOf;
+use crate::node::LogEntryOf;
 use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeStatus;
@@ -106,13 +108,21 @@ where
 pub trait AutofillBuilderExt: Sized {
     type Node: Node;
     type Voter: Voter;
+    type Buffer: Buffer<
+        RoundNum = RoundNumOf<Self::Node>,
+        CoordNum = CoordNumOf<Self::Node>,
+        Entry = LogEntryOf<Self::Node>,
+    >;
 
-    fn fill_gaps<C>(self, config: C) -> NodeBuilder<Autofill<Self::Node, C>, Self::Voter>
+    fn fill_gaps<C>(
+        self,
+        config: C,
+    ) -> NodeBuilder<Autofill<Self::Node, C>, Self::Voter, Self::Buffer>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V> AutofillBuilderExt for NodeBuilder<N, V>
+impl<N, V, B> AutofillBuilderExt for NodeBuilder<N, V, B>
 where
     N: Node + 'static,
     V: Voter<
@@ -123,11 +133,16 @@ where
         Yea = YeaOf<N>,
         Nay = NayOf<N>,
     >,
+    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
 {
     type Node = N;
     type Voter = V;
+    type Buffer = B;
 
-    fn fill_gaps<C>(self, config: C) -> NodeBuilder<Autofill<N, C>, V>
+    fn fill_gaps<C>(
+        self,
+        config: C,
+    ) -> NodeBuilder<Autofill<Self::Node, C>, Self::Voter, Self::Buffer>
     where
         C: Config<Node = Self::Node> + 'static,
     {

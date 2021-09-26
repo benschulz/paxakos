@@ -164,7 +164,6 @@ fn spawn_node(
         let (handler, node) = futures::executor::block_on(
             CalcInvocation::node_builder()
                 .for_node(node_info.id())
-                .working_ephemerally()
                 .communicating_via(communicators.create_communicator_for(node_info.id()))
                 .with_initial_state(CalcState::new(all_nodes, 5))
                 .traced_by(tracer)

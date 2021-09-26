@@ -15,18 +15,3 @@ where
     /// that UUIDs or some other "universally unique" identifier are used.
     fn id(&self) -> Self::Id;
 }
-
-#[derive(Debug)]
-pub struct LogKeeping {
-    pub(crate) logs_kept: usize,
-    pub(crate) entry_limit: usize,
-}
-
-impl Default for LogKeeping {
-    fn default() -> Self {
-        Self {
-            logs_kept: 5,
-            entry_limit: 1024,
-        }
-    }
-}
