@@ -36,6 +36,8 @@ use super::InvocationOf;
 use super::NodeKit;
 use super::RequestHandlerFor;
 
+pub type Result<T> = std::result::Result<T, SpawnError>;
+
 #[derive(Default)]
 pub struct NodeBuilderBlank<I>(std::marker::PhantomData<I>);
 
@@ -211,7 +213,7 @@ where
     }
 }
 
-type Finisher<N> = dyn FnOnce(Core<InvocationOf<N>, CommunicatorOf<N>>) -> Result<N, SpawnError>;
+type Finisher<N> = dyn FnOnce(Core<InvocationOf<N>, CommunicatorOf<N>>) -> Result<N>;
 
 pub struct NodeBuilder<
     N: Node,
@@ -329,9 +331,7 @@ where
         }
     }
 
-    pub fn spawn(
-        self,
-    ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, Shell<N>), SpawnError>>
+    pub fn spawn(self) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, Shell<N>)>>
     where
         node::StateOf<N>: State<Context = ()>,
     {
@@ -341,11 +341,14 @@ where
     pub fn spawn_in(
         self,
         context: node::ContextOf<N>,
-    ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, Shell<N>), SpawnError>> {
+    ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, Shell<N>)>> {
         let finisher = self.finisher;
 
+        let receiver = self.kit.receiver;
+
         Core::spawn(
-            self.kit,
+            self.kit.state_keeper,
+            self.kit.sender,
             self.node_id,
             self.communicator,
             super::SpawnArgs {
@@ -361,7 +364,9 @@ where
         )
         .map(Ok)
         .and_then(|(req_handler, core)| {
-            futures::future::ready(finisher(core).map(|node| (req_handler, Shell::around(node))))
+            futures::future::ready(
+                finisher(core).map(|node| (req_handler, Shell::new(node, receiver))),
+            )
         })
         .boxed_local()
     }

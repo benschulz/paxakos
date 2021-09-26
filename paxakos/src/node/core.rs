@@ -2,10 +2,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use futures::channel::mpsc;
-use futures::channel::oneshot;
 use futures::future::FutureExt;
 use futures::future::LocalBoxFuture;
-use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use num_traits::One;
 
@@ -30,26 +28,26 @@ use crate::invocation::StateOf;
 use crate::voting::Voter;
 
 use super::commits::Commits;
-use super::handle::NodeHandleRequest;
-use super::handle::NodeHandleResponse;
 use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
 use super::state_keeper::EventStream;
 use super::state_keeper::ProofOfLife;
 use super::state_keeper::StateKeeper;
 use super::state_keeper::StateKeeperHandle;
-use super::AppendResultFor;
+use super::state_keeper::StateKeeperKit;
 use super::CommitFor;
 use super::EventFor;
 use super::Node;
 use super::NodeHandle;
-use super::NodeKit;
 use super::NodeStatus;
 use super::Participation;
 use super::RequestHandler;
 use super::SnapshotFor;
 
-/// The default [`Node`][crate::Node] implementation.
+/// The core [`Node`][crate::Node] implementation.
+///
+/// This `Node` implemenation does most of the heavy lifting w/r/t the consensus
+/// protocol. It has a counterpart [`Shell`][crate::Shell].
 pub struct Core<I, C>
 where
     I: Invocation,
@@ -71,9 +69,7 @@ where
     events: EventStream<I>,
     status: NodeStatus,
     participation: Participation<RoundNumOf<C>>,
-    handle_send: mpsc::Sender<super::handle::RequestAndResponseSender<I>>,
-    handle_recv: mpsc::Receiver<super::handle::RequestAndResponseSender<I>>,
-    handle_appends: FuturesUnordered<HandleAppend<I, C>>,
+    handle_sender: mpsc::Sender<super::handle::RequestAndResponseSender<I>>,
 }
 
 impl<I, C> Node for Core<I, C>
@@ -112,12 +108,6 @@ where
     /// It is important to poll the node's event stream because it implicitly
     /// drives the actions that keep the node up to date.
     fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<EventFor<Self>> {
-        self.poll_handle_reqs(cx);
-
-        while let std::task::Poll::Ready(Some(())) = self.handle_appends.poll_next_unpin(cx) {
-            // keep going
-        }
-
         while let std::task::Poll::Ready(Some(())) = self.commits.poll_next(cx) {
             // keep going
         }
@@ -155,7 +145,7 @@ where
     }
 
     fn handle(&self) -> NodeHandle<I> {
-        NodeHandle::new(self.handle_send.clone(), self.state_keeper.clone())
+        NodeHandle::new(self.handle_sender.clone(), self.state_keeper.clone())
     }
 
     fn prepare_snapshot(
@@ -222,7 +212,8 @@ where
     >,
 {
     pub(crate) async fn spawn<V, B>(
-        kit: NodeKit<I>,
+        state_keeper_kit: StateKeeperKit<I>,
+        handle_sender: mpsc::Sender<super::handle::RequestAndResponseSender<I>>,
         id: NodeIdOf<I>,
         communicator: C,
         args: super::SpawnArgs<I, V, B>,
@@ -238,10 +229,10 @@ where
         >,
         B: Buffer<RoundNum = RoundNumOf<C>, CoordNum = CoordNumOf<C>, Entry = LogEntryOf<I>>,
     {
-        let state_keeper = kit.state_keeper.handle();
+        let state_keeper = state_keeper_kit.handle();
 
         let (initial_status, initial_participation, events, proof_of_life) =
-            StateKeeper::spawn(kit.state_keeper, args).await;
+            StateKeeper::spawn(state_keeper_kit, args).await;
 
         let req_handler = RequestHandler::new(state_keeper.clone());
         let commits = Commits::new();
@@ -258,84 +249,9 @@ where
             events,
             status: initial_status,
             participation: initial_participation,
-            handle_send: kit.sender,
-            handle_recv: kit.receiver,
-            handle_appends: FuturesUnordered::new(),
+            handle_sender,
         };
 
         (req_handler, node)
-    }
-
-    fn poll_handle_reqs(&mut self, cx: &mut std::task::Context<'_>) {
-        while let std::task::Poll::Ready(Some((req, send))) = self.handle_recv.poll_next_unpin(cx) {
-            self.process_handle_req(req, send);
-        }
-    }
-
-    fn process_handle_req(
-        &mut self,
-        req: NodeHandleRequest<I>,
-        send: oneshot::Sender<NodeHandleResponse<I>>,
-    ) {
-        match req {
-            NodeHandleRequest::Status => {
-                let _ = send.send(NodeHandleResponse::Status(self.status()));
-            }
-            NodeHandleRequest::Append { log_entry, args } => {
-                self.handle_appends.push(HandleAppend {
-                    append: self.append(log_entry, args),
-                    send: Some(send),
-                })
-            }
-        }
-    }
-}
-
-struct HandleAppend<I, C>
-where
-    I: Invocation,
-    C: Communicator<
-        Node = invocation::NodeOf<I>,
-        RoundNum = invocation::RoundNumOf<I>,
-        CoordNum = invocation::CoordNumOf<I>,
-        LogEntry = invocation::LogEntryOf<I>,
-        Error = invocation::CommunicationErrorOf<I>,
-        Yea = invocation::YeaOf<I>,
-        Nay = invocation::NayOf<I>,
-        Abstain = invocation::AbstainOf<I>,
-    >,
-{
-    append: LocalBoxFuture<'static, AppendResultFor<Core<I, C>, LogEntryOf<I>>>,
-    send: Option<oneshot::Sender<NodeHandleResponse<I>>>,
-}
-
-impl<I, C> std::future::Future for HandleAppend<I, C>
-where
-    I: Invocation,
-    C: Communicator<
-        Node = invocation::NodeOf<I>,
-        RoundNum = invocation::RoundNumOf<I>,
-        CoordNum = invocation::CoordNumOf<I>,
-        LogEntry = invocation::LogEntryOf<I>,
-        Error = invocation::CommunicationErrorOf<I>,
-        Yea = invocation::YeaOf<I>,
-        Nay = invocation::NayOf<I>,
-        Abstain = invocation::AbstainOf<I>,
-    >,
-{
-    type Output = ();
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
-        if self.send.as_ref().unwrap().is_canceled() {
-            return std::task::Poll::Ready(());
-        }
-
-        self.append.poll_unpin(cx).map(|r| {
-            let send = self.send.take().unwrap();
-            let _ = send.send(NodeHandleResponse::Append(r));
-        })
     }
 }

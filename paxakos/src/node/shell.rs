@@ -1,6 +1,11 @@
 use std::sync::Arc;
 
+use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
+use futures::stream::FuturesUnordered;
+use futures::FutureExt;
+use futures::StreamExt;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
@@ -12,9 +17,12 @@ use crate::Node;
 use crate::NodeHandle;
 use crate::NodeStatus;
 
+use super::handle::NodeHandleRequest;
+use super::handle::NodeHandleResponse;
 use super::AppendResultFor;
 use super::CommunicatorOf;
 use super::InvocationOf;
+use super::LogEntryOf;
 use super::NodeIdOf;
 use super::Participation;
 use super::RoundNumOf;
@@ -22,13 +30,50 @@ use super::ShutdownOf;
 use super::SnapshotFor;
 use super::StateOf;
 
-pub struct Shell<N> {
+/// The [`Node`][crate::Node] implementation that's returned from
+/// [`NodeBuilder`][crate::NodeBuilder]s.
+///
+/// This `Node` implementation processes requests from [`NodeHandle`]s. It
+/// delegates to the outermost [`Decoration`][crate::decoration::Decoration],
+/// thus giving decorations a chance to intercept.
+pub struct Shell<N: Node> {
     pub(crate) wrapped: N,
+
+    receiver: mpsc::Receiver<super::handle::RequestAndResponseSender<InvocationOf<N>>>,
+    appends: FuturesUnordered<HandleAppend<Self>>,
 }
 
-impl<N> Shell<N> {
-    pub(crate) fn around(wrapped: N) -> Self {
-        Self { wrapped }
+impl<N: Node> Shell<N> {
+    pub(crate) fn new(
+        wrapped: N,
+        receiver: mpsc::Receiver<super::handle::RequestAndResponseSender<InvocationOf<N>>>,
+    ) -> Self {
+        Self {
+            wrapped,
+            receiver,
+            appends: FuturesUnordered::new(),
+        }
+    }
+
+    fn process_handle_req(
+        &mut self,
+        req: NodeHandleRequest<InvocationOf<N>>,
+        send: oneshot::Sender<NodeHandleResponse<InvocationOf<N>>>,
+    ) {
+        match req {
+            NodeHandleRequest::Status => {
+                let status = self.status();
+                let _ = send.send(NodeHandleResponse::Status(status));
+            }
+            NodeHandleRequest::Append { log_entry, args } => {
+                let append = self.append(log_entry, args);
+
+                self.appends.push(HandleAppend {
+                    append,
+                    send: Some(send),
+                });
+            }
+        }
     }
 }
 
@@ -57,6 +102,14 @@ where
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<super::EventFor<Self>> {
+        while let std::task::Poll::Ready(Some((req, send))) = self.receiver.poll_next_unpin(cx) {
+            self.process_handle_req(req, send);
+        }
+
+        while let std::task::Poll::Ready(Some(())) = self.appends.poll_next_unpin(cx) {
+            // keep going
+        }
+
         self.wrapped.poll_events(cx)
     }
 
@@ -98,5 +151,28 @@ where
 
     fn shut_down(self) -> Self::Shutdown {
         self.wrapped.shut_down()
+    }
+}
+
+struct HandleAppend<N: Node> {
+    append: LocalBoxFuture<'static, AppendResultFor<N, LogEntryOf<N>>>,
+    send: Option<oneshot::Sender<NodeHandleResponse<InvocationOf<N>>>>,
+}
+
+impl<N: Node> std::future::Future for HandleAppend<N> {
+    type Output = ();
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        if self.send.as_ref().unwrap().is_canceled() {
+            return std::task::Poll::Ready(());
+        }
+
+        self.append.poll_unpin(cx).map(|r| {
+            let send = self.send.take().unwrap();
+            let _ = send.send(NodeHandleResponse::Append(r));
+        })
     }
 }
