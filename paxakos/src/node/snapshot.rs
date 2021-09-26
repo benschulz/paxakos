@@ -15,9 +15,20 @@ use crate::RoundNum;
     serialize = "S: serde::Serialize",
     deserialize = "S: serde::Deserialize<'de>"
 ))]
-pub struct Snapshot<S: State, R: RoundNum, C: CoordNum> {
-    identity: Arc<()>,
-    inner: Arc<SnapshotInner<S, R, C>>,
+pub struct Snapshot<S: State, R: RoundNum, C: CoordNum>(VersionedSnapshot<S, R, C>);
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(
+    bound(
+        serialize = "S: serde::Serialize",
+        deserialize = "S: serde::Deserialize<'de>"
+    ),
+    tag = "version"
+)]
+pub enum VersionedSnapshot<S: State, R: RoundNum, C: CoordNum> {
+    // TODO keep eye on https://github.com/serde-rs/serde/pull/2056
+    // maybe this can be renamed to `1` before `"V1"` is depended on
+    V1(SnapshotV1<S, R, C>),
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -25,9 +36,14 @@ pub struct Snapshot<S: State, R: RoundNum, C: CoordNum> {
     serialize = "S: serde::Serialize",
     deserialize = "S: serde::Deserialize<'de>"
 ))]
-struct SnapshotInner<S: State, R: RoundNum, C: CoordNum> {
-    meta_state: MetaState<S, R, C>,
+pub struct SnapshotV1<S: State, R: RoundNum, C: CoordNum> {
+    round: R,
     state: Arc<S>,
+    highest_observed_round_num: Option<R>,
+    highest_observed_coord_num: C,
+    participation: Participation<R, C>,
+    promises: BTreeMap<R, C>,
+    accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
 }
 
 /// See [super::Participation].
@@ -58,27 +74,13 @@ impl<R: RoundNum, C: CoordNum> Participation<R, C> {
 }
 
 pub(crate) struct DeconstructedSnapshot<S: State, R: RoundNum, C: CoordNum> {
-    pub(crate) state_round: R,
+    pub(crate) round: R,
     pub(crate) state: Arc<S>,
     pub(crate) highest_observed_round_num: Option<R>,
     pub(crate) highest_observed_coord_num: C,
     pub(crate) participation: Participation<R, C>,
     pub(crate) promises: BTreeMap<R, C>,
     pub(crate) accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
-}
-
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-#[serde(bound(
-    serialize = "S: serde::Serialize",
-    deserialize = "S: serde::Deserialize<'de>"
-))]
-struct MetaState<S: State, R: RoundNum, C: CoordNum> {
-    state_round: R,
-    highest_observed_round_num: Option<R>,
-    highest_observed_coord_num: C,
-    participation: Participation<R, C>,
-    promises: BTreeMap<R, C>,
-    accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
 }
 
 impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
@@ -91,20 +93,15 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
         promises: BTreeMap<R, C>,
         accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
     ) -> Self {
-        Self {
-            identity: Arc::new(()),
-            inner: Arc::new(SnapshotInner {
-                meta_state: MetaState {
-                    state_round: round,
-                    highest_observed_round_num,
-                    highest_observed_coord_num,
-                    participation,
-                    promises,
-                    accepted_entries,
-                },
-                state,
-            }),
-        }
+        Self(VersionedSnapshot::V1(SnapshotV1 {
+            round,
+            state,
+            highest_observed_round_num,
+            highest_observed_coord_num,
+            participation,
+            promises,
+            accepted_entries,
+        }))
     }
 
     pub fn initial(state: impl Into<Arc<S>>) -> Self {
@@ -123,32 +120,28 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
     }
 
     pub fn round(&self) -> R {
-        self.inner.meta_state.state_round
+        match &self.0 {
+            VersionedSnapshot::V1(s) => s.round,
+        }
     }
 
     pub fn state(&self) -> &Arc<S> {
-        &self.inner.state
+        match &self.0 {
+            VersionedSnapshot::V1(s) => &s.state,
+        }
     }
 
     pub(crate) fn deconstruct(self) -> DeconstructedSnapshot<S, R, C> {
-        Arc::try_unwrap(self.inner)
-            .map(|inner| DeconstructedSnapshot {
-                state_round: inner.meta_state.state_round,
-                state: inner.state,
-                highest_observed_round_num: inner.meta_state.highest_observed_round_num,
-                highest_observed_coord_num: inner.meta_state.highest_observed_coord_num,
-                participation: inner.meta_state.participation,
-                promises: inner.meta_state.promises,
-                accepted_entries: inner.meta_state.accepted_entries,
-            })
-            .unwrap_or_else(|s| DeconstructedSnapshot {
-                state_round: s.meta_state.state_round,
-                state: Arc::clone(&s.state),
-                highest_observed_round_num: s.meta_state.highest_observed_round_num,
-                highest_observed_coord_num: s.meta_state.highest_observed_coord_num,
-                participation: s.meta_state.participation.clone(),
-                promises: s.meta_state.promises.clone(),
-                accepted_entries: s.meta_state.accepted_entries.clone(),
-            })
+        match self.0 {
+            VersionedSnapshot::V1(s) => DeconstructedSnapshot {
+                round: s.round,
+                state: s.state,
+                highest_observed_round_num: s.highest_observed_round_num,
+                highest_observed_coord_num: s.highest_observed_coord_num,
+                participation: s.participation,
+                promises: s.promises,
+                accepted_entries: s.accepted_entries,
+            },
+        }
     }
 }

@@ -136,7 +136,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Default for Init<S, R, C> {
 impl<S: State, R: RoundNum, C: CoordNum> From<DeconstructedSnapshot<S, R, C>> for Init<S, R, C> {
     fn from(s: DeconstructedSnapshot<S, R, C>) -> Self {
         Self {
-            state_round: s.state_round,
+            state_round: s.round,
             state: Some(s.state),
             highest_observed_round_num: s.highest_observed_round_num,
             highest_observed_coord_num: s.highest_observed_coord_num,
@@ -939,7 +939,7 @@ where
         }
 
         let DeconstructedSnapshot {
-            state_round,
+            round: state_round,
             state,
             highest_observed_round_num,
             highest_observed_coord_num,

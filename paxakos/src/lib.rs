@@ -289,9 +289,9 @@
 //! [Passive mode][crate::node::Participation] is implemented and superficially
 //! tested. Thorough testing is still needed.
 //!
-//! ## 🌧️ Serialization 🌧️
+//! ## ⛅ Serialization ⛅
 //!
-//! Snapshot serialization needs to be reworked to allow for backward compat.
+//! Snapshot serialization is serde based and still maturing.
 //!
 //! ## ⛅ API Stability ⛅
 //!
