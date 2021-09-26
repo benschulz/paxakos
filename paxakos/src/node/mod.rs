@@ -156,7 +156,7 @@ pub trait Admin {
     /// which are (re-)joining a cluster (see [joining_with]).
     ///
     /// [joining_with]:
-    /// builder::NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::joining_with
+    /// builder::NodeBuilderWithNodeIdAndCommunicator::joining_with
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 

@@ -122,8 +122,7 @@ where
     /// Use [recovering_with] to have a failed node recover.
     ///
     /// [`Last`]: crate::event::ShutdownEvent::Last
-    /// [recovering_with]:
-    /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_with
+    /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
     pub fn resuming_from<S: Into<Option<SnapshotFor<I>>>>(
         self,
         snapshot: S,
@@ -162,8 +161,7 @@ where
     ///  - was not considered a member of the cluster for `r` and
     ///  - it did not participate in any rounds since `r`.
     ///
-    /// [recovering_with]:
-    /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_with
+    /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
     pub fn joining_with<S: Into<Option<SnapshotFor<I>>>>(
         self,
         snapshot: S,
@@ -176,15 +174,14 @@ where
     /// # Soundness
     ///
     /// This method assumes that the node is  (re-)joining the Paxos cluster.
-    /// Use [recovering_without] to have a failed node recover.
+    /// Use [recovering_with] to have a failed node recover.
     ///
     /// A node is considered to rejoin iff there is a previous round `r` such
     /// that this node
     ///  - was not considered a member of the cluster for `r` and
     ///  - it did not participate in any rounds since `r`.
     ///
-    /// [recovering_without]:
-    /// NodeBuilderWithNodeIdAndWorkingDirAndCommunicator::recovering_without
+    /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
     pub fn joining_without_state(self) -> NodeBuilder<Core<I, C>> {
         self.with_snapshot_and_passivity(None, false)
     }

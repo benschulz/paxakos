@@ -174,6 +174,58 @@
 //! nodes which have joined the cluster or to catch up nodes that have fallen
 //! behind.
 //!
+//! ## Decorations
+//!
+//! Implementations of the [`Decoration`][crate::decoration::Decoration] trait
+//! can provide reusable functionality than _can_ but need not be used. Paxakos
+//! comes with several decorations (see below).
+//!
+//! ## Heartbeats (`heartbeats` flag)
+//!
+//! The heartbeats decoration sends a heartbeat message at regular intervals.
+//!
+//! ## Autofill (`autofill` flag)
+//!
+//! From time to time gaps will appear in the distributed log. For example due
+//! to [concurrency](#Concurrency) or dropped messages. When that happens, the
+//! `autofill` decoration will fill the gap, implicitly catching the node up or
+//! making sure that queued log entries may be applied.
+//!
+//! ## Track Leadership (`track-leadership` flag)
+//!
+//! The leadership tracking decoration infers which nodes are leading the
+//! cluster.
+//!
+//! ## Ensure Leadership (experimental, `ensure-leadership` flag)
+//!
+//! Similar to heartbeats, the ensure leadership decoration will append a log
+//! entry after none has been for a certain amount of time. However the goal of
+//! this decoration is to ensure there is a leader.
+//!
+//! ## Leases
+//!
+//! A cluster will often have shared resources which must be locked before they
+//! may be accessed. To account for node failures, locks time out unless they
+//! are refreshed. Such locks are commonly referred to as "leases".
+//!
+//! ### Leaser (experimental, `leaser` flag)
+//!
+//! `Leaser` makes taking, refreshing and releasing a lease as convenient as
+//! calling [`take_lease`][crate::leases::leaser::Leaser::take_lease]. The lease
+//! is refreshed as long as the returned value is held onto.
+//!
+//! ### Releaser (experimental, `releaser` flag)
+//!
+//! The releaser decoration makes sure that leases that have timed out are
+//! cleared away, releasing the underlying resource.
+//!
+//! ## Master Leases (experimental, `master-leases` flag)
+//!
+//! Master leases are a mechanism to allow passive local reads. A comprehensive
+//! description may be found in [Paxos Made Live][paxos-made-live].
+//!
+//! [paxos-made-live]: https://dl.acm.org/doi/10.1145/1281100.1281103
+//!
 //! # Protocol
 //!
 //! This section describes the Paxakos protocol. It is, for the most part, a
