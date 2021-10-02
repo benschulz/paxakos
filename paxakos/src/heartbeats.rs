@@ -1,3 +1,18 @@
+//! The heartbeats decoration continually appends heartbeat entries to the log.
+//!
+//! Sending heartbeats serves two purposes.
+//!
+//! 1. It establishes a minimum pace at which state is moving forward. This
+//!    enables nodes to detect when they have been disconnected from the
+//!    cluster.
+//! 2. Heartbeats can automatically refresh a [master
+//!    lease][crate::leases::master]. Having a stable master is helpful for any
+//!    services that wish to delegate to it.
+//!
+//! It should be noted that heartbeats uses `Importance::MaintainLeadership` to
+//! append heartbeats. As such it will never contend with other nodes that may
+//! be in the process of proposing some other entry for the same round.
+
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
@@ -33,25 +48,35 @@ use crate::node::YeaOf;
 use crate::voting::Voter;
 use crate::Node;
 
+/// Heartbeats configuration.
 pub trait Config {
+    /// The node type that is decorated.
     type Node: Node;
+
+    /// The applicable that is used to fill gaps, usually a no-op.
     type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
 
+    /// Initializes this configuration.
     #[allow(unused_variables)]
     fn init(&mut self, node: &Self::Node) {}
 
+    /// Updates the configuration with the given event.
     #[allow(unused_variables)]
     fn update(&mut self, event: &EventFor<Self::Node>) {}
 
+    /// Interval at which leader nodes send heartbeats.
     fn leader_interval(&self) -> Option<Duration> {
         None
     }
 
+    /// Interval at which heartbeats are sent.
     fn interval(&self) -> Option<Duration>;
 
+    /// Creates a new heartbeat value.
     fn new_heartbeat(&self) -> Self::Applicable;
 }
 
+/// A static configuration.
 pub struct StaticConfig<N, A> {
     leader_interval: Option<Duration>,
     interval: Option<Duration>,
@@ -64,6 +89,7 @@ where
     N: Node,
     A: ApplicableTo<StateOf<N>> + Default + 'static,
 {
+    /// Constructs a new configuratin with the given interval.
     pub fn with_interval(interval: Duration) -> Self {
         Self {
             leader_interval: None,
@@ -73,6 +99,7 @@ where
         }
     }
 
+    /// Sets the interval at which leader nodes send heartbeats.
     pub fn when_leading(self, leader_interval: Duration) -> Self {
         Self {
             leader_interval: Some(leader_interval),
@@ -104,15 +131,16 @@ where
     }
 }
 
+/// Extends `NodeBuilder` to conveniently decorate a node with `Heartbeats`.
 pub trait HeartbeatsBuilderExt<I = ()> {
+    /// Node type to be decorated.
     type Node: MaybeLeadershipAwareNode<I> + 'static;
+    /// Voter type.
     type Voter: Voter;
-    type Buffer: Buffer<
-        RoundNum = RoundNumOf<Self::Node>,
-        CoordNum = CoordNumOf<Self::Node>,
-        Entry = LogEntryOf<Self::Node>,
-    >;
+    /// Buffer type.
+    type Buffer: Buffer;
 
+    /// Decorates the node with `Heartbeats` using the given configuration.
     #[allow(clippy::type_complexity)]
     fn send_heartbeats<C>(
         self,
@@ -151,6 +179,7 @@ where
     }
 }
 
+/// Heartbeats decoration.
 #[derive(Debug)]
 pub struct Heartbeats<N, C, I = ()>
 where
