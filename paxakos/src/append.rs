@@ -1,3 +1,5 @@
+//! Defines [`AppendError`], [`AppendArgs`] and related types.
+
 use std::ops::RangeInclusive;
 
 use num_traits::Bounded;
@@ -13,9 +15,16 @@ use crate::invocation::RoundNumOf;
 use crate::retry::DoNotRetry;
 use crate::retry::RetryPolicy;
 
+/// Options that determine how an append is performed.
 pub struct AppendArgs<I: Invocation> {
+    /// The round(s) in which the entry should be appended. The append won't be
+    /// started until the round(s) can be settled and will fail if they already
+    /// are.
     pub round: RangeInclusive<RoundNumOf<I>>,
+    /// The append's [importance][Importance].
     pub importance: Importance,
+    /// The [retry policy][crate::retry::RetryPolicy] with which to perform the
+    /// append.
     pub retry_policy: Box<dyn RetryPolicy<Invocation = I> + Send>,
 }
 
@@ -84,6 +93,7 @@ pub enum Peeryness {
     Unpeery,
 }
 
+/// Reason an append failed.
 #[derive(Error)]
 #[non_exhaustive]
 pub enum AppendError<I: Invocation> {
@@ -114,8 +124,11 @@ pub enum AppendError<I: Invocation> {
     /// Failed in achieving a quorum.
     #[error("node could not achieve a quorum")]
     NoQuorum {
+        /// All abstentions received.
         abstentions: Vec<AbstainOf<I>>,
+        /// All encountered errors.
         communication_errors: Vec<CommunicationErrorOf<I>>,
+        /// All rejections received.
         rejections: Vec<NayOf<I>>,
     },
 
