@@ -1,3 +1,5 @@
+//! Defines the [`Communicator`] trait and related types.
+
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::future::Future;
@@ -62,25 +64,43 @@ pub type VoteFor<C> = Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstainO
 /// protocol. Failure to shield a node from such messages may cause it to come
 /// out of passive participation mode early and lead to inconsistency.
 pub trait Communicator: Sized + 'static {
+    /// NodeInfo
     type Node: NodeInfo;
 
+    /// The round number type.
     type RoundNum: RoundNum;
+    /// The coordination number type.
     type CoordNum: CoordNum;
 
+    /// The log entry type.
     type LogEntry: LogEntry;
 
+    /// The communication error type.
     type Error: std::fmt::Debug + Send + Sync + 'static;
 
+    /// Type of future returned from `send_prepare`.
     type SendPrepare: Future<Output = Result<VoteFor<Self>, Self::Error>>;
+    /// Information sent along with abstentions.
     type Abstain: std::fmt::Debug + Send + Sync + 'static;
 
+    /// Type of future returned from `send_proposal`.
     type SendProposal: Future<Output = Result<AcceptanceFor<Self>, Self::Error>>;
+    /// Information sent along with yea votes.
     type Yea: std::fmt::Debug + Send + Sync + 'static;
+    /// Information sent along with nay votes.
     type Nay: std::fmt::Debug + Send + Sync + 'static;
 
+    /// Type of future returned from `send_commit`.
     type SendCommit: Future<Output = Result<Committed, Self::Error>>;
+    /// Type of future returned from `send_commit_by_id`.
     type SendCommitById: Future<Output = Result<Committed, Self::Error>>;
 
+    /// Send a prepare message to all `receivers`.
+    ///
+    /// Implementations should attempt to call each receivers'
+    /// [`RequestHandler::handle_prepare`][crate::RequestHandler::
+    /// handle_prepare]. The return value must contain exactly one entry per
+    /// receiver with a future of `handle_prepare`'s result.
     fn send_prepare<'a>(
         &mut self,
         receivers: &'a [Self::Node],
@@ -88,6 +108,12 @@ pub trait Communicator: Sized + 'static {
         coord_num: Self::CoordNum,
     ) -> Vec<(&'a Self::Node, Self::SendPrepare)>;
 
+    /// Send a proposal message to all `receivers`.
+    ///
+    /// Implementations should attempt to call each receivers'
+    /// [`RequestHandler::handle_proposal`][crate::RequestHandler::
+    /// handle_proposal]. The return value must contain exactly one entry per
+    /// receiver with a future of `handle_proposal`'s result.
     fn send_proposal<'a>(
         &mut self,
         receivers: &'a [Self::Node],
@@ -96,6 +122,12 @@ pub trait Communicator: Sized + 'static {
         log_entry: Arc<Self::LogEntry>,
     ) -> Vec<(&'a Self::Node, Self::SendProposal)>;
 
+    /// Send a commit message to all `receivers`.
+    ///
+    /// Implementations should attempt to call each receivers'
+    /// [`RequestHandler::handle_commit`][crate::RequestHandler::
+    /// handle_commit]. The return value must contain exactly one entry per
+    /// receiver with a future of `handle_commit`'s result.
     fn send_commit<'a>(
         &mut self,
         receivers: &'a [Self::Node],
@@ -104,6 +136,12 @@ pub trait Communicator: Sized + 'static {
         log_entry: Arc<Self::LogEntry>,
     ) -> Vec<(&'a Self::Node, Self::SendCommit)>;
 
+    /// Send a commit-by-id message to all `receivers`.
+    ///
+    /// Implementations should attempt to call each receivers'
+    /// [`RequestHandler::handle_commit_by_id`][crate::RequestHandler::
+    /// handle_commit_by_id]. The return value must contain exactly one entry
+    /// per receiver with a future of `handle_commit_by_id`'s result.
     fn send_commit_by_id<'a>(
         &mut self,
         receivers: &'a [Self::Node],
@@ -113,10 +151,14 @@ pub trait Communicator: Sized + 'static {
     ) -> Vec<(&'a Self::Node, Self::SendCommitById)>;
 }
 
+/// A vote cast in a leader election.
 #[derive(Debug)]
 pub enum Vote<R, C, E, A> {
+    /// The node voted for the candidate.
     Given(Promise<R, C, E>),
+    /// The node couldn't vote for the candidate.
     Conflicted(Conflict<C, E>),
+    /// The node abstained, refusing to vote at all.
     Abstained(A),
 }
 
@@ -165,10 +207,14 @@ impl<R, C, E, A> From<Result<Promise<R, C, E>, Conflict<C, E>>> for Vote<R, C, E
     }
 }
 
+/// A vote cast on a proposal.
 #[derive(Debug)]
 pub enum Acceptance<C, E, Y, X> {
+    /// The node voted for the proposal.
     Given(Y),
+    /// The node couldn't vote for the proposal.
     Conflicted(Conflict<C, E>),
+    /// The node voted against the proposal.
     Refused(X),
 }
 
@@ -214,6 +260,7 @@ impl<C, E, Y, X> From<Result<Y, Conflict<C, E>>> for Acceptance<C, E, Y, X> {
     }
 }
 
+/// Node successfully committed the log entry.
 pub struct Committed;
 
 impl From<()> for Committed {
