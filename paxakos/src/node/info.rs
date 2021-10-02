@@ -6,6 +6,7 @@ use crate::Identifier;
 /// information necessary to communicate with that node, typically a hostname
 /// and a (TCP) port.
 pub trait NodeInfo: 'static + Clone + std::fmt::Debug + Send + Sync {
+    /// Identifier of this node.
     type Id: Identifier;
 
     /// A unique identifier for this node.
