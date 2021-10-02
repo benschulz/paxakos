@@ -1,3 +1,5 @@
+//! A [`Node`] is a member in a distributed paxakos cluster.
+
 pub mod builder;
 mod commits;
 mod core;
@@ -107,8 +109,12 @@ pub type SnapshotFor<N> = invocation::SnapshotFor<InvocationOf<N>>;
 /// Invokes `Vote` type constructor so as to be compatible with `N`.
 pub type VoteFor<N> = invocation::VoteFor<InvocationOf<N>>;
 
+/// Node that participates in a cluster.
 pub trait Node: Sized {
+    /// Parametrization of the paxakos algorithm.
     type Invocation: Invocation;
+
+    /// Type of communicator this node uses.
     type Communicator: Communicator<
         Node = invocation::NodeOf<Self::Invocation>,
         RoundNum = invocation::RoundNumOf<Self::Invocation>,
@@ -119,12 +125,17 @@ pub trait Node: Sized {
         Nay = invocation::NayOf<Self::Invocation>,
         Abstain = invocation::AbstainOf<Self::Invocation>,
     >;
+
+    /// Type that will perform graceful shutdown if requsted.
     type Shutdown: Shutdown<Invocation = Self::Invocation>;
 
+    /// This node's identifier.
     fn id(&self) -> NodeIdOf<Self>;
 
+    /// Node's current status.
     fn status(&self) -> NodeStatus;
 
+    /// Node's current mode of participation.
     fn participation(&self) -> Participation<RoundNumOf<Self>>;
 
     /// Polls the node's event stream.
@@ -133,37 +144,54 @@ pub trait Node: Sized {
     /// drives the actions that keep the node up to date.
     fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<EventFor<Self>>;
 
+    /// Returns a future that polls this node for events until the next one is
+    /// returned.
     fn next_event(&mut self) -> NextEvent<'_, Self> {
         NextEvent(self)
     }
 
+    /// Returns a [handle][NodeHandle] for this node.
+    ///
+    /// A node handle can be freely sent between threads.
     fn handle(&self) -> NodeHandle<Self::Invocation>;
 
+    /// Requests that snapshot of the node's current state be taken.
     fn prepare_snapshot(
         &self,
     ) -> LocalBoxFuture<'static, Result<SnapshotFor<Self>, crate::error::PrepareSnapshotError>>;
 
+    /// Affirms that the given snapshot was written to persistent storage.
+    ///
+    /// Currently does nothing.
     fn affirm_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>>;
 
+    /// Requests that given snapshot be installed.
     fn install_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>>;
 
+    /// Reads the node's current state.
+    ///
+    /// As the name implies the state may be stale, i.e. other node's may have
+    /// advanced the shared state without this node being aware.
     fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<StateOf<Self>>, Disoriented>>;
 
+    /// Appends `applicable` to the shared log.
     fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
         &self,
         applicable: A,
         args: P,
     ) -> LocalBoxFuture<'static, AppendResultFor<Self, A>>;
 
+    /// Begins a graceful shutdown of this node.
     fn shut_down(self) -> Self::Shutdown;
 }
 
+/// Future returned by [`Node::next_event`].
 pub struct NextEvent<'a, N: ?Sized>(&'a mut N);
 
 impl<'a, N> std::future::Future for NextEvent<'a, N>
@@ -255,6 +283,7 @@ pub struct NodeKit<I: Invocation> {
 }
 
 impl<I: Invocation> NodeKit<I> {
+    /// Constructs a new node kit.
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(16);
 
@@ -265,6 +294,7 @@ impl<I: Invocation> NodeKit<I> {
         }
     }
 
+    /// Returns a handle for the node yet to be created.
     pub fn handle(&self) -> NodeHandle<I> {
         NodeHandle::new(self.sender.clone(), self.state_keeper.handle())
     }
