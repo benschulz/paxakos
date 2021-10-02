@@ -380,6 +380,7 @@
 // Lint configuration
 #![warn(rust_2018_idioms)]
 #![warn(clippy::wildcard_imports)]
+#![warn(missing_docs)]
 
 pub mod append;
 pub mod applicable;

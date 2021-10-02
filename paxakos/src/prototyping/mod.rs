@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
