@@ -1,11 +1,19 @@
+//! Defines the [`Cluster`] utility which trivializes implementing
+//! [`State::cluster_at`][crate::State::cluster_at] and
+//! [`State::concurrency`][crate::State::concurrency].
+
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
+/// Reflects wheter a log entry affects the cluster.
 pub trait ClusterLogEntry<N> {
+    /// Returns the target concurrency level, if this log entry sets it.
     fn concurrency(&self) -> Option<NonZeroUsize>;
 
+    /// Return the nodes that this log entry adds to the cluster.
     fn added_nodes(&self) -> Vec<N>;
 
+    /// Return the nodes that this log entry removes from the cluster.
     fn removed_nodes(&self) -> Vec<N>;
 }
 
@@ -92,6 +100,7 @@ where
         }
     }
 
+    /// Applies the given log entry, making the appropiate updates.
     pub fn apply<E: ClusterLogEntry<N>>(&mut self, log_entry: &E) {
         let new_concurrency = log_entry.concurrency();
         let mut added_nodes = log_entry.added_nodes();
@@ -200,6 +209,7 @@ where
         }
     }
 
+    /// Returns the concurrency at offset one.
     pub fn concurrency_at_offset_one(&self) -> NonZeroUsize {
         self.log_entries
             .back()
@@ -207,6 +217,7 @@ where
             .unwrap_or(self.concurrency_at_offset)
     }
 
+    /// Equivalent to `c.nodes_at(NonZeroUsize::new(1).unwrap()).unwrap()`.
     pub fn nodes_at_offset_one(&self) -> Vec<N> {
         self.nodes_at(NonZeroUsize::new(1).unwrap()).unwrap()
     }
