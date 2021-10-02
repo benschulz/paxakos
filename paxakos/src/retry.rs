@@ -1,20 +1,33 @@
+//! Defines the [`RetryPolicy`] trait and related types.
+
 use async_trait::async_trait;
 
 use crate::append::AppendError;
 use crate::error::BoxError;
 use crate::invocation::Invocation;
 
+/// Policy that determines whether an append should be retried.
 #[async_trait]
 pub trait RetryPolicy {
+    /// Parametrization of the paxakos algorithm.
     type Invocation: Invocation;
 
-    async fn eval(&mut self, err: AppendError<Self::Invocation>) -> Result<(), BoxError>;
+    /// Determines wheter another attempt to append should be made.
+    ///
+    /// The given `error` is the reason the latest attempt failed. Returning
+    /// `Ok(())` implies that another attempt should be made.
+    // TODO it should be possible to be cleverer with the error type
+    //      as it is pretty much every failed append will return
+    //      `AppendError::Aborted`
+    async fn eval(&mut self, error: AppendError<Self::Invocation>) -> Result<(), BoxError>;
 }
 
+/// Implementation of [`RetryPolicy`] that never retries.
 #[derive(Clone, Copy, Debug)]
 pub struct DoNotRetry<I>(crate::util::PhantomSend<I>);
 
 impl<I> DoNotRetry<I> {
+    /// Constructs a new `DoNoRetry` policy.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self(crate::util::PhantomSend::new())
@@ -30,6 +43,7 @@ impl<I: Invocation> RetryPolicy for DoNotRetry<I> {
     }
 }
 
+/// Append was not retried.
 #[derive(thiserror::Error)]
 #[error("append was aborted")]
 pub struct AbortedError<I: Invocation>(AppendError<I>);
@@ -59,6 +73,7 @@ mod cfg_backoff {
     use super::AbortedError;
     use super::RetryPolicy;
 
+    /// Retry policy basod on a [`Backoff`] implementation.
     pub struct RetryWithBackoff<B, I>(B, PhantomData<I>);
 
     #[async_trait]
