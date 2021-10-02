@@ -6,6 +6,7 @@ where
     Self: serde::Serialize,
     for<'de> Self: serde::Deserialize<'de>,
 {
+    /// Log entry ID type.
     type Id: Identifier;
 
     /// Returns a unique identifier for the log entry.
