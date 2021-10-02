@@ -1,3 +1,7 @@
+//! Contains a set of types for constructing nodes.
+//!
+//! See [`node_builder`][crate::node_builder] or
+//! [`node::builder`][crate::node::builder].
 use futures::future::FutureExt;
 use futures::future::LocalBoxFuture;
 use futures::future::TryFutureExt;
@@ -36,26 +40,32 @@ use super::InvocationOf;
 use super::NodeKit;
 use super::RequestHandlerFor;
 
-pub type Result<T> = std::result::Result<T, SpawnError>;
+/// Result returned by [`NodeBuilder::spawn`] or [`NodeBuilder::spawn_in`].
+pub type SpawnResult<T> = std::result::Result<T, SpawnError>;
 
+/// Blank node builder.
 #[derive(Default)]
 pub struct NodeBuilderBlank<I>(std::marker::PhantomData<I>);
 
 impl<I: Invocation> NodeBuilderBlank<I> {
+    /// Constructs a new blank builder.
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
     }
 
+    /// Specifies identifier of the node to be built.
     pub fn for_node(self, node_id: NodeIdOf<I>) -> NodeBuilderWithNodeId<I> {
         NodeBuilderWithNodeId { node_id }
     }
 }
 
+/// Node builder with node id already set.
 pub struct NodeBuilderWithNodeId<I: Invocation> {
     node_id: NodeIdOf<I>,
 }
 
 impl<I: Invocation> NodeBuilderWithNodeId<I> {
+    /// Sets the communicator with which to communicate.
     pub fn communicating_via<C>(self, communicator: C) -> NodeBuilderWithNodeIdAndCommunicator<I, C>
     where
         C: Communicator<
@@ -76,6 +86,7 @@ impl<I: Invocation> NodeBuilderWithNodeId<I> {
     }
 }
 
+/// Node builder with node id and communicator already set.
 pub struct NodeBuilderWithNodeIdAndCommunicator<I: Invocation, C: Communicator> {
     node_id: NodeIdOf<I>,
     communicator: C,
@@ -114,14 +125,14 @@ where
     ///
     /// # Soundness
     ///
-    /// It is assumed that the given snapshot was yielded from the [`Last`]
+    /// It is assumed that the given snapshot was yielded from the [`Final`]
     /// event of a clean shutdown and that the node hasn't run in the meantime.
     /// As such the node will start in active participation mode. This is
     /// unsound if the assumptions are violated.
     ///
     /// Use [recovering_with] to have a failed node recover.
     ///
-    /// [`Last`]: crate::event::ShutdownEvent::Last
+    /// [`Final`]: crate::event::ShutdownEvent::Final
     /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
     pub fn resuming_from<S: Into<Option<SnapshotFor<I>>>>(
         self,
@@ -210,8 +221,9 @@ where
     }
 }
 
-type Finisher<N> = dyn FnOnce(Core<InvocationOf<N>, CommunicatorOf<N>>) -> Result<N>;
+type Finisher<N> = dyn FnOnce(Core<InvocationOf<N>, CommunicatorOf<N>>) -> SpawnResult<N>;
 
+/// Node builder with all essential information set.
 pub struct NodeBuilder<
     N: Node,
     V = IndiscriminateVoterFor<N>,
@@ -247,6 +259,7 @@ where
         Entry = node::LogEntryOf<N>,
     >,
 {
+    /// Sets the applied entry buffer.
     pub fn buffering_applied_entries_in<
         T: Buffer<
             RoundNum = node::RoundNumOf<N>,
@@ -273,6 +286,7 @@ where
         }
     }
 
+    /// Tracer to record events with.
     #[cfg(feature = "tracer")]
     pub fn traced_by<T: Into<Box<dyn Tracer<InvocationOf<N>>>>>(mut self, tracer: T) -> Self {
         self.tracer = Some(tracer.into());
@@ -280,6 +294,7 @@ where
         self
     }
 
+    /// Sets the voting strategy to use.
     pub fn voting_with<T>(self, voter: T) -> NodeBuilder<N, T, B> {
         // https://github.com/rust-lang/rust/issues/86555
         NodeBuilder {
@@ -297,12 +312,14 @@ where
         }
     }
 
+    /// Sets the node kit to use.
     pub fn using(mut self, kit: NodeKit<InvocationOf<N>>) -> Self {
         self.kit = kit;
 
         self
     }
 
+    /// Adds a decoration to wrap around the resulting node.
     pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V, B>
     where
         D: Decoration<
@@ -328,17 +345,19 @@ where
         }
     }
 
-    pub fn spawn(self) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, Shell<N>)>>
+    /// Spawns the node into context `()`.
+    pub fn spawn(self) -> LocalBoxFuture<'static, SpawnResult<(RequestHandlerFor<N>, Shell<N>)>>
     where
         node::StateOf<N>: State<Context = ()>,
     {
         self.spawn_in(())
     }
 
+    /// Spawns the node in the given context.
     pub fn spawn_in(
         self,
         context: node::ContextOf<N>,
-    ) -> LocalBoxFuture<'static, Result<(RequestHandlerFor<N>, Shell<N>)>> {
+    ) -> LocalBoxFuture<'static, SpawnResult<(RequestHandlerFor<N>, Shell<N>)>> {
         let finisher = self.finisher;
 
         let receiver = self.kit.receiver;
