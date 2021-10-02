@@ -180,10 +180,10 @@ impl<I: Invocation> StateKeeperHandle<I> {
         dispatch_state_keeper_req!(self, ObservedCoordNum, { coord_num })
     }
 
-    pub fn highest_observed_coord_num(
+    pub fn greatest_observed_coord_num(
         &self,
     ) -> impl Future<Output = Result<CoordNumOf<I>, ShutDown>> {
-        dispatch_state_keeper_req!(self, HighestObservedCoordNum)
+        dispatch_state_keeper_req!(self, GreatestObservedCoordNum)
     }
 
     pub fn prepare_entry(

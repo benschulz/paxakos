@@ -106,8 +106,8 @@ type PendingCommit<I> = (Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
 struct Init<S: State, R: RoundNum, C: CoordNum> {
     state_round: R,
     state: Option<Arc<S>>,
-    highest_observed_round_num: Option<R>,
-    highest_observed_coord_num: C,
+    greatest_observed_round_num: Option<R>,
+    greatest_observed_coord_num: C,
     participation: Participation<R, C>,
     promises: BTreeMap<R, C>,
     accepted_entries: BTreeMap<R, (C, Arc<state::LogEntryOf<S>>)>,
@@ -118,8 +118,8 @@ impl<S: State, R: RoundNum, C: CoordNum> Default for Init<S, R, C> {
         Self {
             state_round: Zero::zero(),
             state: None,
-            highest_observed_round_num: None,
-            highest_observed_coord_num: One::one(),
+            greatest_observed_round_num: None,
+            greatest_observed_coord_num: One::one(),
             participation: Participation::Active,
             promises: {
                 let mut promises = BTreeMap::new();
@@ -136,8 +136,8 @@ impl<S: State, R: RoundNum, C: CoordNum> From<DeconstructedSnapshot<S, R, C>> fo
         Self {
             state_round: s.round,
             state: Some(s.state),
-            highest_observed_round_num: s.highest_observed_round_num,
-            highest_observed_coord_num: s.highest_observed_coord_num,
+            greatest_observed_round_num: s.greatest_observed_round_num,
+            greatest_observed_coord_num: s.greatest_observed_coord_num,
             participation: s.participation,
             promises: s.promises,
             accepted_entries: s.accepted_entries,
@@ -188,20 +188,20 @@ where
     release_sender: mpsc::UnboundedSender<Release<RoundNumOf<I>>>,
     release_receiver: mpsc::UnboundedReceiver<Release<RoundNumOf<I>>>,
 
-    /// The highest _observed_ round number so far.
+    /// The greatest _observed_ round number so far.
     ///
     /// This number is used to determine whether this node is lagging.
-    highest_observed_round_num: Option<RoundNumOf<I>>,
+    greatest_observed_round_num: Option<RoundNumOf<I>>,
 
-    /// The highest _observed_  coordination number so far.
+    /// The greatest _observed_  coordination number so far.
     ///
     /// Naively it might make sense to track these in a BTreeMap, similar to
-    /// promises. However, the highest observed coordination number is only used
-    /// for one thing: To determine the which coordination number to use in a
-    /// bid for leader. This coordination number will then be compared against
+    /// promises. However, the greatest observed coordination number is only
+    /// used for one thing: To determine the which coordination number to use in
+    /// a bid for leader. This coordination number will then be compared against
     /// the _strongest_ promise (see prepare_entry). Therefore it makes no sense
     /// to track observations by round number.
-    highest_observed_coord_num: CoordNumOf<I>,
+    greatest_observed_coord_num: CoordNumOf<I>,
 
     /// If promises were made, promises will be kept.
     ///
@@ -326,8 +326,8 @@ where
             let Init {
                 state_round,
                 state,
-                highest_observed_round_num,
-                highest_observed_coord_num,
+                greatest_observed_round_num,
+                greatest_observed_coord_num,
                 participation,
                 promises,
                 accepted_entries,
@@ -367,8 +367,8 @@ where
                 round_num_requests: VecDeque::new(),
                 acquired_round_nums: HashSet::new(),
 
-                highest_observed_round_num,
-                highest_observed_coord_num,
+                greatest_observed_round_num,
+                greatest_observed_coord_num,
 
                 pending_commits: BTreeMap::new(),
                 awaiters: HashMap::new(),
@@ -624,8 +624,8 @@ where
 
                 Response::ObservedCoordNum(Ok(()))
             }
-            Request::HighestObservedCoordNum => {
-                Response::HighestObservedCoordNum(Ok(self.highest_observed_coord_num))
+            Request::GreatestObservedCoordNum => {
+                Response::GreatestObservedCoordNum(Ok(self.greatest_observed_coord_num))
             }
 
             Request::PrepareEntry {
@@ -777,12 +777,12 @@ where
         let expected_status = match &self.state {
             Some(state) => {
                 if self
-                    .highest_observed_round_num
+                    .greatest_observed_round_num
                     .unwrap_or_else(Bounded::max_value)
                     > self.state_round + into_round_num(state.concurrency())
                 {
                     NodeStatus::Lagging
-                } else if self.highest_observed_coord_num == self.leadership.1 {
+                } else if self.greatest_observed_coord_num == self.leadership.1 {
                     NodeStatus::Leading
                 } else {
                     NodeStatus::Following
@@ -885,14 +885,15 @@ where
     }
 
     fn observe_round_num(&mut self, round_num: RoundNumOf<I>) {
-        self.highest_observed_round_num = self
-            .highest_observed_round_num
+        self.greatest_observed_round_num = self
+            .greatest_observed_round_num
             .map(|r| std::cmp::max(r, round_num))
             .or(Some(round_num));
     }
 
     fn observe_coord_num(&mut self, coord_num: CoordNumOf<I>) {
-        self.highest_observed_coord_num = std::cmp::max(self.highest_observed_coord_num, coord_num);
+        self.greatest_observed_coord_num =
+            std::cmp::max(self.greatest_observed_coord_num, coord_num);
     }
 
     fn prepare_snapshot(&mut self) -> Result<SnapshotFor<I>, PrepareSnapshotError> {
@@ -904,8 +905,8 @@ where
         Ok(Snapshot::new(
             self.state_round,
             Arc::clone(state),
-            self.highest_observed_round_num,
-            self.highest_observed_coord_num,
+            self.greatest_observed_round_num,
+            self.greatest_observed_coord_num,
             self.participation.clone(),
             self.promises.clone(),
             self.accepted_entries.clone(),
@@ -925,8 +926,8 @@ where
         let DeconstructedSnapshot {
             round: state_round,
             state,
-            highest_observed_round_num,
-            highest_observed_coord_num,
+            greatest_observed_round_num,
+            greatest_observed_coord_num,
             promises,
             accepted_entries,
             ..
@@ -936,8 +937,8 @@ where
 
         self.state_round = state_round;
         self.state = Some(Arc::clone(&state));
-        self.highest_observed_round_num = highest_observed_round_num;
-        self.highest_observed_coord_num = highest_observed_coord_num;
+        self.greatest_observed_round_num = greatest_observed_round_num;
+        self.greatest_observed_coord_num = greatest_observed_coord_num;
         self.promises = promises;
         self.accepted_entries = accepted_entries;
 
@@ -970,7 +971,7 @@ where
 
         if round_num <= self.state_round {
             return Err(PrepareError::Converged(
-                self.highest_observed_coord_num,
+                self.greatest_observed_coord_num,
                 self.try_get_applied_entry(round_num),
             ));
         } else if let btree_map::Entry::Occupied(e) = self.pending_commits.entry(round_num) {
@@ -978,12 +979,12 @@ where
             let log_entry = Arc::clone(&e.get().2);
 
             return Err(PrepareError::Converged(
-                self.highest_observed_coord_num,
+                self.greatest_observed_coord_num,
                 Some((coord_num, log_entry)),
             ));
         }
 
-        // We always compare against the strongest promise/highest coordination number.
+        // We always compare against the strongest promise/greatest coordination number.
         // This is necessary to prevent inconsistencies caused by occurences like the
         // following in a three node cluster.
         //
@@ -1103,7 +1104,7 @@ where
     ) -> Result<YeaOf<I>, AcceptError<I>> {
         if round_num <= self.state_round {
             Err(AcceptError::Converged(
-                self.highest_observed_coord_num,
+                self.greatest_observed_coord_num,
                 self.try_get_applied_entry(round_num),
             ))
         } else if let btree_map::Entry::Occupied(e) = self.pending_commits.entry(round_num) {
@@ -1111,7 +1112,7 @@ where
             let log_entry = Arc::clone(&e.get().2);
 
             Err(AcceptError::Converged(
-                self.highest_observed_coord_num,
+                self.greatest_observed_coord_num,
                 Some((coord_num, log_entry)),
             ))
         } else {
@@ -1205,8 +1206,8 @@ where
             match self.accepted_entries.entry(round_num) {
                 btree_map::Entry::Occupied(ref mut e) => {
                     // At this point we've accepted the entry. However, when a node makes a promise
-                    // it's only obligated to return "the highest-numbered proposal (if any) that it
-                    // has accepted". Therefore we need not store/can overwrite an entry with a
+                    // it's only obligated to return "the greatest-numbered proposal (if any) that
+                    // it has accepted". Therefore we need not store/can overwrite an entry with a
                     // lower coordination number.
                     if e.get().0 < coord_num {
                         e.insert((coord_num, log_entry));

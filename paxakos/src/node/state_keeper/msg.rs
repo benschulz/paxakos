@@ -59,7 +59,7 @@ pub enum Request<I: Invocation> {
     ObservedCoordNum {
         coord_num: CoordNumOf<I>,
     },
-    HighestObservedCoordNum,
+    GreatestObservedCoordNum,
 
     PrepareEntry {
         round_num: RoundNumOf<I>,
@@ -117,7 +117,7 @@ pub enum Response<I: Invocation> {
     Cluster(Result<Vec<NodeOf<I>>, ClusterError<RoundNumOf<I>>>),
 
     ObservedCoordNum(Result<(), Infallible>),
-    HighestObservedCoordNum(Result<CoordNumOf<I>, Infallible>),
+    GreatestObservedCoordNum(Result<CoordNumOf<I>, Infallible>),
 
     PrepareEntry(Result<PromiseFor<I>, PrepareError<I>>),
 

@@ -281,8 +281,8 @@ where
             )
         });
 
-        let highest_observed_coord_num = self.state_keeper.highest_observed_coord_num().await?;
-        let lowest_possible = std::cmp::max(highest_observed_coord_num, One::one());
+        let greatest_observed_coord_num = self.state_keeper.greatest_observed_coord_num().await?;
+        let lowest_possible = std::cmp::max(greatest_observed_coord_num, One::one());
 
         let remainder = lowest_possible % cluster_size;
 

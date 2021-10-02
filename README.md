@@ -274,7 +274,7 @@ Appending an entry to the distributed log takes the following five steps.
 
    2. Conflict `(CoordNum, Option<(CoordNum, LogEntry)>)`
 
-      A rejection is sent with the highest observed coordination number so
+      A rejection is sent with the greatest observed coordination number so
       far. For the special case that the round has already converged and the
       node still has it available, it will send it along as well.
 
@@ -294,7 +294,7 @@ Appending an entry to the distributed log takes the following five steps.
 
    The only restriction is that it must respect the promises it has
    received. If multiple promises contain a triple with the same round
-   number, the one with the highest coordination number wins. (Triples with
+   number, the one with the greatest coordination number wins. (Triples with
    the same round and coordination number will have the same log entry as
    well.)
 

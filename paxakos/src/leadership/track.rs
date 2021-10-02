@@ -48,10 +48,10 @@ pub trait LeadershipAwareNode<I>: Node {
     /// Leadership as assumed by this node.
     ///
     /// Note: This information is unreliable. A node will assume itself or
-    /// another node to be leader when that node "owns" the highest coordination
-    /// number observed for that round. That means neither that the node managed
-    /// to achieve a quorum with that number, nor that no other node
-    /// achieved a quorum with an even higher number.
+    /// another node to be leader when that node "owns" the greatest
+    /// coordination number observed for that round. That means neither that
+    /// the node managed to achieve a quorum with that number, nor that no other
+    /// node achieved a quorum with an even higher number.
     fn lax_leadership(&self) -> &[LeadershipFor<Self>];
 
     /// Leadership as assumed by this node.
