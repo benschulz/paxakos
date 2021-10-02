@@ -86,16 +86,21 @@ impl<I: Invocation> NodeHandle<I> {
         }
     }
 
+    /// Node's current status.
     pub fn status(&self) -> impl Future<Output = Result<NodeStatus, ShutDown>> {
         dispatch_node_handle_req!(self, Status).map(|r| r.ok_or(ShutDown))
     }
 
+    /// Requests that snapshot of the node's current state be taken.
     pub fn prepare_snapshot(
         &self,
     ) -> impl Future<Output = Result<SnapshotFor<I>, crate::error::PrepareSnapshotError>> {
         self.state_keeper.prepare_snapshot()
     }
 
+    /// Affirms that the given snapshot was written to persistent storage.
+    ///
+    /// Currently does nothing.
     pub fn affirm_snapshot(
         &self,
         snapshot: SnapshotFor<I>,
@@ -103,6 +108,7 @@ impl<I: Invocation> NodeHandle<I> {
         self.state_keeper.affirm_snapshot(snapshot)
     }
 
+    /// Requests that given snapshot be installed.
     pub fn install_snapshot(
         &self,
         snapshot: SnapshotFor<I>,
@@ -110,12 +116,17 @@ impl<I: Invocation> NodeHandle<I> {
         self.state_keeper.install_snapshot(snapshot)
     }
 
+    /// Reads the node's current state.
+    ///
+    /// As the name implies the state may be stale, i.e. other node's may have
+    /// advanced the shared state without this node being aware.
     pub fn read_stale(
         &self,
     ) -> impl Future<Output = Result<Arc<StateOf<I>>, crate::error::ReadStaleError>> {
         self.state_keeper.try_read_stale()
     }
 
+    /// Appends `applicable` to the shared log.
     pub fn append<A: ApplicableTo<StateOf<I>>, P: Into<AppendArgs<I>>>(
         &self,
         applicable: A,
