@@ -8,6 +8,91 @@ use crate::state::State;
 pub type ProjectedOf<A, S> = <ProjectionOf<A, S> as Projection<OutcomeOf<S>>>::Projected;
 pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 
+/// Describes values that may be [applied][State::apply] to type `S`.
+///
+/// For any given `State` implementation there is usually a wide range of
+/// possible operations. These are encoded by its corresponding `LogEntry` type,
+/// which commonly contains (or is) an enum value whose variants correspond to
+/// the state's operations. Different operations usually have different
+/// outcome types, which is why [State::Outcome] is also commonly an enum.
+///
+/// This presents an ergonomics challenge. Imagine `enum MyLogEntry { A, B }`
+/// and `enum MyOutcome { A(i64), B(bool) }`. When appending a `MyLogEntry::A`
+/// we'd like to get back an `i64` rather than a `MyOutcome`. This can be
+/// achieved as follows.
+///
+/// ```
+/// # use std::sync::Arc;
+/// #
+/// # #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+/// # enum MyLogEntry {
+/// #     A,
+/// #     B,
+/// # }
+/// #
+/// # #[derive(Clone, Debug)]
+/// # enum MyOutcome {
+/// #     A(i64),
+/// #     B(bool),
+/// # }
+/// #
+/// # #[derive(Clone, Debug)]
+/// # struct MyState;
+/// #
+/// # impl paxakos::LogEntry for MyLogEntry {
+/// #     type Id = ();
+/// #
+/// #     fn id(&self) -> Self::Id {
+/// #         unimplemented!()
+/// #     }
+/// # }
+/// # impl paxakos::State for MyState {
+/// #     type LogEntry = MyLogEntry;
+/// #
+/// #     type Context = ();
+/// #
+/// #     type Outcome = MyOutcome;
+/// #
+/// #     type Event = ();
+/// #
+/// #     type Node = ();
+/// #
+/// #     fn apply(
+/// #         &mut self,
+/// #         _log_entry: &Self::LogEntry,
+/// #         _context: &mut Self::Context,
+/// #     ) -> (Self::Outcome, Self::Event) {
+/// #         unimplemented!()
+/// #     }
+/// #
+/// #     fn cluster_at(&self, _round_offset: std::num::NonZeroUsize) -> Vec<Self::Node> {
+/// #         unimplemented!()
+/// #     }
+/// # }
+/// #
+/// struct A;
+///
+/// impl paxakos::applicable::ApplicableTo<MyState> for A {
+///     type Projection = ProjectionA;
+///
+///     fn into_log_entry(self) -> Arc<MyLogEntry> {
+///         Arc::new(MyLogEntry::A)
+///     }
+/// }
+///
+/// struct ProjectionA;
+///
+/// impl paxakos::applicable::Projection<MyOutcome> for ProjectionA {
+///     type Projected = i64;
+///
+///     fn project(val: MyOutcome) -> Self::Projected {
+///         match val {
+///             MyOutcome::A(i) => i,
+///             _ => panic!("unexpected: {:?}", val)
+///         }
+///     }
+/// }
+/// ```
 pub trait ApplicableTo<S: State> {
     type Projection: Projection<OutcomeOf<S>>;
 
@@ -30,12 +115,14 @@ impl<S: State<LogEntry = E>, E: LogEntry> ApplicableTo<S> for Arc<E> {
     }
 }
 
+/// A projection from `T` to `Self::Projected`.
 pub trait Projection<T>: Send + Unpin {
     type Projected;
 
     fn project(val: T) -> Self::Projected;
 }
 
+/// The identity projection.
 #[derive(Debug)]
 pub struct Identity;
 
