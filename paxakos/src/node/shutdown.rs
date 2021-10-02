@@ -10,6 +10,7 @@ use super::state_keeper::EventStream;
 
 /// A `Node` that is being [`shut_down`][crate::Node::shut_down].
 pub trait Shutdown {
+    /// Parametrization of the paxakos algorithm.
     type Invocation: Invocation;
 
     /// Polls the node's event stream, driving the shutdown to conclusion.
@@ -19,6 +20,7 @@ pub trait Shutdown {
     ) -> std::task::Poll<ShutdownEvent<Self::Invocation>>;
 }
 
+/// The default `Shutdown` implementation.
 pub struct DefaultShutdown<I: Invocation> {
     trigger: LocalBoxFuture<'static, ()>,
     events: EventStream<I>,
