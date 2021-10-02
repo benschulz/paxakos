@@ -1,3 +1,5 @@
+//! Defines the [`Invocation`] trait.
+
 use crate::applicable::ProjectionOf;
 use crate::communicator::Acceptance;
 use crate::communicator::Vote;
@@ -65,17 +67,25 @@ pub type VoteFor<I> = Vote<RoundNumOf<I>, CoordNumOf<I>, LogEntryOf<I>, AbstainO
 /// lot of individual type parameters. Therefore Paxakos foregoes the idiomatic
 /// approach and accepts a single `Invocation` argument in most places.
 pub trait Invocation: Sized + 'static {
+    /// Round number type.
     type RoundNum: RoundNum;
+    /// Coordination number type.
     type CoordNum: CoordNum;
 
+    /// State type.
     type State: State;
 
+    /// Additional data sent along with 'yea' votes.
     type Yea: std::fmt::Debug + Send + Sync + 'static;
+    /// Additional data sent along with 'nay' votes.
     type Nay: std::fmt::Debug + Send + Sync + 'static;
+    /// Additional data sent along with abstentions.
     type Abstain: std::fmt::Debug + Send + Sync + 'static;
 
+    /// Communication error type.
     type CommunicationError: std::fmt::Debug + Send + Sync + 'static;
 
+    /// Constructs a blank node builder for this set of type arguments.
     fn node_builder() -> NodeBuilderBlank<Self> {
         NodeBuilderBlank::new()
     }
