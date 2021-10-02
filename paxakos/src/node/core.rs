@@ -118,7 +118,7 @@ where
             .map(|e| e.expect("Event stream ended"))
             .map(|e| match e {
                 ShutdownEvent::Regular(e) => e,
-                ShutdownEvent::Last { .. } => unreachable!(),
+                ShutdownEvent::Final { .. } => unreachable!(),
             });
 
         if let std::task::Poll::Ready(Event::StatusChange { new_status, .. }) = result {

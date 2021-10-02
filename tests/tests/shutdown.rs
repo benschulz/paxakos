@@ -36,7 +36,7 @@ fn clean_shutdown() {
     let mut states = futures::stream::poll_fn(|cx| shutdown.poll_shutdown(cx).map(Some))
         .map(|e| match e {
             ShutdownEvent::Regular(_) => futures::stream::empty().left_stream(),
-            ShutdownEvent::Last { snapshot, .. } => {
+            ShutdownEvent::Final { snapshot, .. } => {
                 futures::stream::once(futures::future::ready(snapshot)).right_stream()
             }
         })

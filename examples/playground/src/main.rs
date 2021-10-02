@@ -354,7 +354,7 @@ async fn spawn_node(
                                 let snapshot = loop {
                                     match future::poll_fn(|cx| shut_down.poll_shutdown(cx)).await {
                                         ShutdownEvent::Regular(_) => {}
-                                        ShutdownEvent::Last { snapshot, .. } => {
+                                        ShutdownEvent::Final { snapshot, .. } => {
                                             break snapshot.unwrap();
                                         }
                                     }

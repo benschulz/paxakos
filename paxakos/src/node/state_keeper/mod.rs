@@ -560,7 +560,7 @@ where
         let snapshot = self.prepare_snapshot().ok();
         let mut emitter = self.event_emitter;
 
-        let _ = futures::executor::block_on(emitter.send(ShutdownEvent::Last { snapshot }));
+        let _ = futures::executor::block_on(emitter.send(ShutdownEvent::Final { snapshot }));
     }
 
     fn handle_request_msg(&mut self, req: Request<I>, resp_sender: oneshot::Sender<Response<I>>) {
