@@ -10,6 +10,7 @@ use crate::state::State;
 use crate::CoordNum;
 use crate::RoundNum;
 
+/// A snapshot of a node's state.
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(bound(
     serialize = "S: serde::Serialize",
@@ -99,6 +100,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
         }))
     }
 
+    /// Creates an "initial" snapshot, i.e. a snapshot for round `0`.
     pub fn initial(state: impl Into<Arc<S>>) -> Self {
         let mut promises = BTreeMap::new();
         promises.insert(Zero::zero(), One::one());
@@ -114,12 +116,14 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
         )
     }
 
+    /// The round the node was in when the snapshot was taken.
     pub fn round(&self) -> R {
         match &self.0 {
             VersionedSnapshot::V1(s) => s.round,
         }
     }
 
+    /// The state the node was in when the snapshot was taken.
     pub fn state(&self) -> &Arc<S> {
         match &self.0 {
             VersionedSnapshot::V1(s) => &s.state,
