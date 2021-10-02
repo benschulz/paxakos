@@ -1,3 +1,5 @@
+//! Defines the [`State`] trait and convenience type aliases.
+
 use std::fmt::Debug;
 
 use crate::LogEntry;
@@ -28,6 +30,7 @@ pub type EventOf<S> = <S as State>::Event;
 
 /// Distributed state to which log entries are applied.
 pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
+    /// Type of log entry that can be applied to this state.
     type LogEntry: LogEntry;
 
     /// An execution context.
@@ -48,6 +51,7 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
     /// [Apply]: crate::event::Event::Apply
     type Event: 'static + Send + Debug;
 
+    /// Node descriptor type, see [`NodeInfo`].
     type Node: NodeInfo;
 
     /// Applies the given log entry to this state object.
