@@ -1,3 +1,5 @@
+//! Defines the [`ApplicableTo`] trait and related types.
+
 use std::sync::Arc;
 
 use crate::log_entry::LogEntry;
@@ -96,8 +98,10 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 /// }
 /// ```
 pub trait ApplicableTo<S: State> {
+    /// Projection type, usually a zero-sized type.
     type Projection: Projection<OutcomeOf<S>>;
 
+    /// Turns this applicable value into a log entry.
     fn into_log_entry(self) -> Arc<LogEntryOf<S>>;
 }
 
@@ -119,8 +123,10 @@ impl<S: State<LogEntry = E>, E: LogEntry> ApplicableTo<S> for Arc<E> {
 
 /// A projection from `T` to `Self::Projected`.
 pub trait Projection<T>: Send + Unpin {
+    /// The projected/image type.
     type Projected;
 
+    /// Project `val`.
     fn project(val: T) -> Self::Projected;
 }
 
