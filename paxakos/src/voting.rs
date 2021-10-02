@@ -1,3 +1,7 @@
+//! The paxakos consensus protocol has nodes elect leaders and vote on
+//! proposals. Nodes will always vote 'no', if voting 'yes' would compromise
+//! correctness. In all other cases, nodes will vote using their [`Voter`]
+//! strategy. The default strategy, [`IndiscriminateVoter`] always votes 'yes'.
 use std::convert::Infallible;
 
 use crate::state::LogEntryOf;
@@ -19,15 +23,27 @@ pub type StateOf<V> = <V as Voter>::State;
 /// Shorthand to extract `Yea` type out of `V`.
 pub type YeaOf<V> = <V as Voter>::Yea;
 
+/// Strategy to vote on candidates and proposals.
 pub trait Voter: Send + 'static {
+    /// Type of shared state.
     type State: State;
+    /// Round number type.
     type RoundNum: RoundNum;
+    /// Coordination number type.
     type CoordNum: CoordNum;
 
+    /// Data that will be added to any `Yea` vote on proposals.
     type Yea: std::fmt::Debug + Send + Sync;
+    /// Data that will be added to any `Nay` vote on proposals.
     type Nay: std::fmt::Debug + Send + Sync;
+    /// Data that will be added to any `Abstain` from elections.
     type Abstain: std::fmt::Debug + Send + Sync;
 
+    /// Contemplate a bid for leadership.
+    ///
+    /// `candidate` will be `None` if the node cannot be inferred due to missing
+    /// or outdated state.
+    ///
     /// *Careful*: `state` is the current applied state and independent of
     /// `round_num`.
     fn contemplate_candidate(
@@ -38,6 +54,11 @@ pub trait Voter: Send + 'static {
         state: Option<&Self::State>,
     ) -> Decision<(), Infallible, Self::Abstain>;
 
+    /// Contemplate a proposed log entry.
+    ///
+    /// `leader` will be `None` if the node cannot be inferred due to missing
+    /// or outdated state.
+    ///
     /// *Careful*: `state` is the current applied state and independent of
     /// `round_num`.
     fn contemplate_proposal(
@@ -49,6 +70,10 @@ pub trait Voter: Send + 'static {
         state: Option<&Self::State>,
     ) -> Decision<Self::Yea, Self::Nay, Infallible>;
 
+    /// Called for every commit.
+    ///
+    /// `leader` will be `None` if the node cannot be inferred due to missing
+    /// or outdated state.
     #[allow(unused_variables)]
     fn observe_commit(
         &mut self,
@@ -60,16 +85,22 @@ pub trait Voter: Send + 'static {
     }
 }
 
+/// Voting decision, either `Yea`, `Nay` or `Abstain`.
 pub enum Decision<Y, N, A> {
+    /// Abstain, i.e. do not vote at all.
     Abstain(A),
+    /// Nay, i.e. vote 'no'.
     Nay(N),
+    /// Yea, i.e. vote 'yes'.
     Yea(Y),
 }
 
+/// A voter that always votes `Yea`.
 #[derive(Default)]
 pub struct IndiscriminateVoter<S, R, C, A, Y, N>(std::marker::PhantomData<(S, R, C, A, Y, N)>);
 
 impl<S, R, C, A, Y, N> IndiscriminateVoter<S, R, C, A, Y, N> {
+    /// Constructs a new `IndiscriminateVoter`.
     pub fn new() -> Self {
         Self(std::marker::PhantomData)
     }
