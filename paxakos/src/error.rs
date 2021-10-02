@@ -1,3 +1,5 @@
+//! Defines various error types.
+
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -11,66 +13,87 @@ use crate::invocation::LogEntryIdOf;
 use crate::invocation::LogEntryOf;
 use crate::invocation::NayOf;
 
+/// Some boxed error.
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
+/// Reason spawning a node failed.
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum SpawnError {
+    /// A decoration's [`wrap` method][crate::decoration::Decoration::wrap]
+    /// failed.
     #[error("a node decoration raised an error")]
     Decoration(#[source] BoxError),
 }
 
+/// Reason node snapshot couldn't be created.
 #[derive(Debug, Error)]
 pub enum PrepareSnapshotError {
+    /// Node doesn't have state.
     #[error("node is disoriented")]
     Disoriented,
 
+    /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
 }
 
+/// Reason node snapshot couldn't be affirmed.
 #[derive(Debug, Error)]
 pub enum AffirmSnapshotError {
+    /// The given snapshot is unknown.
     #[error("unknown snapshot")]
     Unknown,
 
+    /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
 }
 
+/// Reason node snapshot couldn't be installed.
 #[derive(Debug, Error)]
 pub enum InstallSnapshotError {
+    /// The node's current state is more up-to-date.
     #[error("snapshot is outdated")]
     Outdated,
 
+    /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
 }
 
+/// Reason node's state couldn't be read.
 #[derive(Debug, Error)]
 pub enum ReadStaleError {
+    /// Node doesn't have state.
     #[error("node is disoriented")]
     Disoriented,
 
+    /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
 }
 
-/// Preparing a round for proposals failed.
+/// Reason preparing round for proposals failed.
 #[derive(Error)]
 pub enum PrepareError<I: Invocation> {
+    /// Node abstained from voting.
     #[error("promise war deliberately withheld")]
     Abstained(AbstainOf<I>),
 
+    /// Another node es running for leader with a greater coordination number.
     #[error("conflicting promise")]
     Supplanted(CoordNumOf<I>),
 
+    /// Round is already settled.
     #[error("round already converged")]
     Converged(CoordNumOf<I>, Option<(CoordNumOf<I>, Arc<LogEntryOf<I>>)>),
 
+    /// Node is in passive mode.
     #[error("node is passive")]
     Passive,
 
+    /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
 }
@@ -118,18 +141,23 @@ impl<I: Invocation> From<PrepareError<I>> for AppendError<I> {
 /// A proposal could not be accepted.
 #[derive(Error)]
 pub enum AcceptError<I: Invocation> {
+    /// Another node has become leader with a greater coordination number.
     #[error("conflicting promise")]
     Supplanted(CoordNumOf<I>),
 
+    /// Round is already settled.
     #[error("round already converged")]
     Converged(CoordNumOf<I>, Option<(CoordNumOf<I>, Arc<LogEntryOf<I>>)>),
 
+    /// Node is in passive mode.
     #[error("node is passive")]
     Passive,
 
+    /// Node rejected the proposal.
     #[error("proposal was rejected")]
     Rejected(NayOf<I>),
 
+    /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
 }
@@ -178,6 +206,7 @@ impl<I: Invocation> From<AcceptError<I>> for AppendError<I> {
 #[non_exhaustive]
 #[derive(Error)]
 pub enum CommitError<I: Invocation> {
+    /// Node doesn't have state.
     #[error("node is disoriented")]
     Disoriented,
 
@@ -185,7 +214,7 @@ pub enum CommitError<I: Invocation> {
     #[error("given log entry id is invalid")]
     InvalidEntryId(LogEntryIdOf<I>),
 
-    /// The paxakos node was shut down.
+    /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
 }
@@ -213,10 +242,12 @@ impl<I: Invocation> From<CommitError<I>> for AppendError<I> {
     }
 }
 
+/// Node doesn't have state.
 #[derive(Clone, Copy, Debug, Error)]
 #[error("node is disoriented")]
 pub struct Disoriented;
 
+/// Node is shut down.
 #[derive(Clone, Copy, Debug, Error)]
 #[error("node is shut down")]
 pub struct ShutDown;
