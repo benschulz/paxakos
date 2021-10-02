@@ -195,7 +195,7 @@ pub trait Admin {
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 
-pub struct SpawnArgs<I, V, B>
+pub(crate) struct SpawnArgs<I, V, B>
 where
     I: Invocation,
     B: Buffer<

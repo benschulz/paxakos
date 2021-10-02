@@ -273,7 +273,7 @@ where
     >,
     B: Buffer<RoundNum = RoundNumOf<I>, CoordNum = CoordNumOf<I>, Entry = LogEntryOf<I>>,
 {
-    pub async fn spawn(
+    pub(crate) async fn spawn(
         kit: StateKeeperKit<I>,
         args: SpawnArgs<I, V, B>,
     ) -> (
