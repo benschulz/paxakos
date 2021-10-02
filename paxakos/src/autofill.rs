@@ -1,3 +1,22 @@
+//! The autofill decoration automatically fills gaps that appear in the log.
+//!
+//! When a node has a gap in its (local copy of the) log, it must close that gap
+//! before it can apply later rounds' entries to its state. There are two
+//! reasons why a node may observe gaps in its log.
+//!
+//!  - A commit message may not have been received due to a temporary networking
+//!    issue.
+//!  - Multiple appends were running concurrently and one for an earlier round
+//!    fails or is abandoned while while a later one goes through.
+//!
+//! Independent of the cause, the solution is to try to fill the gaps, which is
+//! what this decoration does. It will either succeed or fail with a `Converged`
+//! error.
+//!
+//! It should be noted that autofill uses `Importance::MaintainLeadership` to
+//! fill gaps. As such it will never contend with other nodes that may be in the
+//! process of proposing some other entry for the same round.
+
 use std::collections::BinaryHeap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -40,27 +59,46 @@ use crate::voting::Voter;
 use crate::Node;
 use crate::RoundNum;
 
+/// Autofill configuration.
 pub trait Config {
+    /// The node type that is decorated.
     type Node: Node;
+
+    /// The applicable that is used to fill gaps, usually a no-op.
     type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
 
+    /// Initializes this configuration.
     #[allow(unused_variables)]
     fn init(&mut self, node: &Self::Node) {}
 
+    /// Updates the configuration with the given event.
     #[allow(unused_variables)]
     fn update(&mut self, event: &EventFor<Self::Node>) {}
 
+    /// The number of gap rounds that may be filled concurrently.
     fn batch_size(&self) -> usize;
 
+    /// The amount of time to wait before attempting to fill a gap.
     fn delay(&self) -> Duration;
 
+    /// Creates a new filler value.
     fn new_filler(&self) -> Self::Applicable;
 
+    /// Creates a retry policy, defaults to `DoNotRetry`.
+    ///
+    /// Please note that a node that's fallen too far behind may fail to catch
+    /// up using the gap failing approach. This is because other nodes may
+    /// respond with [`Conflict::Converged`][crate::Conflict::Converged] without
+    /// providing a log entry. In these cases, the node must ask another node
+    /// for a recent snapshot and install it. To detect such cases, one use a
+    /// retry policy that checks for [`AppendError::Converged`] and whether the
+    /// node could be `caught_up`.
     fn retry_policy(&self) -> Box<dyn RetryPolicy<Invocation = InvocationOf<Self::Node>> + Send> {
         Box::new(DoNotRetry::new())
     }
 }
 
+/// A static configuration.
 pub struct StaticConfig<N, A> {
     batch_size: usize,
     delay: Duration,
@@ -72,6 +110,7 @@ where
     N: Node,
     A: ApplicableTo<StateOf<N>> + Default + 'static,
 {
+    /// Creates a new static configuration.
     pub fn new(batch_size: usize, delay: Duration) -> Self {
         Self {
             batch_size,
@@ -102,15 +141,16 @@ where
     }
 }
 
+/// Extends `NodeBuilder` to conveniently decorate a node with `Autofill`.
 pub trait AutofillBuilderExt: Sized {
+    /// Node type to be decorated.
     type Node: Node;
+    /// Voter type.
     type Voter: Voter;
-    type Buffer: Buffer<
-        RoundNum = RoundNumOf<Self::Node>,
-        CoordNum = CoordNumOf<Self::Node>,
-        Entry = LogEntryOf<Self::Node>,
-    >;
+    /// Buffer type.
+    type Buffer: Buffer;
 
+    /// Decorates the node with `Autofill` using the given configuration.
     fn fill_gaps<C>(
         self,
         config: C,
@@ -147,6 +187,7 @@ where
     }
 }
 
+/// Autofill decoration.
 #[derive(Debug)]
 pub struct Autofill<N: Node, C> {
     decorated: N,
