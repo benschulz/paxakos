@@ -1,17 +1,22 @@
 use std::convert::Infallible;
 
-use crate::node;
 use crate::state::LogEntryOf;
 use crate::state::NodeOf;
 use crate::state::State;
 use crate::CoordNum;
 use crate::RoundNum;
 
+/// Shorthand to extract `Abstain` type out of `V`.
 pub type AbstainOf<V> = <V as Voter>::Abstain;
+/// Shorthand to extract `CoordNum` type out of `V`.
 pub type CoordNumOf<V> = <V as Voter>::CoordNum;
+/// Shorthand to extract `Nay` type out of `V`.
 pub type NayOf<V> = <V as Voter>::Nay;
+/// Shorthand to extract `RoundNum` type out of `V`.
 pub type RoundNumOf<V> = <V as Voter>::RoundNum;
+/// Shorthand to extract `State` type out of `V`.
 pub type StateOf<V> = <V as Voter>::State;
+/// Shorthand to extract `Yea` type out of `V`.
 pub type YeaOf<V> = <V as Voter>::Yea;
 
 pub trait Voter: Send + 'static {
@@ -60,15 +65,6 @@ pub enum Decision<Y, N, A> {
     Nay(N),
     Yea(Y),
 }
-
-pub type IndiscriminateVoterFor<N> = IndiscriminateVoter<
-    node::StateOf<N>,
-    node::RoundNumOf<N>,
-    node::CoordNumOf<N>,
-    node::AbstainOf<N>,
-    node::YeaOf<N>,
-    node::NayOf<N>,
->;
 
 #[derive(Default)]
 pub struct IndiscriminateVoter<S, R, C, A, Y, N>(std::marker::PhantomData<(S, R, C, A, Y, N)>);

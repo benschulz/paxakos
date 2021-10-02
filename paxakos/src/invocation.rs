@@ -1,4 +1,3 @@
-use crate::append::AppendError;
 use crate::applicable::ProjectionOf;
 use crate::communicator::Acceptance;
 use crate::communicator::Vote;
@@ -14,28 +13,47 @@ use crate::NodeInfo;
 use crate::Promise;
 use crate::RoundNum;
 
+/// Shorthand to extract `Abstain` type out of `I`.
 pub type AbstainOf<I> = <I as Invocation>::Abstain;
+/// Shorthand to extract `CommunicationError` type out of `I`.
 pub type CommunicationErrorOf<I> = <I as Invocation>::CommunicationError;
+/// Shorthand to extract state's `Context` type out of `I`.
 pub type ContextOf<I> = state::ContextOf<StateOf<I>>;
+/// Shorthand to extract `CoordNum` type out of `I`.
 pub type CoordNumOf<I> = <I as Invocation>::CoordNum;
+/// Shorthand to extract state's `Event` type out of `I`.
 pub type EventOf<I> = state::EventOf<StateOf<I>>;
+/// Shorthand to extract state's `LogEntry` type out of `I`.
 pub type LogEntryOf<I> = state::LogEntryOf<StateOf<I>>;
+/// Shorthand to extract log entry `Id` type out of `I`.
 pub type LogEntryIdOf<I> = <LogEntryOf<I> as LogEntry>::Id;
+/// Shorthand to extract `Nay` type out of `I`.
 pub type NayOf<I> = <I as Invocation>::Nay;
+/// Shorthand to extract state's `Node` type (`impl NodeInfo`) out of `I`.
 pub type NodeOf<I> = state::NodeOf<StateOf<I>>;
+/// Shorthand to extract node (`impl NodeInfo`) `Id` type out of `I`.
 pub type NodeIdOf<I> = <NodeOf<I> as NodeInfo>::Id;
+/// Shorthand to extract state's `Outcome` type out of `I`.
 pub type OutcomeOf<I> = state::OutcomeOf<StateOf<I>>;
+/// Shorthand to extract `RoundNum` type out of `I`.
 pub type RoundNumOf<I> = <I as Invocation>::RoundNum;
+/// Shorthand to extract `State` type out of `I`.
 pub type StateOf<I> = <I as Invocation>::State;
+/// Shorthand to extract `Yea` type out of `I`.
 pub type YeaOf<I> = <I as Invocation>::Yea;
 
+/// Invokes `Acceptance` type constructor so as to be compatible with `I`.
 pub type AcceptanceFor<I> = Acceptance<CoordNumOf<I>, LogEntryOf<I>, YeaOf<I>, NayOf<I>>;
-pub type AppendResultFor<I, A = LogEntryOf<I>> = Result<CommitFor<I, A>, AppendError<I>>;
+/// Invokes `Commit` type constructor so as to be compatible with `I`.
 pub type CommitFor<I, A = LogEntryOf<I>> =
     Commit<StateOf<I>, RoundNumOf<I>, ProjectionOf<A, StateOf<I>>>;
+/// Invokes `Conflict` type constructor so as to be compatible with `I`.
 pub type ConflictFor<I> = Conflict<CoordNumOf<I>, LogEntryOf<I>>;
+/// Invokes `Promise` type constructor so as to be compatible with `I`.
 pub type PromiseFor<I> = Promise<RoundNumOf<I>, CoordNumOf<I>, LogEntryOf<I>>;
+/// Invokes `Snapshot` type constructor so as to be compatible with `I`.
 pub type SnapshotFor<I> = Snapshot<StateOf<I>, RoundNumOf<I>, CoordNumOf<I>>;
+/// Invokes `Vote` type constructor so as to be compatible with `I`.
 pub type VoteFor<I> = Vote<RoundNumOf<I>, CoordNumOf<I>, LogEntryOf<I>, AbstainOf<I>>;
 
 /// A set of type arguments to invoke Paxakos with.

@@ -5,7 +5,9 @@ use crate::state::LogEntryOf;
 use crate::state::OutcomeOf;
 use crate::state::State;
 
+/// Shorthand to extract `Projected` type out of `A as ApplicableTo<S>`.
 pub type ProjectedOf<A, S> = <ProjectionOf<A, S> as Projection<OutcomeOf<S>>>::Projected;
+/// Shorthand to extract `Projection` type out of `A as ApplicableTo<S>`.
 pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 
 /// Describes values that may be [applied][State::apply] to type `S`.

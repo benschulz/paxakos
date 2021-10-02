@@ -18,6 +18,7 @@ use futures::future::BoxFuture;
 use futures::future::LocalBoxFuture;
 
 use crate::append::AppendArgs;
+use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::communicator::Communicator;
@@ -27,6 +28,7 @@ use crate::invocation;
 use crate::invocation::Invocation;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
+use crate::voting::IndiscriminateVoter;
 use crate::Event;
 
 pub use self::core::Core;
@@ -43,33 +45,66 @@ pub use status::NodeStatus;
 
 use state_keeper::StateKeeperKit;
 
+/// Shorthand to extract invocation's `Abstain` type out of `N`.
 pub type AbstainOf<N> = invocation::AbstainOf<InvocationOf<N>>;
+/// Shorthand to extract invocation's `CommunicationError` type out of `N`.
 pub type CommunicationErrorOf<N> = invocation::CommunicationErrorOf<InvocationOf<N>>;
+/// Shorthand to extract `Communicator` type out of `N`.
 pub type CommunicatorOf<N> = <N as Node>::Communicator;
+/// Shorthand to extract state's `Context` type out of `N`.
 pub type ContextOf<N> = invocation::ContextOf<InvocationOf<N>>;
+/// Shorthand to extract invocation's `CoordNum` type out of `N`.
 pub type CoordNumOf<N> = invocation::CoordNumOf<InvocationOf<N>>;
+/// Shorthand to extract invocation's `Event` type out of `N`.
 pub type EventOf<N> = invocation::EventOf<InvocationOf<N>>;
+/// Shorthand to extract `Invocation` type out of `N`.
 pub type InvocationOf<N> = <N as Node>::Invocation;
+/// Shorthand to extract state's `LogEntry` type out of `N`.
 pub type LogEntryOf<N> = invocation::LogEntryOf<InvocationOf<N>>;
+/// Shorthand to extract log entry `Id` type out of `N`.
 pub type LogEntryIdOf<N> = invocation::LogEntryIdOf<InvocationOf<N>>;
+/// Shorthand to extract invocation's `Nay` type out of `N`.
 pub type NayOf<N> = invocation::NayOf<InvocationOf<N>>;
+/// Shorthand to extract invocation's `Node` type (`impl NodeInfo`) out of `N`.
 pub type NodeOf<N> = invocation::NodeOf<InvocationOf<N>>;
+/// Shorthand to extract state's `Outcome` type out of `N`.
 pub type NodeIdOf<N> = invocation::NodeIdOf<InvocationOf<N>>;
+/// Shorthand to extract node (`impl NodeInfo`) `Id` type out of `N`.
 pub type OutcomeOf<N> = invocation::OutcomeOf<InvocationOf<N>>;
+/// Shorthand to extract invocation's `RoundNum` type out of `N`.
 pub type RoundNumOf<N> = invocation::RoundNumOf<InvocationOf<N>>;
+/// Shorthand to extract `Shutdown` type out of `N`.
 pub type ShutdownOf<N> = <N as Node>::Shutdown;
+/// Shorthand to extract invocation's `State` type out of `N`.
 pub type StateOf<N> = invocation::StateOf<InvocationOf<N>>;
+/// Shorthand to extract invocation's `Yea` type out of `N`.
 pub type YeaOf<N> = invocation::YeaOf<InvocationOf<N>>;
 
+/// Invokes `Acceptance` type constructor so as to be compatible with `N`.
 pub type AcceptanceFor<N> = invocation::AcceptanceFor<InvocationOf<N>>;
-pub type AppendResultFor<N, A = LogEntryOf<N>> = invocation::AppendResultFor<InvocationOf<N>, A>;
+/// Invokes `Result` type constructor so as to be compatible with `N`'s
+/// `append(…) method`.
+pub type AppendResultFor<N, A = LogEntryOf<N>> =
+    Result<CommitFor<N, A>, AppendError<InvocationOf<N>>>;
+/// Invokes `Commit` type constructor so as to be compatible with `N`.
 pub type CommitFor<N, A = LogEntryOf<N>> = invocation::CommitFor<InvocationOf<N>, A>;
+/// Invokes `Conflict` type constructor so as to be compatible with `N`.
 pub type ConflictFor<N> = invocation::ConflictFor<InvocationOf<N>>;
+/// Invokes `Event` type constructor so as to be compatible with `N`.
 pub type EventFor<N> = Event<InvocationOf<N>>;
+/// Invokes `NodeHandle` type constructor so as to be compatible with `N`.
 pub type HandleFor<N> = NodeHandle<InvocationOf<N>>;
+/// Invokes `IndiscriminateVoter` type constructor so as to be compatible with
+/// `N`.
+pub type IndiscriminateVoterFor<N> =
+    IndiscriminateVoter<StateOf<N>, RoundNumOf<N>, CoordNumOf<N>, AbstainOf<N>, YeaOf<N>, NayOf<N>>;
+/// Invokes `Promise` type constructor so as to be compatible with `N`.
 pub type PromiseFor<N> = invocation::PromiseFor<InvocationOf<N>>;
+/// Invokes `RequestHandler` type constructor so as to be compatible with `N`.
 pub type RequestHandlerFor<N> = RequestHandler<InvocationOf<N>>;
+/// Invokes `Snapshot` type constructor so as to be compatible with `N`.
 pub type SnapshotFor<N> = invocation::SnapshotFor<InvocationOf<N>>;
+/// Invokes `Vote` type constructor so as to be compatible with `N`.
 pub type VoteFor<N> = invocation::VoteFor<InvocationOf<N>>;
 
 pub trait Node: Sized {

@@ -23,7 +23,6 @@ use crate::node;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::voting::IndiscriminateVoter;
-use crate::voting::IndiscriminateVoterFor;
 use crate::voting::Voter;
 use crate::Node;
 use crate::Shell;
@@ -32,6 +31,7 @@ use crate::State;
 use super::snapshot::Snapshot;
 use super::CommunicatorOf;
 use super::Core;
+use super::IndiscriminateVoterFor;
 use super::InvocationOf;
 use super::NodeKit;
 use super::RequestHandlerFor;
