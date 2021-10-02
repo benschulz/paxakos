@@ -107,6 +107,7 @@ impl<S: State, R: Copy> Commit<S, R> {
         }
     }
 
+    /// Projects the outcome of applying the log entry.
     pub fn projected<P: Projection<OutcomeOf<S>>>(self) -> Commit<S, R, P> {
         Commit {
             round_num: self.round_num,
