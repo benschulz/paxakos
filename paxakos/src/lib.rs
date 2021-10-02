@@ -505,10 +505,21 @@ pub trait Identifier: 'static + Copy + Debug + Eq + Hash + Send + Sync + Unpin {
 impl<T: 'static + Copy + Debug + Eq + Hash + Ord + Send + Sync + Unpin> Identifier for T {}
 
 /// A condition for a [Promise].
+///
+/// When a node _promises_, i.e. votes for a candidate, it might require the
+/// candidate to honor commitments the node had previously made. This struct
+/// represents such a requirement.
+///
+/// A `Condition` is a triple of round number, coordination number and log
+/// entry. At [the protocol level](crate#protocol), this triple corresponds to a
+/// proposal that the node previously accepted.
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct Condition<R, C, E> {
+    /// The condition's round number.
     pub round_num: R,
+    /// The condition's coordination number.
     pub coord_num: C,
+    /// The condition's log entry.
     pub log_entry: Arc<E>,
 }
 
@@ -640,11 +651,22 @@ impl<R: RoundNum, C: CoordNum, E> Promise<R, C, E> {
 /// Please refer to the [description of the protocol](crate#protocol).
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub enum Conflict<C, E> {
+    /// Another node had itself elected leader.
     Supplanted {
+        /// The coordination number the other node used to become leader.
         coord_num: C,
     },
+    /// The given round has already converged.
     Converged {
+        /// The highest coordination number the node that sent the `Converged`
+        /// message had observed.
         coord_num: C,
+        /// The coordination number that was used to settle the round and the
+        /// log entry which was committed.
+        ///
+        /// May be `None` if the node that sent the `Converged` message no
+        /// longer had this information in its [applied entry
+        /// buffer][crate::buffer::Buffer].
         log_entry: Option<(C, Arc<E>)>,
     },
 }
