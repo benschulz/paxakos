@@ -25,6 +25,7 @@ use paxakos::prototyping::DirectCommunicatorPayload;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::prototyping::RetryIndefinitely;
+use paxakos::retry::DoNotRetry;
 use paxakos::LogEntry;
 use paxakos::Node;
 use paxakos::NodeInfo;
@@ -552,6 +553,7 @@ impl<N> AutofillConfig<N> {
 impl<N: Node<Invocation = PlaygroundInvocation>> autofill::Config for AutofillConfig<N> {
     type Node = N;
     type Applicable = PlaygroundLogEntry;
+    type RetryPolicy = DoNotRetry<PlaygroundInvocation>;
 
     fn init(&mut self, node: &Self::Node) {
         self.node_id = node.id();
@@ -581,6 +583,10 @@ impl<N: Node<Invocation = PlaygroundInvocation>> autofill::Config for AutofillCo
         });
 
         PlaygroundLogEntry::Fill(Uuid::new_v4())
+    }
+
+    fn retry_policy(&self) -> Self::RetryPolicy {
+        DoNotRetry::new()
     }
 }
 
@@ -787,9 +793,9 @@ async fn post_node_append(
         queue.push(node_handle.append(
             PlaygroundLogEntry::Regular(Uuid::new_v4()),
             AppendArgs {
-                retry_policy: Box::new(RetryIndefinitely::pausing_up_to(Duration::from_secs(4))),
+                retry_policy: RetryIndefinitely::pausing_up_to(Duration::from_secs(4)),
                 round: args.from_round.unwrap_or(0)..=args.until_round.unwrap_or(u32::MAX),
-                ..Default::default()
+                importance: Default::default(),
             },
         ));
     }

@@ -5,10 +5,10 @@ use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
+use futures::TryFutureExt;
 use num_traits::One;
 
 use crate::append::AppendArgs;
-use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::communicator::AbstainOf;
@@ -18,6 +18,7 @@ use crate::communicator::NayOf;
 use crate::communicator::RoundNumOf;
 use crate::communicator::YeaOf;
 use crate::error::Disoriented;
+use crate::error::ShutDownOr;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
 use crate::invocation;
@@ -25,6 +26,7 @@ use crate::invocation::Invocation;
 use crate::invocation::LogEntryOf;
 use crate::invocation::NodeIdOf;
 use crate::invocation::StateOf;
+use crate::retry::RetryPolicy;
 use crate::voting::Voter;
 
 use super::commits::Commits;
@@ -35,14 +37,17 @@ use super::state_keeper::ProofOfLife;
 use super::state_keeper::StateKeeper;
 use super::state_keeper::StateKeeperHandle;
 use super::state_keeper::StateKeeperKit;
-use super::CommitFor;
+use super::AppendResultFor;
 use super::EventFor;
+use super::ImplAppendResultFor;
 use super::Node;
 use super::NodeHandle;
+use super::NodeImpl;
 use super::NodeStatus;
 use super::Participation;
 use super::RequestHandler;
 use super::SnapshotFor;
+use super::StaticAppendResultFor;
 
 /// The core [`Node`][crate::Node] implementation.
 ///
@@ -169,13 +174,36 @@ where
         self.state_keeper.install_snapshot(snapshot).boxed_local()
     }
 
-    fn append<A: ApplicableTo<StateOf<I>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self, A>, AppendError<I>>> {
+    ) -> LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self::Invocation>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+    {
         Rc::clone(&self.inner)
             .append(applicable, args.into())
+            .map_err(|e| e.expect_other())
+            .boxed_local()
+    }
+
+    fn append_static<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self::Invocation>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+        R::StaticError: From<ShutDownOr<R::Error>>,
+    {
+        Rc::clone(&self.inner)
+            .append(applicable, args.into())
+            .map_err(|e| e.into())
             .boxed_local()
     }
 
@@ -194,6 +222,36 @@ where
         let trigger = state_keeper.shut_down(proof_of_life).fuse().boxed_local();
 
         DefaultShutdown::new(trigger, events, commits)
+    }
+}
+
+impl<I, C> NodeImpl for Core<I, C>
+where
+    I: Invocation,
+    C: Communicator<
+        Node = invocation::NodeOf<I>,
+        RoundNum = invocation::RoundNumOf<I>,
+        CoordNum = invocation::CoordNumOf<I>,
+        LogEntry = invocation::LogEntryOf<I>,
+        Error = invocation::CommunicationErrorOf<I>,
+        Yea = invocation::YeaOf<I>,
+        Nay = invocation::NayOf<I>,
+        Abstain = invocation::AbstainOf<I>,
+    >,
+{
+    fn append_impl<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<super::StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+    {
+        Rc::clone(&self.inner)
+            .append(applicable, args.into())
+            .boxed_local()
     }
 }
 

@@ -1,6 +1,8 @@
+use std::any::Any;
 use std::future::Future;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::future::FutureExt;
@@ -10,16 +12,23 @@ use crate::append::AppendArgs;
 use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::error::ShutDown;
+use crate::error::ShutDownOr;
 use crate::invocation::CommitFor;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryOf;
 use crate::invocation::SnapshotFor;
 use crate::invocation::StateOf;
+use crate::retry::RetryPolicy;
 
 use super::commits::Commit;
 use super::state_keeper::StateKeeperHandle;
 use super::Admin;
 use super::NodeStatus;
+
+pub type BoxedRetryPolicy<I> = Box<
+    dyn RetryPolicy<Invocation = I, Error = Box<dyn Any + Send>, StaticError = Box<dyn Any + Send>>
+        + Send,
+>;
 
 pub type RequestAndResponseSender<I> =
     (NodeHandleRequest<I>, oneshot::Sender<NodeHandleResponse<I>>);
@@ -127,19 +136,38 @@ impl<I: Invocation> NodeHandle<I> {
     }
 
     /// Appends `applicable` to the shared log.
-    pub fn append<A: ApplicableTo<StateOf<I>>, P: Into<AppendArgs<I>>>(
+    pub fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> impl Future<Output = Result<CommitFor<I, A>, AppendError<I>>> {
+    ) -> impl Future<Output = Result<CommitFor<I, A>, R::StaticError>>
+    where
+        A: ApplicableTo<StateOf<I>>,
+        P: Into<AppendArgs<I, R>>,
+        R: RetryPolicy<Invocation = I> + Send + 'static,
+        R::Error: Send,
+        R::StaticError: From<ShutDownOr<R::Error>>,
+    {
+        let args = args.into();
+        let args = AppendArgs {
+            round: args.round,
+            importance: args.importance,
+            retry_policy: Box::new(BoxingRetryPolicy::from(args.retry_policy))
+                as BoxedRetryPolicy<I>,
+        };
+
         dispatch_node_handle_req!(self, Append, {
             log_entry: applicable.into_log_entry(),
-            args: args.into(),
+            args,
         })
-        .map(|r| {
-            r.ok_or(AppendError::ShutDown)
-                .and_then(|r| r)
-                .map(Commit::projected)
+        .map(|r| match r {
+            Some(r) => r
+                .map_err(|e| {
+                    e.map(|e| *e.downcast::<R::Error>().expect("downcast error"))
+                        .into()
+                })
+                .map(Commit::projected),
+            None => Err(ShutDownOr::ShutDown.into()),
         })
     }
 }
@@ -161,7 +189,7 @@ pub enum NodeHandleRequest<I: Invocation> {
 
     Append {
         log_entry: Arc<LogEntryOf<I>>,
-        args: AppendArgs<I>,
+        args: AppendArgs<I, BoxedRetryPolicy<I>>,
     },
 }
 
@@ -169,5 +197,33 @@ pub enum NodeHandleRequest<I: Invocation> {
 pub enum NodeHandleResponse<I: Invocation> {
     Status(NodeStatus),
 
-    Append(Result<CommitFor<I>, AppendError<I>>),
+    Append(Result<CommitFor<I>, ShutDownOr<Box<dyn Any + Send>>>),
+}
+
+pub struct BoxingRetryPolicy<R> {
+    delegate: R,
+}
+
+impl<R> From<R> for BoxingRetryPolicy<R> {
+    fn from(delegate: R) -> Self {
+        BoxingRetryPolicy { delegate }
+    }
+}
+
+#[async_trait]
+impl<R> RetryPolicy for BoxingRetryPolicy<R>
+where
+    R: RetryPolicy + Send,
+    R::Error: Send + 'static,
+{
+    type Invocation = <R as RetryPolicy>::Invocation;
+    type Error = Box<dyn Any + Send>;
+    type StaticError = Box<dyn Any + Send>;
+
+    async fn eval(&mut self, error: AppendError<Self::Invocation>) -> Result<(), Self::Error> {
+        self.delegate
+            .eval(error)
+            .await
+            .map_err(|err| Box::new(err) as Self::Error)
+    }
 }

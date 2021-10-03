@@ -20,14 +20,15 @@ use futures::future::BoxFuture;
 use futures::future::LocalBoxFuture;
 
 use crate::append::AppendArgs;
-use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::communicator::Communicator;
 use crate::error::Disoriented;
 use crate::error::ShutDown;
+use crate::error::ShutDownOr;
 use crate::invocation;
 use crate::invocation::Invocation;
+use crate::retry::RetryPolicy;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::voting::IndiscriminateVoter;
@@ -86,8 +87,14 @@ pub type YeaOf<N> = invocation::YeaOf<InvocationOf<N>>;
 pub type AcceptanceFor<N> = invocation::AcceptanceFor<InvocationOf<N>>;
 /// Invokes `Result` type constructor so as to be compatible with `N`'s
 /// `append(…) method`.
-pub type AppendResultFor<N, A = LogEntryOf<N>> =
-    Result<CommitFor<N, A>, AppendError<InvocationOf<N>>>;
+pub type AppendResultFor<N, A, R> = Result<CommitFor<N, A>, <R as RetryPolicy>::Error>;
+/// Invokes `Result` type constructor so as to be compatible with `N`'s
+/// `append_static(…) method`.
+pub type StaticAppendResultFor<N, A, R> = Result<CommitFor<N, A>, <R as RetryPolicy>::StaticError>;
+/// Invokes `Result` type constructor so as to be compatible with `N`'s
+/// `append_impl(…) method`.
+pub type ImplAppendResultFor<N, A, R> =
+    Result<CommitFor<N, A>, ShutDownOr<<R as RetryPolicy>::Error>>;
 /// Invokes `Commit` type constructor so as to be compatible with `N`.
 pub type CommitFor<N, A = LogEntryOf<N>> = invocation::CommitFor<InvocationOf<N>, A>;
 /// Invokes `Conflict` type constructor so as to be compatible with `N`.
@@ -181,14 +188,44 @@ pub trait Node: Sized {
     fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<StateOf<Self>>, Disoriented>>;
 
     /// Appends `applicable` to the shared log.
-    fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, AppendResultFor<Self, A>>;
+    ) -> LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>;
+
+    /// Appends `applicable` to the shared log.
+    fn append_static<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+        R::StaticError: From<ShutDownOr<R::Error>>;
 
     /// Begins a graceful shutdown of this node.
     fn shut_down(self) -> Self::Shutdown;
+}
+
+/// Exposes "plumbing" API relevant to decorations.
+pub trait NodeImpl: Node {
+    /// Appends `applicable` to the shared log.
+    fn append_impl<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>;
 }
 
 /// Future returned by [`Node::next_event`].

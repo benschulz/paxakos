@@ -26,6 +26,7 @@ use crate::communicator::Acceptance;
 use crate::communicator::Communicator;
 use crate::communicator::ErrorOf;
 use crate::communicator::Vote;
+use crate::error::ShutDownOr;
 use crate::invocation::AbstainOf;
 use crate::invocation::AcceptanceFor;
 use crate::invocation::CommitFor;
@@ -41,6 +42,7 @@ use crate::invocation::RoundNumOf;
 use crate::invocation::StateOf;
 use crate::invocation::VoteFor;
 use crate::invocation::YeaOf;
+use crate::retry::RetryPolicy;
 use crate::Conflict;
 use crate::LogEntry;
 use crate::Promise;
@@ -116,18 +118,23 @@ where
         self.id
     }
 
-    pub async fn append<A: ApplicableTo<StateOf<I>>>(
+    pub async fn append<A, R>(
         self: Rc<Self>,
         applicable: A,
-        args: AppendArgs<I>,
-    ) -> Result<CommitFor<I, A>, AppendError<I>> {
+        args: AppendArgs<I, R>,
+    ) -> Result<CommitFor<I, A>, ShutDownOr<R::Error>>
+    where
+        A: ApplicableTo<StateOf<I>>,
+        R: RetryPolicy<Invocation = I>,
+    {
         let log_entry = applicable.into_log_entry();
         let log_entry_id = log_entry.id();
 
         let passive = self
             .state_keeper
             .await_commit_of(log_entry_id)
-            .await?
+            .await
+            .map_err(|_| ShutDownOr::ShutDown)?
             .then(|r| match r {
                 Ok((round_num, outcome)) => {
                     futures::future::ready(Ok(Commit::ready(round_num, outcome))).left_future()
@@ -142,11 +149,14 @@ where
             .map(|commit| commit.projected())
     }
 
-    async fn append_actively(
+    async fn append_actively<R>(
         self: Rc<Self>,
         log_entry: Arc<LogEntryOf<I>>,
-        mut args: AppendArgs<I>,
-    ) -> Result<CommitFor<I>, AppendError<I>> {
+        mut args: AppendArgs<I, R>,
+    ) -> Result<CommitFor<I>, ShutDownOr<R::Error>>
+    where
+        R: RetryPolicy<Invocation = I>,
+    {
         let mut i: usize = 0;
 
         loop {
@@ -160,9 +170,7 @@ where
                 Err(e) => e,
             };
 
-            if let Err(abortion) = args.retry_policy.eval(error).await {
-                break Err(AppendError::Aborted(abortion));
-            }
+            args.retry_policy.eval(error).await?;
 
             i += 1;
 

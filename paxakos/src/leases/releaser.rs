@@ -13,6 +13,7 @@ use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
+use crate::error::ShutDownOr;
 use crate::node::builder::NodeBuilder;
 use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
@@ -20,16 +21,20 @@ use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventFor;
 use crate::node::EventOf;
+use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
 use crate::node::LogEntryOf;
 use crate::node::NayOf;
 use crate::node::Node;
 use crate::node::NodeIdOf;
+use crate::node::NodeImpl;
 use crate::node::Participation;
 use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
+use crate::node::StaticAppendResultFor;
 use crate::node::YeaOf;
+use crate::retry::RetryPolicy;
 use crate::voting::Voter;
 
 type LeaseOf<N> = <EventOf<N> as AsLeaseEvent>::Lease;
@@ -80,7 +85,7 @@ pub trait ReleaserBuilderExt {
 
 impl<N, V, B> ReleaserBuilderExt for NodeBuilder<N, V, B>
 where
-    N: Node + 'static,
+    N: NodeImpl + 'static,
     EventOf<N>: AsLeaseEvent,
     V: Voter<
         State = StateOf<N>,
@@ -179,7 +184,7 @@ where
 
 impl<N, P> Decoration for Releaser<N, P>
 where
-    N: Node + 'static,
+    N: NodeImpl + 'static,
     EventOf<N>: AsLeaseEvent,
     P: Fn(LeaseIdOf<N>) -> LogEntryOf<N> + 'static,
 {
@@ -285,7 +290,7 @@ where
                         let log_entry = (self.arguments.entry_producer)(id);
                         self.appends.push(
                             self.decorated
-                                .append(log_entry, ())
+                                .append_static(log_entry, ())
                                 .map(move |r| r.map(|_| None).unwrap_or(Some(id)))
                                 .boxed_local(),
                         );
@@ -338,16 +343,55 @@ where
         self.decorated.read_stale()
     }
 
-    fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
+    ) -> futures::future::LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+    {
         self.decorated.append(applicable, args)
+    }
+
+    fn append_static<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> futures::future::LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+        R::StaticError: From<ShutDownOr<R::Error>>,
+    {
+        self.decorated.append_static(applicable, args)
     }
 
     fn shut_down(self) -> Self::Shutdown {
         self.decorated.shut_down()
+    }
+}
+
+impl<N, C> NodeImpl for Releaser<N, C>
+where
+    N: NodeImpl,
+    EventOf<N>: AsLeaseEvent,
+    C: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
+{
+    fn append_impl<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+    {
+        self.decorated.append_impl(applicable, args)
     }
 }
 

@@ -6,7 +6,7 @@ use num_traits::Bounded;
 use num_traits::Zero;
 use thiserror::Error;
 
-use crate::error::BoxError;
+use crate::error::ShutDownOr;
 use crate::invocation::AbstainOf;
 use crate::invocation::CommunicationErrorOf;
 use crate::invocation::Invocation;
@@ -16,7 +16,8 @@ use crate::retry::DoNotRetry;
 use crate::retry::RetryPolicy;
 
 /// Options that determine how an append is performed.
-pub struct AppendArgs<I: Invocation> {
+#[derive(Debug)]
+pub struct AppendArgs<I: Invocation, R = DoNotRetry<I>> {
     /// The round(s) in which the entry should be appended. The append won't be
     /// started until the round(s) can be settled and will fail if they already
     /// are.
@@ -25,25 +26,25 @@ pub struct AppendArgs<I: Invocation> {
     pub importance: Importance,
     /// The [retry policy][crate::retry::RetryPolicy] with which to perform the
     /// append.
-    pub retry_policy: Box<dyn RetryPolicy<Invocation = I> + Send>,
+    pub retry_policy: R,
 }
 
-impl<I: Invocation> Default for AppendArgs<I> {
+impl<I: Invocation, R: RetryPolicy<Invocation = I> + Default> Default for AppendArgs<I, R> {
     fn default() -> Self {
-        DoNotRetry::new().into()
+        R::default().into()
     }
 }
 
-impl<I, P> From<P> for AppendArgs<I>
+impl<I, R> From<R> for AppendArgs<I, R>
 where
     I: Invocation,
-    P: RetryPolicy<Invocation = I> + Send + 'static,
+    R: RetryPolicy<Invocation = I>,
 {
-    fn from(retry_policy: P) -> Self {
+    fn from(retry_policy: R) -> Self {
         Self {
             round: Zero::zero()..=Bounded::max_value(),
             importance: Importance::GainLeadership,
-            retry_policy: Box::new(retry_policy),
+            retry_policy,
         }
     }
 }
@@ -72,6 +73,12 @@ pub enum Importance {
     MaintainLeadership(Peeryness),
 }
 
+impl Default for Importance {
+    fn default() -> Self {
+        Self::GainLeadership
+    }
+}
+
 /// Whether to inquire with other nodes about the round in question.
 ///
 /// If a node has to abandon an append due to [lack of status][Maintain] it may
@@ -97,10 +104,6 @@ pub enum Peeryness {
 #[derive(Error)]
 #[non_exhaustive]
 pub enum AppendError<I: Invocation> {
-    /// Append was aborted.
-    #[error("append was aborted")]
-    Aborted(BoxError),
-
     /// The chosen round had already converged.
     #[error("round had already converged")]
     Converged {
@@ -134,7 +137,7 @@ pub enum AppendError<I: Invocation> {
 
     /// Catch-all, this may be refined over time.
     #[error("a node decoration raised an error")]
-    Decoration(#[source] crate::error::BoxError),
+    Decoration(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 
     /// Node is in passive mode.
     #[error("node is passive")]
@@ -149,10 +152,19 @@ pub enum AppendError<I: Invocation> {
     ShutDown,
 }
 
+// TODO any way to implement this genericly as `impl From<ShutDownOr<E>> for E`?
+impl<I: Invocation> From<ShutDownOr<AppendError<I>>> for AppendError<I> {
+    fn from(e: ShutDownOr<AppendError<I>>) -> Self {
+        match e {
+            ShutDownOr::Other(e) => e,
+            ShutDownOr::ShutDown => AppendError::ShutDown,
+        }
+    }
+}
+
 impl<I: Invocation> std::fmt::Debug for AppendError<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AppendError::Aborted(err) => f.debug_tuple("AppendError::Aborted").field(err).finish(),
             AppendError::Converged { caught_up } => f
                 .debug_struct("AppendError::Converged")
                 .field("caught_up", caught_up)

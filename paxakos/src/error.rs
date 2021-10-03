@@ -13,9 +13,6 @@ use crate::invocation::LogEntryIdOf;
 use crate::invocation::LogEntryOf;
 use crate::invocation::NayOf;
 
-/// Some boxed error.
-pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
 /// Reason spawning a node failed.
 #[non_exhaustive]
 #[derive(Debug, Error)]
@@ -23,7 +20,7 @@ pub enum SpawnError {
     /// A decoration's [`wrap` method][crate::decoration::Decoration::wrap]
     /// failed.
     #[error("a node decoration raised an error")]
-    Decoration(#[source] BoxError),
+    Decoration(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
 /// Reason node snapshot couldn't be created.
@@ -255,5 +252,47 @@ pub struct ShutDown;
 impl From<Infallible> for ShutDown {
     fn from(_: Infallible) -> Self {
         Self
+    }
+}
+
+impl From<ShutDownOr<Infallible>> for ShutDown {
+    fn from(_: ShutDownOr<Infallible>) -> Self {
+        Self
+    }
+}
+
+/// Node is shut down.
+#[derive(Clone, Copy, Debug)]
+pub enum ShutDownOr<E> {
+    /// An event other than 'shut down' occured.
+    Other(E),
+
+    /// Node is shut down.
+    ShutDown,
+}
+
+impl<E> ShutDownOr<E> {
+    /// Applies the mapping function to the other event, if present.
+    pub fn map<T, F: FnOnce(E) -> T>(self, f: F) -> ShutDownOr<T> {
+        match self {
+            ShutDownOr::Other(e) => ShutDownOr::Other(f(e)),
+            ShutDownOr::ShutDown => ShutDownOr::ShutDown,
+        }
+    }
+
+    /// Expect an event other than 'shut down' to have occured.
+    ///
+    /// Panics if a shut down occured.
+    pub fn expect_other(self) -> E {
+        match self {
+            ShutDownOr::Other(e) => e,
+            ShutDownOr::ShutDown => panic!("Node is unexpectedly shut down."),
+        }
+    }
+}
+
+impl<E> From<E> for ShutDownOr<E> {
+    fn from(e: E) -> Self {
+        ShutDownOr::Other(e)
     }
 }

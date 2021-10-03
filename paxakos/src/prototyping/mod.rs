@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::convert::TryInto;
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ use crate::communicator::Committed;
 use crate::communicator::Communicator;
 use crate::communicator::Vote;
 use crate::communicator::VoteFor;
-use crate::error::BoxError;
+use crate::error::ShutDown;
 use crate::invocation::AbstainOf;
 use crate::invocation::CoordNumOf;
 use crate::invocation::Invocation;
@@ -75,8 +76,10 @@ impl<I> RetryIndefinitely<I> {
 #[async_trait]
 impl<I: Invocation> RetryPolicy for RetryIndefinitely<I> {
     type Invocation = I;
+    type Error = Infallible;
+    type StaticError = ShutDown;
 
-    async fn eval(&mut self, _err: AppendError<Self::Invocation>) -> Result<(), BoxError> {
+    async fn eval(&mut self, _err: AppendError<Self::Invocation>) -> Result<(), Self::Error> {
         if self.0 > 0 {
             use rand::Rng;
 

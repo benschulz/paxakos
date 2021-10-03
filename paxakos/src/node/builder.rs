@@ -37,6 +37,7 @@ use super::CommunicatorOf;
 use super::Core;
 use super::IndiscriminateVoterFor;
 use super::InvocationOf;
+use super::NodeImpl;
 use super::NodeKit;
 use super::RequestHandlerFor;
 
@@ -244,7 +245,7 @@ pub struct NodeBuilder<
 
 impl<N, V, B> NodeBuilder<N, V, B>
 where
-    N: Node + 'static,
+    N: NodeImpl + 'static,
     V: Voter<
         State = node::StateOf<N>,
         RoundNum = node::RoundNumOf<N>,

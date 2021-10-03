@@ -70,6 +70,12 @@ impl<T> PhantomSend<T> {
     }
 }
 
+impl<T> Default for PhantomSend<T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
 pub struct NumberIter<N: Number> {
     next: Option<N>,
     last: N,

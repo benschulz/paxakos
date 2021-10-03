@@ -1,7 +1,7 @@
 //! Defines the [`Decoration`] trait.
 
 use crate::error::SpawnError;
-use crate::Node;
+use crate::node::NodeImpl;
 
 /// A decoration around a `Node`.
 ///
@@ -9,7 +9,7 @@ use crate::Node;
 /// decoration around a node.
 pub trait Decoration
 where
-    Self: Node,
+    Self: NodeImpl,
 {
     /// Arguments this decoration requires.
     ///
@@ -17,7 +17,7 @@ where
     type Arguments: 'static;
 
     /// Type of the decorated node.
-    type Decorated: Node;
+    type Decorated: NodeImpl;
 
     /// Wraps this decoration around the given node, using the given arguments.
     fn wrap(decorated: Self::Decorated, arguments: Self::Arguments) -> Result<Self, SpawnError>;

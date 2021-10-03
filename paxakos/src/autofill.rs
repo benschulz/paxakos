@@ -36,21 +36,25 @@ use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
+use crate::error::ShutDownOr;
 use crate::node::builder::NodeBuilder;
 use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::EventFor;
+use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
 use crate::node::LogEntryOf;
 use crate::node::NayOf;
 use crate::node::NodeIdOf;
+use crate::node::NodeImpl;
 use crate::node::NodeStatus;
 use crate::node::Participation;
 use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
+use crate::node::StaticAppendResultFor;
 use crate::node::YeaOf;
 use crate::retry::DoNotRetry;
 use crate::retry::RetryPolicy;
@@ -66,6 +70,15 @@ pub trait Config {
 
     /// The applicable that is used to fill gaps, usually a no-op.
     type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
+
+    /// Type of retry policy to be used.
+    ///
+    /// See [`retry_policy`][Config::retry_policy].
+    type RetryPolicy: RetryPolicy<
+        Invocation = InvocationOf<Self::Node>,
+        Error = AppendError<InvocationOf<Self::Node>>,
+        StaticError = AppendError<InvocationOf<Self::Node>>,
+    >;
 
     /// Initializes this configuration.
     #[allow(unused_variables)]
@@ -84,18 +97,16 @@ pub trait Config {
     /// Creates a new filler value.
     fn new_filler(&self) -> Self::Applicable;
 
-    /// Creates a retry policy, defaults to `DoNotRetry`.
+    /// Creates a retry policy.
     ///
     /// Please note that a node that's fallen too far behind may fail to catch
-    /// up using the gap failing approach. This is because other nodes may
+    /// up using the gap filling approach. This is because other nodes may
     /// respond with [`Conflict::Converged`][crate::Conflict::Converged] without
     /// providing a log entry. In these cases, the node must ask another node
-    /// for a recent snapshot and install it. To detect such cases, one use a
-    /// retry policy that checks for [`AppendError::Converged`] and whether the
-    /// node could be `caught_up`.
-    fn retry_policy(&self) -> Box<dyn RetryPolicy<Invocation = InvocationOf<Self::Node>> + Send> {
-        Box::new(DoNotRetry::new())
-    }
+    /// for a recent snapshot and install it. To detect such cases, one may use
+    /// a retry policy that checks for [`AppendError::Converged`] and whether
+    /// the node could be `caught_up`.
+    fn retry_policy(&self) -> Self::RetryPolicy;
 }
 
 /// A static configuration.
@@ -127,6 +138,7 @@ where
 {
     type Node = N;
     type Applicable = A;
+    type RetryPolicy = DoNotRetry<InvocationOf<N>>;
 
     fn batch_size(&self) -> usize {
         self.batch_size
@@ -138,6 +150,10 @@ where
 
     fn new_filler(&self) -> Self::Applicable {
         Self::Applicable::default()
+    }
+
+    fn retry_policy(&self) -> Self::RetryPolicy {
+        DoNotRetry::new()
     }
 }
 
@@ -161,7 +177,7 @@ pub trait AutofillBuilderExt: Sized {
 
 impl<N, V, B> AutofillBuilderExt for NodeBuilder<N, V, B>
 where
-    N: Node + 'static,
+    N: NodeImpl + 'static,
     V: Voter<
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
@@ -324,7 +340,7 @@ where
 
         let append = self
             .decorated
-            .append(
+            .append_static(
                 log_entry,
                 AppendArgs {
                     round: round_num..=round_num,
@@ -341,7 +357,7 @@ where
 
 impl<N, C> Decoration for Autofill<N, C>
 where
-    N: Node,
+    N: NodeImpl,
     C: Config<Node = N> + 'static,
 {
     type Arguments = C;
@@ -484,15 +500,53 @@ where
         self.decorated.read_stale()
     }
 
-    fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A>> {
+    ) -> futures::future::LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+    {
         self.decorated.append(applicable, args)
+    }
+
+    fn append_static<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> futures::future::LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+        R::StaticError: From<ShutDownOr<R::Error>>,
+    {
+        self.decorated.append_static(applicable, args)
     }
 
     fn shut_down(self) -> Self::Shutdown {
         self.decorated.shut_down()
+    }
+}
+
+impl<N, C> NodeImpl for Autofill<N, C>
+where
+    N: NodeImpl,
+    C: Config<Node = N>,
+{
+    fn append_impl<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+    {
+        self.decorated.append_impl(applicable, args)
     }
 }

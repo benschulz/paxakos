@@ -13,22 +13,28 @@ use crate::error::AffirmSnapshotError;
 use crate::error::Disoriented;
 use crate::error::InstallSnapshotError;
 use crate::error::PrepareSnapshotError;
+use crate::error::ShutDownOr;
+use crate::retry::RetryPolicy;
 use crate::Node;
 use crate::NodeHandle;
 use crate::NodeStatus;
 
+use super::handle::BoxedRetryPolicy;
 use super::handle::NodeHandleRequest;
 use super::handle::NodeHandleResponse;
 use super::AppendResultFor;
 use super::CommunicatorOf;
+use super::ImplAppendResultFor;
 use super::InvocationOf;
 use super::LogEntryOf;
 use super::NodeIdOf;
+use super::NodeImpl;
 use super::Participation;
 use super::RoundNumOf;
 use super::ShutdownOf;
 use super::SnapshotFor;
 use super::StateOf;
+use super::StaticAppendResultFor;
 
 /// The [`Node`][crate::Node] implementation that's returned from
 /// [`NodeBuilder`][crate::NodeBuilder]s.
@@ -36,14 +42,14 @@ use super::StateOf;
 /// This `Node` implementation processes requests from [`NodeHandle`]s. It
 /// delegates to the outermost [`Decoration`][crate::decoration::Decoration],
 /// thus giving decorations a chance to intercept.
-pub struct Shell<N: Node> {
+pub struct Shell<N: NodeImpl> {
     pub(crate) wrapped: N,
 
     receiver: mpsc::Receiver<super::handle::RequestAndResponseSender<InvocationOf<N>>>,
     appends: FuturesUnordered<HandleAppend<Self>>,
 }
 
-impl<N: Node> Shell<N> {
+impl<N: NodeImpl> Shell<N> {
     pub(crate) fn new(
         wrapped: N,
         receiver: mpsc::Receiver<super::handle::RequestAndResponseSender<InvocationOf<N>>>,
@@ -66,7 +72,7 @@ impl<N: Node> Shell<N> {
                 let _ = send.send(NodeHandleResponse::Status(status));
             }
             NodeHandleRequest::Append { log_entry, args } => {
-                let append = self.append(log_entry, args);
+                let append = self.wrapped.append_impl(log_entry, args);
 
                 self.appends.push(HandleAppend {
                     append,
@@ -79,7 +85,7 @@ impl<N: Node> Shell<N> {
 
 impl<N> Node for Shell<N>
 where
-    N: Node,
+    N: NodeImpl,
 {
     type Invocation = InvocationOf<N>;
     type Communicator = CommunicatorOf<N>;
@@ -141,12 +147,31 @@ where
         self.wrapped.read_stale()
     }
 
-    fn append<A: ApplicableTo<StateOf<Self>> + 'static, P: Into<AppendArgs<Self::Invocation>>>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, AppendResultFor<Self, A>> {
+    ) -> futures::future::LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+    {
         self.wrapped.append(applicable, args)
+    }
+
+    fn append_static<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> futures::future::LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+        R::StaticError: From<ShutDownOr<R::Error>>,
+    {
+        self.wrapped.append_static(applicable, args)
     }
 
     fn shut_down(self) -> Self::Shutdown {
@@ -155,7 +180,10 @@ where
 }
 
 struct HandleAppend<N: Node> {
-    append: LocalBoxFuture<'static, AppendResultFor<N, LogEntryOf<N>>>,
+    append: LocalBoxFuture<
+        'static,
+        ImplAppendResultFor<N, LogEntryOf<N>, BoxedRetryPolicy<InvocationOf<N>>>,
+    >,
     send: Option<oneshot::Sender<NodeHandleResponse<InvocationOf<N>>>>,
 }
 
