@@ -35,6 +35,16 @@ impl<I: Invocation, R: RetryPolicy<Invocation = I> + Default> Default for Append
     }
 }
 
+impl<I: Invocation, R: Clone> Clone for AppendArgs<I, R> {
+    fn clone(&self) -> Self {
+        Self {
+            round: self.round.clone(),
+            importance: self.importance,
+            retry_policy: self.retry_policy.clone(),
+        }
+    }
+}
+
 impl<I, R> From<R> for AppendArgs<I, R>
 where
     I: Invocation,

@@ -44,7 +44,7 @@ impl<I: Invocation, E: 'static, F: 'static> RetryPolicy
 }
 
 /// Implementation of [`RetryPolicy`] that never retries.
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Debug)]
 pub struct DoNotRetry<I>(crate::util::PhantomSend<I>);
 
 impl<I> DoNotRetry<I> {
@@ -57,6 +57,12 @@ impl<I> DoNotRetry<I> {
 impl<I> Default for DoNotRetry<I> {
     fn default() -> Self {
         Self(Default::default())
+    }
+}
+
+impl<I> Clone for DoNotRetry<I> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }
 

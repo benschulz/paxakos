@@ -59,7 +59,7 @@ where
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Debug)]
 pub struct PhantomSend<T>(std::marker::PhantomData<T>);
 
 unsafe impl<T> Send for PhantomSend<T> {}
@@ -73,6 +73,12 @@ impl<T> PhantomSend<T> {
 impl<T> Default for PhantomSend<T> {
     fn default() -> Self {
         Self(Default::default())
+    }
+}
+
+impl<T> Clone for PhantomSend<T> {
+    fn clone(&self) -> Self {
+        Self(self.0)
     }
 }
 
