@@ -93,7 +93,7 @@ impl State for CalcState {
 
     type LogEntry = CalcOp;
     type Outcome = f64;
-    type Event = (f64, blake3::Hash);
+    type Effect = (f64, blake3::Hash);
 
     type Node = PrototypingNode;
 
@@ -101,7 +101,7 @@ impl State for CalcState {
         &mut self,
         log_entry: &Self::LogEntry,
         _context: &mut (),
-    ) -> (Self::Outcome, Self::Event) {
+    ) -> (Self::Outcome, Self::Effect) {
         let bytes = bincode::serialize(log_entry).unwrap();
         self.hasher.update(&bytes);
 

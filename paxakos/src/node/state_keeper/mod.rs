@@ -1354,7 +1354,7 @@ where
             self.emit(Event::Apply {
                 round,
                 log_entry: entry,
-                result: event,
+                effect: event,
             });
         }
 

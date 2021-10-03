@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::invocation::CoordNumOf;
-use crate::invocation::EventOf;
+use crate::invocation::EffectOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryOf;
 use crate::invocation::NodeOf;
@@ -65,8 +65,7 @@ pub enum Event<I: Invocation> {
         /// Log entry that was applied.
         log_entry: Arc<LogEntryOf<I>>,
         /// The event data that the application.
-        // TODO rename to data
-        result: EventOf<I>,
+        effect: EffectOf<I>,
     },
 
     /// A log entry was queued, preceeding entries are still missing.
@@ -131,7 +130,7 @@ impl<I: Invocation> std::fmt::Debug for Event<I> {
             Event::Apply {
                 round,
                 log_entry,
-                result,
+                effect: result,
             } => f
                 .debug_struct("Event::Apply")
                 .field("round", round)

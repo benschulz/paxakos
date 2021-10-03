@@ -68,7 +68,7 @@
 //!
 //!     type LogEntry = CalcOp;
 //!     type Outcome = f64;
-//!     type Event = f64;
+//!     type Effect = f64;
 //!
 //! #   type Node = ();
 //! #   
@@ -80,7 +80,7 @@
 //!         &mut self,
 //!         log_entry: &Self::LogEntry,
 //!         _context: &mut (),
-//!     ) -> (Self::Outcome, Self::Event) {
+//!     ) -> (Self::Outcome, Self::Effect) {
 //!         if self.applied.insert(log_entry.id()) {
 //!             match log_entry {
 //!                 CalcOp::Add(v, _) => {

@@ -1086,7 +1086,7 @@ impl State for PlaygroundState {
 
     type LogEntry = PlaygroundLogEntry;
     type Outcome = usize;
-    type Event = usize;
+    type Effect = usize;
 
     type Node = PrototypingNode;
 
@@ -1094,7 +1094,7 @@ impl State for PlaygroundState {
         &mut self,
         log_entry: &Self::LogEntry,
         _context: &mut (),
-    ) -> (Self::Outcome, Self::Event) {
+    ) -> (Self::Outcome, Self::Effect) {
         self.applied.insert(log_entry.id());
 
         (self.applied.len(), self.applied.len())

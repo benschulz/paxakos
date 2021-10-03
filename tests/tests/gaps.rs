@@ -108,7 +108,7 @@ fn auto_fill_gaps() {
         events
             .take_while(|e| {
                 futures::future::ready(
-                    !matches!(e, Event::Apply { result,.. } if result.0 >= target),
+                    !matches!(e, Event::Apply { effect,.. } if effect.0 >= target),
                 )
             })
             .for_each(|_| futures::future::ready(())),

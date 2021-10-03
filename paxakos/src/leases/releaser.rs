@@ -243,7 +243,7 @@ where
 
         // TODO queue leases on Init and Install
 
-        if let Poll::Ready(crate::Event::Apply { result, .. }) = &e {
+        if let Poll::Ready(crate::Event::Apply { effect: result, .. }) = &e {
             if let Some(lease) = result.as_lease_taken() {
                 let timeout_id = self.next_timeout_id;
                 self.next_timeout_id += 1;

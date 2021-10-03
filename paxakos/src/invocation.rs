@@ -24,7 +24,7 @@ pub type ContextOf<I> = state::ContextOf<StateOf<I>>;
 /// Shorthand to extract `CoordNum` type out of `I`.
 pub type CoordNumOf<I> = <I as Invocation>::CoordNum;
 /// Shorthand to extract state's `Event` type out of `I`.
-pub type EventOf<I> = state::EventOf<StateOf<I>>;
+pub type EffectOf<I> = state::EffectOf<StateOf<I>>;
 /// Shorthand to extract state's `LogEntry` type out of `I`.
 pub type LogEntryOf<I> = state::LogEntryOf<StateOf<I>>;
 /// Shorthand to extract log entry `Id` type out of `I`.

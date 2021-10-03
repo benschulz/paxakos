@@ -57,7 +57,7 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 /// #
 /// #     type Outcome = MyOutcome;
 /// #
-/// #     type Event = ();
+/// #     type Effect = ();
 /// #
 /// #     type Node = ();
 /// #
@@ -65,7 +65,7 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 /// #         &mut self,
 /// #         _log_entry: &Self::LogEntry,
 /// #         _context: &mut Self::Context,
-/// #     ) -> (Self::Outcome, Self::Event) {
+/// #     ) -> (Self::Outcome, Self::Effect) {
 /// #         unimplemented!()
 /// #     }
 /// #

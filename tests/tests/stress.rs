@@ -231,7 +231,7 @@ fn spawn_node(
             }
 
             while let Poll::Ready(e) = node.as_mut().unwrap().poll_events(cx) {
-                if let paxakos::Event::Apply { result, .. } = e {
+                if let paxakos::Event::Apply { effect: result, .. } = e {
                     if (target - result.0).abs() < f64::EPSILON {
                         if let Some(target_reached_sender) = target_reached_sender.take() {
                             tracing::info!("Node {} reached target.", node_info.id());

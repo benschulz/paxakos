@@ -25,8 +25,8 @@ pub type NodeIdOf<S> = <NodeOf<S> as NodeInfo>::Id;
 /// Type alias to extract a state's [`Outcome`][State::Outcome] type.
 pub type OutcomeOf<S> = <S as State>::Outcome;
 
-/// Type alias to extract a state's [`Event`][State::Event] type.
-pub type EventOf<S> = <S as State>::Event;
+/// Type alias to extract a state's [`Effect`][State::Effect] type.
+pub type EffectOf<S> = <S as State>::Effect;
 
 /// Distributed state to which log entries are applied.
 pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
@@ -46,10 +46,10 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
 
     /// Result of applying a log entry to the state.
     ///
-    /// This result is emitted as an [Apply event][Apply] event.
+    /// This result is emitted as an [`Apply` event][Apply] event.
     ///
     /// [Apply]: crate::event::Event::Apply
-    type Event: 'static + Send + Debug;
+    type Effect: 'static + Send + Debug;
 
     /// Node descriptor type, see [`NodeInfo`].
     type Node: NodeInfo;
@@ -68,7 +68,7 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
         &mut self,
         log_entry: &Self::LogEntry,
         context: &mut Self::Context,
-    ) -> (Self::Outcome, Self::Event);
+    ) -> (Self::Outcome, Self::Effect);
 
     /// Applies the given log entry to this state object.
     ///
@@ -82,7 +82,7 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
         &mut self,
         log_entry: &Self::LogEntry,
         context: &mut Self::Context,
-    ) -> Self::Event {
+    ) -> Self::Effect {
         self.apply(log_entry, context).1
     }
 

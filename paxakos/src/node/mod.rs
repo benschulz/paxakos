@@ -59,7 +59,7 @@ pub type ContextOf<N> = invocation::ContextOf<InvocationOf<N>>;
 /// Shorthand to extract invocation's `CoordNum` type out of `N`.
 pub type CoordNumOf<N> = invocation::CoordNumOf<InvocationOf<N>>;
 /// Shorthand to extract invocation's `Event` type out of `N`.
-pub type EventOf<N> = invocation::EventOf<InvocationOf<N>>;
+pub type EventOf<N> = invocation::EffectOf<InvocationOf<N>>;
 /// Shorthand to extract `Invocation` type out of `N`.
 pub type InvocationOf<N> = <N as Node>::Invocation;
 /// Shorthand to extract state's `LogEntry` type out of `N`.

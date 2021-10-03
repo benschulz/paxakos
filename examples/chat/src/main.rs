@@ -162,7 +162,7 @@ impl State for ChatState {
 
     type LogEntry = ChatMessage;
     type Outcome = ();
-    type Event = ();
+    type Effect = ();
 
     type Node = PrototypingNode;
 
@@ -170,7 +170,7 @@ impl State for ChatState {
         &mut self,
         log_entry: &Self::LogEntry,
         _context: &mut (),
-    ) -> (Self::Outcome, Self::Event) {
+    ) -> (Self::Outcome, Self::Effect) {
         let own_node_id = format!("{:X}", self.node_id + 10);
 
         println!(
