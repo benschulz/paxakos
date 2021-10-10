@@ -18,6 +18,7 @@ use crate::communicator::NayOf;
 use crate::communicator::RoundNumOf;
 use crate::communicator::YeaOf;
 use crate::error::Disoriented;
+use crate::error::ShutDown;
 use crate::error::ShutDownOr;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
@@ -28,6 +29,7 @@ use crate::invocation::NodeIdOf;
 use crate::invocation::StateOf;
 use crate::retry::RetryPolicy;
 use crate::voting::Voter;
+use crate::Commit;
 
 use super::commits::Commits;
 use super::inner::NodeInner;
@@ -184,8 +186,7 @@ where
         P: Into<AppendArgs<Self::Invocation, R>>,
         R: RetryPolicy<Invocation = Self::Invocation>,
     {
-        Rc::clone(&self.inner)
-            .append(applicable, args.into())
+        self.append_impl(applicable, args)
             .map_err(|e| e.expect_other())
             .boxed_local()
     }
@@ -201,8 +202,7 @@ where
         R: RetryPolicy<Invocation = Self::Invocation>,
         R::StaticError: From<ShutDownOr<R::Error>>,
     {
-        Rc::clone(&self.inner)
-            .append(applicable, args.into())
+        self.append_impl(applicable, args)
             .map_err(|e| e.into())
             .boxed_local()
     }
@@ -252,6 +252,24 @@ where
         Rc::clone(&self.inner)
             .append(applicable, args.into())
             .boxed_local()
+    }
+
+    fn await_commit_of(
+        &self,
+        log_entry_id: super::LogEntryIdOf<Self>,
+    ) -> LocalBoxFuture<'static, Result<super::CommitFor<Self>, crate::error::ShutDown>> {
+        let commit = self.state_keeper.await_commit_of(log_entry_id);
+
+        async move {
+            match commit.await {
+                Ok(receiver) => match receiver.await {
+                    Ok((round_num, outcome)) => Ok(Commit::ready(round_num, outcome)),
+                    Err(_) => Err(ShutDown),
+                },
+                Err(err) => Err(err),
+            }
+        }
+        .boxed_local()
     }
 }
 

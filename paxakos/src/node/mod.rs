@@ -226,6 +226,12 @@ pub trait NodeImpl: Node {
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
         R: RetryPolicy<Invocation = Self::Invocation>;
+
+    /// Wait for the log entry with the given ID to be committed.
+    fn await_commit_of(
+        &self,
+        log_entry_id: LogEntryIdOf<Self>,
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, ShutDown>>;
 }
 
 /// Future returned by [`Node::next_event`].

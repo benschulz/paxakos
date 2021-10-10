@@ -549,4 +549,11 @@ where
     {
         self.decorated.append_impl(applicable, args)
     }
+
+    fn await_commit_of(
+        &self,
+        log_entry_id: crate::node::LogEntryIdOf<Self>,
+    ) -> LocalBoxFuture<'static, Result<crate::node::CommitFor<Self>, crate::error::ShutDown>> {
+        self.decorated.await_commit_of(log_entry_id)
+    }
 }
