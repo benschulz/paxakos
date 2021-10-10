@@ -1,6 +1,6 @@
 //! Defines the [`RetryPolicy`] trait and related types.
 
-use async_trait::async_trait;
+use futures::future::BoxFuture;
 
 use crate::append::AppendError;
 use crate::error::ShutDown;
@@ -8,7 +8,6 @@ use crate::error::ShutDownOr;
 use crate::invocation::Invocation;
 
 /// Policy that determines whether an append should be retried.
-#[async_trait]
 pub trait RetryPolicy: 'static {
     /// Parametrization of the paxakos algorithm.
     type Invocation: Invocation;
@@ -22,24 +21,34 @@ pub trait RetryPolicy: 'static {
     // TODO default to ShutDownOr<Self::Error> (https://github.com/rust-lang/rust/issues/29661)
     type StaticError;
 
+    /// Type of future returned from [RetryPolicy::eval].
+    // TODO this needs GATs for a lifetime parameter
+    type Future: std::future::Future<Output = Result<(), Self::Error>>;
+
     /// Determines wheter another attempt to append should be made.
     ///
     /// The given `error` is the reason the latest attempt failed. Returning
     /// `Ok(())` implies that another attempt should be made.
-    async fn eval(&mut self, error: AppendError<Self::Invocation>) -> Result<(), Self::Error>;
+    fn eval(&mut self, error: AppendError<Self::Invocation>) -> Self::Future;
 }
 
-#[async_trait]
 impl<I: Invocation, E: 'static, F: 'static> RetryPolicy
-    for Box<dyn RetryPolicy<Invocation = I, Error = E, StaticError = F> + Send>
+    for Box<
+        dyn RetryPolicy<
+                Invocation = I,
+                Error = E,
+                StaticError = F,
+                Future = BoxFuture<'static, Result<(), E>>,
+            > + Send,
+    >
 {
     type Invocation = I;
     type Error = E;
     type StaticError = F;
+    type Future = BoxFuture<'static, Result<(), Self::Error>>;
 
-    async fn eval(&mut self, error: AppendError<Self::Invocation>) -> Result<(), Self::Error> {
-        let p = &mut **self;
-        p.eval(error).await
+    fn eval(&mut self, error: AppendError<Self::Invocation>) -> Self::Future {
+        (**self).eval(error)
     }
 }
 
@@ -66,14 +75,14 @@ impl<I> Clone for DoNotRetry<I> {
     }
 }
 
-#[async_trait]
 impl<I: Invocation> RetryPolicy for DoNotRetry<I> {
     type Invocation = I;
     type Error = AppendError<Self::Invocation>;
     type StaticError = AppendError<Self::Invocation>;
+    type Future = futures::future::Ready<Result<(), Self::Error>>;
 
-    async fn eval(&mut self, err: AppendError<Self::Invocation>) -> Result<(), Self::Error> {
-        Err(err)
+    fn eval(&mut self, err: AppendError<Self::Invocation>) -> Self::Future {
+        futures::future::ready(Err(err))
     }
 }
 
@@ -110,9 +119,10 @@ pub use cfg_backoff::RetryWithBackoff;
 mod cfg_backoff {
     use std::marker::PhantomData;
 
-    use async_trait::async_trait;
     use backoff::backoff::Backoff;
     use backoff::exponential::ExponentialBackoff;
+    use futures::future::BoxFuture;
+    use futures::FutureExt;
 
     use crate::append::AppendArgs;
     use crate::append::AppendError;
@@ -150,19 +160,24 @@ mod cfg_backoff {
         }
     }
 
-    #[async_trait]
     impl<B: Backoff + Send + 'static, I: Invocation + Send> RetryPolicy for RetryWithBackoff<B, I> {
         type Invocation = I;
         type Error = AbortedError<I>;
         type StaticError = AbortedError<I>;
+        type Future = BoxFuture<'static, Result<(), Self::Error>>;
 
-        async fn eval(&mut self, err: AppendError<Self::Invocation>) -> Result<(), Self::Error> {
-            if let Some(d) = self.0.next_backoff() {
-                futures_timer::Delay::new(d).await;
-                Ok(())
-            } else {
-                Err(AbortedError(err))
+        fn eval(&mut self, err: AppendError<Self::Invocation>) -> Self::Future {
+            let next_backoff = self.0.next_backoff();
+
+            async move {
+                if let Some(d) = next_backoff {
+                    futures_timer::Delay::new(d).await;
+                    Ok(())
+                } else {
+                    Err(AbortedError(err))
+                }
             }
+            .boxed()
         }
     }
 }

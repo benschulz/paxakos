@@ -25,7 +25,6 @@ tracer = []
 track-leadership = []
 
 [dependencies]
-async-trait = "0.1"
 backoff = { version = "0.3", optional = true }
 either = { version = "1", optional = true }
 futures = "0.3"

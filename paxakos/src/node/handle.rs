@@ -2,11 +2,12 @@ use std::any::Any;
 use std::future::Future;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
+use futures::future::BoxFuture;
 use futures::future::FutureExt;
 use futures::sink::SinkExt;
+use futures::TryFutureExt;
 
 use crate::append::AppendArgs;
 use crate::append::AppendError;
@@ -26,8 +27,12 @@ use super::Admin;
 use super::NodeStatus;
 
 pub type BoxedRetryPolicy<I> = Box<
-    dyn RetryPolicy<Invocation = I, Error = Box<dyn Any + Send>, StaticError = Box<dyn Any + Send>>
-        + Send,
+    dyn RetryPolicy<
+            Invocation = I,
+            Error = Box<dyn Any + Send>,
+            StaticError = Box<dyn Any + Send>,
+            Future = BoxFuture<'static, Result<(), Box<dyn Any + Send>>>,
+        > + Send,
 >;
 
 pub type RequestAndResponseSender<I> =
@@ -147,6 +152,7 @@ impl<I: Invocation> NodeHandle<I> {
         R: RetryPolicy<Invocation = I> + Send + 'static,
         R::Error: Send,
         R::StaticError: From<ShutDownOr<R::Error>>,
+        R::Future: Send,
     {
         let args = args.into();
         let args = AppendArgs {
@@ -210,20 +216,21 @@ impl<R> From<R> for BoxingRetryPolicy<R> {
     }
 }
 
-#[async_trait]
 impl<R> RetryPolicy for BoxingRetryPolicy<R>
 where
     R: RetryPolicy + Send,
     R::Error: Send + 'static,
+    R::Future: Send,
 {
     type Invocation = <R as RetryPolicy>::Invocation;
     type Error = Box<dyn Any + Send>;
     type StaticError = Box<dyn Any + Send>;
+    type Future = BoxFuture<'static, Result<(), Self::Error>>;
 
-    async fn eval(&mut self, error: AppendError<Self::Invocation>) -> Result<(), Self::Error> {
+    fn eval(&mut self, error: AppendError<Self::Invocation>) -> Self::Future {
         self.delegate
             .eval(error)
-            .await
             .map_err(|err| Box::new(err) as Self::Error)
+            .boxed()
     }
 }

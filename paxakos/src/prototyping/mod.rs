@@ -5,8 +5,8 @@ use std::convert::Infallible;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use futures::channel::mpsc;
+use futures::future::BoxFuture;
 use futures::future::FutureExt;
 use futures::future::LocalBoxFuture;
 use futures::lock::Mutex;
@@ -73,23 +73,28 @@ impl<I> RetryIndefinitely<I> {
     }
 }
 
-#[async_trait]
 impl<I: Invocation> RetryPolicy for RetryIndefinitely<I> {
     type Invocation = I;
     type Error = Infallible;
     type StaticError = ShutDown;
+    type Future = BoxFuture<'static, Result<(), Self::Error>>;
 
-    async fn eval(&mut self, _err: AppendError<Self::Invocation>) -> Result<(), Self::Error> {
-        if self.0 > 0 {
-            use rand::Rng;
+    fn eval(&mut self, _err: AppendError<Self::Invocation>) -> Self::Future {
+        let limit = self.0;
 
-            let delay = rand::thread_rng().gen_range(0..=self.0);
-            let delay = std::time::Duration::from_millis(delay);
+        async move {
+            if limit > 0 {
+                use rand::Rng;
 
-            futures_timer::Delay::new(delay).await;
+                let delay = rand::thread_rng().gen_range(0..=limit);
+                let delay = std::time::Duration::from_millis(delay);
+
+                futures_timer::Delay::new(delay).await;
+            }
+
+            Ok(())
         }
-
-        Ok(())
+        .boxed()
     }
 }
 
