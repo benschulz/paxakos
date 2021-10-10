@@ -202,6 +202,11 @@
 //! entry after none has been for a certain amount of time. However the goal of
 //! this decoration is to ensure there is a leader.
 //!
+//! ## Automatic Delegation (experimental, `delegation` flag)
+//!
+//! The `Delegate` decoration allows automatic delegation of appends, ordinarily
+//! to the leader node.
+//!
 //! ## Leases
 //!
 //! A cluster will often have shared resources which must be locked before they
@@ -367,8 +372,9 @@
 //!  - Rounding off existing decorations
 //!  - Additional decorations, e.g.,
 //!    - for consistency checks
-//!    - for delegation to the current leader
-//!  - Serialization
+//!  - Update playground
+//!    - add master-lease decoration
+//!    - add delegate decoration
 //!
 //! [Communicator]: crate::communicator::Communicator
 //! [LogEntry]: crate::log::LogEntry
@@ -390,6 +396,8 @@ pub mod buffer;
 pub mod cluster;
 pub mod communicator;
 pub mod decoration;
+#[cfg(feature = "delegation")]
+pub mod delegate;
 pub mod error;
 pub mod event;
 #[cfg(feature = "heartbeats")]
