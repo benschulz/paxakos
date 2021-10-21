@@ -119,9 +119,10 @@ where
                     .is_ok()
             });
 
-            if any_node_added_and_removed {
-                panic!("Simultaneously adding and removing a node is undefined.");
-            }
+            assert!(
+                !any_node_added_and_removed,
+                "Simultaneously adding and removing a node is undefined."
+            );
         }
 
         let prev = self
