@@ -471,7 +471,10 @@ where
             )
         }
 
-        let event = std::task::ready!(self.decorated.poll_events(cx));
+        let event = match self.decorated.poll_events(cx) {
+            Poll::Ready(e) => e,
+            Poll::Pending => return Poll::Pending,
+        };
 
         self.config.update(&event);
 
