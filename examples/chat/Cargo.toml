@@ -2,7 +2,7 @@
 name = "chat"
 version = "0.0.0"
 authors = ["Ben Schulz <benshu@benshu.de>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [dependencies]
