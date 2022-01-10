@@ -301,7 +301,7 @@ where
             self.timer = self
                 .queue
                 .peek()
-                .map(|q| futures_timer::Delay::new(q.timeout - std::time::Instant::now()));
+                .map(|q| futures_timer::Delay::new(q.timeout - now));
 
             match self.timer.as_mut().map(|t| t.poll_unpin(cx)) {
                 None | Some(Poll::Pending) => break,
