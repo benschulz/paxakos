@@ -9,6 +9,7 @@ use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 
 use crate::append::AppendArgs;
+use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::decoration::Decoration;
@@ -37,10 +38,51 @@ use crate::node::YeaOf;
 use crate::retry::RetryPolicy;
 use crate::voting::Voter;
 
-type LeaseOf<N> = <EventOf<N> as AsLeaseEvent>::Lease;
+type LeaseOf<N> = <EventOf<N> as AsLeaseEffect>::Lease;
 type LeaseIdOf<N> = <LeaseOf<N> as Lease>::Id;
 
-pub trait AsLeaseEvent {
+/// Releaser configuration.
+pub trait Config
+where
+    EventOf<Self::Node>: AsLeaseEffect,
+{
+    /// The node type that is decorated.
+    type Node: Node;
+
+    /// The applicable that is used to release leases.
+    type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
+
+    /// Type of retry policy to be used.
+    ///
+    /// See [`retry_policy`][Config::retry_policy].
+    type RetryPolicy: RetryPolicy<
+        Invocation = InvocationOf<Self::Node>,
+        Error = AppendError<InvocationOf<Self::Node>>,
+        StaticError = AppendError<InvocationOf<Self::Node>>,
+    >;
+
+    // TODO needs GAT for `Item = &LeaseOf<Self::Node>`
+    type Leases: Iterator<Item = LeaseOf<Self::Node>>;
+
+    /// Initializes this configuration.
+    #[allow(unused_variables)]
+    fn init(&mut self, node: &Self::Node) {}
+
+    /// Updates the configuration with the given event.
+    #[allow(unused_variables)]
+    fn update(&mut self, event: &EventFor<Self::Node>) {}
+
+    /// Returns the active leases for `state`.
+    fn active_leases(&self, state: &StateOf<Self::Node>) -> Self::Leases;
+
+    /// Prepares to release the lease with the given id.
+    fn release(&self, lease_id: LeaseIdOf<Self::Node>) -> Self::Applicable;
+
+    /// Creates a retry policy.
+    fn retry_policy(&self) -> Self::RetryPolicy;
+}
+
+pub trait AsLeaseEffect {
     type Lease: Lease;
 
     fn as_lease_taken(&self) -> Option<&Self::Lease>;
@@ -64,7 +106,10 @@ pub trait HasLeases {
     fn leases(&self) -> Self::Iter;
 }
 
-pub trait ReleaserBuilderExt {
+pub trait ReleaserBuilderExt
+where
+    EventOf<Self::Node>: AsLeaseEffect,
+{
     type Node: Node;
     type Voter: Voter;
     type Buffer: Buffer<
@@ -73,20 +118,18 @@ pub trait ReleaserBuilderExt {
         Entry = LogEntryOf<Self::Node>,
     >;
 
-    fn release_leases<C, P>(
+    fn release_leases<C>(
         self,
-        configure: C,
-    ) -> NodeBuilder<Releaser<Self::Node, P>, Self::Voter, Self::Buffer>
+        config: C,
+    ) -> NodeBuilder<Releaser<Self::Node, C>, Self::Voter, Self::Buffer>
     where
-        EventOf<Self::Node>: AsLeaseEvent,
-        C: FnOnce(ReleaserBuilderBlank<Self::Node>) -> ReleaserBuilder<Self::Node, P>,
-        P: Fn(LeaseIdOf<Self::Node>) -> LogEntryOf<Self::Node> + 'static;
+        C: Config<Node = Self::Node> + 'static;
 }
 
 impl<N, V, B> ReleaserBuilderExt for NodeBuilder<N, V, B>
 where
     N: NodeImpl + 'static,
-    EventOf<N>: AsLeaseEvent,
+    EventOf<N>: AsLeaseEffect,
     V: Voter<
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
@@ -101,77 +144,26 @@ where
     type Voter = V;
     type Buffer = B;
 
-    fn release_leases<C, P>(
+    fn release_leases<C>(
         self,
-        configure: C,
-    ) -> NodeBuilder<Releaser<Self::Node, P>, Self::Voter, Self::Buffer>
+        config: C,
+    ) -> NodeBuilder<Releaser<Self::Node, C>, Self::Voter, Self::Buffer>
     where
-        EventOf<N>: AsLeaseEvent,
-        C: FnOnce(ReleaserBuilderBlank<N>) -> ReleaserBuilder<N, P>,
-        P: Fn(LeaseIdOf<N>) -> LogEntryOf<N> + 'static,
+        EventOf<N>: AsLeaseEffect,
+        C: Config<Node = N> + 'static,
     {
-        let configured = configure(ReleaserBuilderBlank(std::marker::PhantomData));
-
-        self.decorated_with(ReleaserArgs {
-            _node: std::marker::PhantomData,
-            _jitter: std::time::Duration::from_millis(0),
-            entry_producer: configured.entry_producer,
-        })
+        self.decorated_with(config)
     }
 }
 
-pub struct ReleaserBuilderBlank<N>(std::marker::PhantomData<N>)
+pub struct Releaser<N, C>
 where
     N: Node,
-    EventOf<N>: AsLeaseEvent;
-
-impl<N> ReleaserBuilderBlank<N>
-where
-    N: Node,
-    EventOf<N>: AsLeaseEvent,
-{
-    pub fn with<P>(self, entry_producer: P) -> ReleaserBuilder<N, P>
-    where
-        P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
-    {
-        ReleaserBuilder {
-            entry_producer,
-            _node: std::marker::PhantomData,
-        }
-    }
-}
-
-pub struct ReleaserBuilder<N, P>
-where
-    N: Node,
-    EventOf<N>: AsLeaseEvent,
-    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
-{
-    entry_producer: P,
-
-    _node: std::marker::PhantomData<N>,
-}
-
-pub struct ReleaserArgs<N, P>
-where
-    N: Node,
-    EventOf<N>: AsLeaseEvent,
-    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
-{
-    _node: std::marker::PhantomData<N>,
-    // TODO jitter
-    _jitter: std::time::Duration,
-    entry_producer: P,
-}
-
-pub struct Releaser<N, P>
-where
-    N: Node,
-    EventOf<N>: AsLeaseEvent,
-    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
+    EventOf<N>: AsLeaseEffect,
+    C: Config<Node = N>,
 {
     decorated: N,
-    arguments: ReleaserArgs<N, P>,
+    config: C,
 
     queue: BinaryHeap<QueuedLease<LeaseIdOf<N>>>,
     timeouts: HashMap<LeaseIdOf<N>, usize>,
@@ -182,13 +174,32 @@ where
     appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, Option<LeaseIdOf<N>>>>,
 }
 
-impl<N, P> Decoration for Releaser<N, P>
+impl<N, C> Releaser<N, C>
+where
+    N: Node,
+    EventOf<N>: AsLeaseEffect,
+    C: Config<Node = N>,
+{
+    fn queue_lease(&mut self, lease_id: LeaseIdOf<N>, timeout: std::time::Instant) {
+        let timeout_id = self.next_timeout_id;
+        self.next_timeout_id += 1;
+
+        self.timeouts.insert(lease_id, timeout_id);
+        self.queue.push(QueuedLease {
+            lease_id,
+            timeout_id,
+            timeout,
+        })
+    }
+}
+
+impl<N, C> Decoration for Releaser<N, C>
 where
     N: NodeImpl + 'static,
-    EventOf<N>: AsLeaseEvent,
-    P: Fn(LeaseIdOf<N>) -> LogEntryOf<N> + 'static,
+    EventOf<N>: AsLeaseEffect,
+    C: Config<Node = N> + 'static,
 {
-    type Arguments = ReleaserArgs<N, P>;
+    type Arguments = C;
 
     type Decorated = N;
 
@@ -198,7 +209,7 @@ where
     ) -> Result<Self, crate::error::SpawnError> {
         Ok(Self {
             decorated,
-            arguments,
+            config: arguments,
             queue: BinaryHeap::new(),
             timeouts: HashMap::new(),
             next_timeout_id: 0,
@@ -219,8 +230,8 @@ where
 impl<N, C> Node for Releaser<N, C>
 where
     N: Node,
-    EventOf<N>: AsLeaseEvent,
-    C: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
+    EventOf<N>: AsLeaseEffect,
+    C: Config<Node = N>,
 {
     type Invocation = InvocationOf<N>;
     type Communicator = CommunicatorOf<N>;
@@ -241,39 +252,30 @@ where
     fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> Poll<EventFor<Self>> {
         let e = self.decorated.poll_events(cx);
 
-        // TODO queue leases on Init and Install
+        if let Poll::Ready(e) = &e {
+            match e {
+                crate::Event::Init {
+                    state: Some(state), ..
+                }
+                | crate::Event::Install {
+                    state: Some(state), ..
+                } => {
+                    for lease in self.config.active_leases(&*state) {
+                        self.queue_lease(lease.id(), lease.timeout());
+                    }
+                }
 
-        if let Poll::Ready(crate::Event::Apply { effect: result, .. }) = &e {
-            if let Some(lease) = result.as_lease_taken() {
-                let timeout_id = self.next_timeout_id;
-                self.next_timeout_id += 1;
+                crate::Event::Apply { effect: result, .. } => {
+                    if let Some(lease) = result.as_lease_taken() {
+                        self.queue_lease(lease.id(), lease.timeout());
+                    }
 
-                self.timeouts.insert(lease.id(), timeout_id);
-                self.queue.push(QueuedLease {
-                    lease_id: lease.id(),
-                    timeout_id,
-                    timeout: lease.timeout(),
-                })
-            }
+                    if let Some(lease_id) = result.as_lease_released() {
+                        self.timeouts.remove(&lease_id);
+                    }
+                }
 
-            if let Some(lease_id) = result.as_lease_released() {
-                self.timeouts.remove(&lease_id);
-            }
-        }
-
-        while let Poll::Ready(Some(r)) = self.appends.poll_next_unpin(cx) {
-            if let Some(lease_id) = r {
-                let timeout_id = self.next_timeout_id;
-                self.next_timeout_id += 1;
-
-                // TODO retry policy
-                let new_timeout = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                self.timeouts.insert(lease_id, timeout_id);
-                self.queue.push(QueuedLease {
-                    lease_id,
-                    timeout_id,
-                    timeout: new_timeout,
-                })
+                _ => {}
             }
         }
 
@@ -287,14 +289,22 @@ where
                     if *e.get() == queued.timeout_id {
                         let (id, _) = e.remove_entry();
 
-                        let log_entry = (self.arguments.entry_producer)(id);
+                        let log_entry = self.config.release(id);
                         self.appends.push(
                             self.decorated
-                                .append_static(log_entry, ())
+                                .append_static(log_entry, self.config.retry_policy())
                                 .map(move |r| r.map(|_| None).unwrap_or(Some(id)))
                                 .boxed_local(),
                         );
                     }
+                }
+            }
+
+            while let Poll::Ready(Some(r)) = self.appends.poll_next_unpin(cx) {
+                if let Some(lease_id) = r {
+                    // TODO retry policy
+                    let new_timeout = now + std::time::Duration::from_secs(5);
+                    self.queue_lease(lease_id, new_timeout);
                 }
             }
 
@@ -375,8 +385,8 @@ where
 impl<N, C> NodeImpl for Releaser<N, C>
 where
     N: NodeImpl,
-    EventOf<N>: AsLeaseEvent,
-    C: Fn(LeaseIdOf<N>) -> LogEntryOf<N>,
+    EventOf<N>: AsLeaseEffect,
+    C: Config<Node = N>,
 {
     fn append_impl<A, P, R>(
         &self,
