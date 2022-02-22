@@ -31,7 +31,6 @@ use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
 use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
-use crate::error::PrepareSnapshotError;
 use crate::error::ReadStaleError;
 use crate::event::DirectiveKind;
 use crate::event::Event;
@@ -135,7 +134,7 @@ impl<S: State, R: RoundNum, C: CoordNum> From<DeconstructedSnapshot<S, R, C>> fo
     fn from(s: DeconstructedSnapshot<S, R, C>) -> Self {
         Self {
             state_round: s.round,
-            state: Some(s.state),
+            state: s.state,
             greatest_observed_round_num: s.greatest_observed_round_num,
             greatest_observed_coord_num: s.greatest_observed_coord_num,
             participation: s.participation,
@@ -312,14 +311,13 @@ where
             let node_id = spawn_args.node_id;
             let voter = spawn_args.voter;
             let snapshot = spawn_args.snapshot;
-            let force_passive = spawn_args.force_passive;
             let applied_entry_buffer = spawn_args.buffer;
             #[cfg(feature = "tracer")]
             let tracer = spawn_args.tracer;
 
             // assume we're lagging
             let initial_status = snapshot
-                .as_ref()
+                .state()
                 .map(|_| NodeStatus::Lagging)
                 .unwrap_or(NodeStatus::Disoriented);
 
@@ -331,15 +329,7 @@ where
                 participation,
                 promises,
                 accepted_entries,
-            } = snapshot
-                .map(|s| Init::from(s.deconstruct()))
-                .unwrap_or_default();
-
-            let participation = if force_passive {
-                Participation::passive()
-            } else {
-                participation
-            };
+            } = Init::from(snapshot.deconstruct());
 
             let _ = start_result_sender
                 .send((initial_status, super::Participation::from(&participation)));
@@ -557,7 +547,7 @@ where
     }
 
     fn shut_down(mut self) {
-        let snapshot = self.prepare_snapshot().ok();
+        let snapshot = self.prepare_snapshot();
         let mut emitter = self.event_emitter;
 
         let _ = futures::executor::block_on(emitter.send(ShutdownEvent::Final { snapshot }));
@@ -565,7 +555,7 @@ where
 
     fn handle_request_msg(&mut self, req: Request<I>, resp_sender: oneshot::Sender<Response<I>>) {
         let resp = match req {
-            Request::PrepareSnapshot => Response::PrepareSnapshot(self.prepare_snapshot()),
+            Request::PrepareSnapshot => Response::PrepareSnapshot(Ok(self.prepare_snapshot())),
 
             Request::AffirmSnapshot { snapshot } => {
                 Response::AffirmSnapshot(self.affirm_snapshot(snapshot))
@@ -896,21 +886,16 @@ where
             std::cmp::max(self.greatest_observed_coord_num, coord_num);
     }
 
-    fn prepare_snapshot(&mut self) -> Result<SnapshotFor<I>, PrepareSnapshotError> {
-        let state = self
-            .state
-            .as_ref()
-            .ok_or(PrepareSnapshotError::Disoriented)?;
-
-        Ok(Snapshot::new(
+    fn prepare_snapshot(&mut self) -> SnapshotFor<I> {
+        Snapshot::new(
             self.state_round,
-            Arc::clone(state),
+            self.state.as_ref().map(Arc::clone),
             self.greatest_observed_round_num,
             self.greatest_observed_coord_num,
             self.participation.clone(),
             self.promises.clone(),
             self.accepted_entries.clone(),
-        ))
+        )
     }
 
     // TODO this doesn't do anything and probably never will, consider removal
@@ -936,7 +921,7 @@ where
         self.become_passive();
 
         self.state_round = state_round;
-        self.state = Some(Arc::clone(&state));
+        self.state = state.as_ref().map(Arc::clone);
         self.greatest_observed_round_num = greatest_observed_round_num;
         self.greatest_observed_coord_num = greatest_observed_coord_num;
         self.promises = promises;

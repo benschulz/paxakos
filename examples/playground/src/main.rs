@@ -263,11 +263,10 @@ async fn post_cluster_start(clusters_state: &rocket::State<Clusters>, cluster_id
             cluster.communicators.clone(),
             Arc::clone(&cluster.listeners),
             terminator_recv,
-            Snapshot::initial(PlaygroundState::new(
+            Snapshot::initial_with(PlaygroundState::new(
                 cluster.nodes.clone(),
                 cluster.args.concurrency,
             )),
-            false,
         )
         .await;
 
@@ -285,7 +284,6 @@ async fn spawn_node(
     listeners: Arc<Mutex<Vec<Listener>>>,
     mut terminator: oneshot::Receiver<Termination>,
     snapshot: Snapshot<PlaygroundState, R, C>,
-    passive: bool,
 ) -> PlaygroundNodeHandle {
     let node_id = n.id();
 
@@ -303,7 +301,7 @@ async fn spawn_node(
             PlaygroundInvocation::node_builder()
                 .for_node(n.id())
                 .communicating_via(communicators.create_communicator_for(n.id()))
-                .with_snapshot_and_passivity(snapshot, passive)
+                .resuming_from(snapshot)
                 .track_leadership()
                 .fill_gaps(AutofillConfig::new(rt_gaps, listeners_gaps))
                 .send_heartbeats(HeartbeatConfig::new(rt_heartbeat, listeners_heartbeat))
@@ -356,7 +354,7 @@ async fn spawn_node(
                                     match future::poll_fn(|cx| shut_down.poll_shutdown(cx)).await {
                                         ShutdownEvent::Regular(_) => {}
                                         ShutdownEvent::Final { snapshot, .. } => {
-                                            break snapshot.unwrap();
+                                            break snapshot;
                                         }
                                     }
                                 };
@@ -876,8 +874,7 @@ async fn post_node_recover(
             cluster.communicators.clone(),
             Arc::clone(&cluster.listeners),
             terminator_recv,
-            snapshot,
-            true,
+            snapshot.into_stale(),
         )
         .await;
 
@@ -923,7 +920,6 @@ async fn post_node_resume(
             Arc::clone(&cluster.listeners),
             terminator_recv,
             snapshot,
-            false,
         )
         .await;
 

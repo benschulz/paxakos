@@ -6,7 +6,6 @@ use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
 use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
-use crate::error::PrepareSnapshotError;
 use crate::error::ReadStaleError;
 use crate::invocation::Invocation;
 use crate::invocation::RoundNumOf;
@@ -15,7 +14,7 @@ use crate::RoundNum;
 pub use crate::error::ShutDown;
 
 impl ShutDown {
-    pub(super) fn rule_out<T>(result: Result<T, ShutDown>) -> T {
+    pub(crate) fn rule_out<T>(result: Result<T, ShutDown>) -> T {
         result.unwrap()
     }
 }
@@ -57,12 +56,6 @@ impl From<ShutDown> for AcquireRoundNumError {
 }
 
 impl<R: RoundNum> From<ShutDown> for ClusterError<R> {
-    fn from(_: ShutDown) -> Self {
-        Self::ShutDown
-    }
-}
-
-impl From<ShutDown> for PrepareSnapshotError {
     fn from(_: ShutDown) -> Self {
         Self::ShutDown
     }

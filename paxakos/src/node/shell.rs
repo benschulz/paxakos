@@ -12,7 +12,6 @@ use crate::applicable::ApplicableTo;
 use crate::error::AffirmSnapshotError;
 use crate::error::Disoriented;
 use crate::error::InstallSnapshotError;
-use crate::error::PrepareSnapshotError;
 use crate::error::ShutDownOr;
 use crate::retry::RetryPolicy;
 use crate::Node;
@@ -123,9 +122,7 @@ where
         self.wrapped.handle()
     }
 
-    fn prepare_snapshot(
-        &self,
-    ) -> LocalBoxFuture<'static, Result<SnapshotFor<Self>, PrepareSnapshotError>> {
+    fn prepare_snapshot(&self) -> LocalBoxFuture<'static, SnapshotFor<Self>> {
         self.wrapped.prepare_snapshot()
     }
 

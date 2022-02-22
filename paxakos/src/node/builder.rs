@@ -109,7 +109,7 @@ where
 {
     /// Starts the node without any state and in passive mode.
     pub fn without_state(self) -> NodeBuilder<Core<I, C>> {
-        self.with_snapshot_and_passivity(None, false)
+        self.with_snapshot(Snapshot::stale_without_state())
     }
 
     /// Starts a new cluster with the given initial state.
@@ -119,7 +119,12 @@ where
         self,
         initial_state: S,
     ) -> NodeBuilder<Core<I, C>> {
-        self.with_snapshot_and_passivity(initial_state.into().map(Snapshot::initial), false)
+        let snapshot = initial_state
+            .into()
+            .map(Snapshot::initial_with)
+            .unwrap_or_else(Snapshot::initial_without_state);
+
+        self.with_snapshot(snapshot)
     }
 
     /// Resume operation from the given snapshot.
@@ -135,11 +140,8 @@ where
     ///
     /// [`Final`]: crate::event::ShutdownEvent::Final
     /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
-    pub fn resuming_from<S: Into<Option<SnapshotFor<I>>>>(
-        self,
-        snapshot: S,
-    ) -> NodeBuilder<Core<I, C>> {
-        self.with_snapshot_and_passivity(snapshot, false)
+    pub fn resuming_from<S: Into<SnapshotFor<I>>>(self, snapshot: S) -> NodeBuilder<Core<I, C>> {
+        self.with_snapshot(snapshot.into())
     }
 
     /// Resume operation from the given snapshot.
@@ -150,7 +152,11 @@ where
         self,
         snapshot: S,
     ) -> NodeBuilder<Core<I, C>> {
-        self.with_snapshot_and_passivity(snapshot, true)
+        let snapshot = snapshot
+            .into()
+            .unwrap_or_else(Snapshot::stale_without_state);
+
+        self.with_snapshot(snapshot.into_stale())
     }
 
     /// Resume operation without a snapshot.
@@ -158,7 +164,7 @@ where
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
     pub fn recovering_without_state(self) -> NodeBuilder<Core<I, C>> {
-        self.with_snapshot_and_passivity(None, true)
+        self.with_snapshot(Snapshot::stale_without_state())
     }
 
     /// Commence operation from the given snapshot.
@@ -178,7 +184,11 @@ where
         self,
         snapshot: S,
     ) -> NodeBuilder<Core<I, C>> {
-        self.with_snapshot_and_passivity(snapshot, false)
+        let snapshot = snapshot
+            .into()
+            .unwrap_or_else(Snapshot::initial_without_state);
+
+        self.with_snapshot(snapshot.into_fresh())
     }
 
     /// Commence operation without a snapshot.
@@ -195,23 +205,16 @@ where
     ///
     /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
     pub fn joining_without_state(self) -> NodeBuilder<Core<I, C>> {
-        self.with_snapshot_and_passivity(None, false)
+        self.with_snapshot(Snapshot::initial_without_state())
     }
 
     #[doc(hidden)]
-    pub fn with_snapshot_and_passivity<S: Into<Option<SnapshotFor<I>>>>(
-        self,
-        snapshot: S,
-        force_passive: bool,
-    ) -> NodeBuilder<Core<I, C>> {
-        let snapshot = snapshot.into();
-
+    fn with_snapshot(self, snapshot: SnapshotFor<I>) -> NodeBuilder<Core<I, C>> {
         NodeBuilder {
             kit: NodeKit::new(),
             node_id: self.node_id,
             communicator: self.communicator,
             snapshot,
-            force_passive,
             voter: IndiscriminateVoter::new(),
             buffer: InMemoryBuffer::new(1024),
             finisher: Box::new(Ok),
@@ -234,8 +237,7 @@ pub struct NodeBuilder<
     node_id: node::NodeIdOf<N>,
     voter: V,
     communicator: CommunicatorOf<N>,
-    snapshot: Option<node::SnapshotFor<N>>,
-    force_passive: bool,
+    snapshot: node::SnapshotFor<N>,
     buffer: B,
     finisher: Box<Finisher<N>>,
 
@@ -278,7 +280,6 @@ where
             voter: self.voter,
             communicator: self.communicator,
             snapshot: self.snapshot,
-            force_passive: self.force_passive,
             buffer,
             finisher: self.finisher,
 
@@ -304,7 +305,6 @@ where
             voter,
             communicator: self.communicator,
             snapshot: self.snapshot,
-            force_passive: self.force_passive,
             buffer: self.buffer,
             finisher: self.finisher,
 
@@ -336,7 +336,6 @@ where
             node_id: self.node_id,
             communicator: self.communicator,
             snapshot: self.snapshot,
-            force_passive: self.force_passive,
             voter: self.voter,
             buffer: self.buffer,
             finisher: Box::new(move |x| ((finisher)(x)).and_then(|node| D::wrap(node, arguments))),
@@ -373,7 +372,6 @@ where
                 node_id: self.node_id,
                 voter: self.voter,
                 snapshot: self.snapshot,
-                force_passive: self.force_passive,
                 buffer: self.buffer,
                 #[cfg(feature = "tracer")]
                 tracer: self.tracer,

@@ -106,9 +106,7 @@ impl<I: Invocation> NodeHandle<I> {
     }
 
     /// Requests that snapshot of the node's current state be taken.
-    pub fn prepare_snapshot(
-        &self,
-    ) -> impl Future<Output = Result<SnapshotFor<I>, crate::error::PrepareSnapshotError>> {
+    pub fn prepare_snapshot(&self) -> impl Future<Output = Result<SnapshotFor<I>, ShutDown>> {
         self.state_keeper.prepare_snapshot()
     }
 

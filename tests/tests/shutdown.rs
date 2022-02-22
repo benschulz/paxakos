@@ -44,5 +44,5 @@ fn clean_shutdown() {
     let final_snapshot = states.next();
 
     let final_snapshot = futures::executor::block_on(final_snapshot).unwrap();
-    assert_eq!(Some(42.0), final_snapshot.map(|s| s.state().value()));
+    assert_eq!(Some(42.0), final_snapshot.state().map(|s| s.value()));
 }

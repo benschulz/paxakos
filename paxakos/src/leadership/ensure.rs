@@ -301,10 +301,7 @@ where
         self.decorated.handle()
     }
 
-    fn prepare_snapshot(
-        &self,
-    ) -> LocalBoxFuture<'static, Result<SnapshotFor<Self>, crate::error::PrepareSnapshotError>>
-    {
+    fn prepare_snapshot(&self) -> LocalBoxFuture<'static, SnapshotFor<Self>> {
         self.decorated.prepare_snapshot()
     }
 

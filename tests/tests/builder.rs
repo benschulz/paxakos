@@ -38,7 +38,7 @@ fn node_given_immediately_ready_snapshot_starts_as_lagging() {
         CalcInvocation::node_builder()
             .for_node(node_info.id())
             .communicating_via(communicators.create_communicator_for(node_info.id()))
-            .joining_with(Snapshot::initial(CalcState::new(vec![node_info], 1)))
+            .joining_with(Snapshot::initial_with(CalcState::new(vec![node_info], 1)))
             .spawn(),
     )
     .unwrap();

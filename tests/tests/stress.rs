@@ -260,12 +260,11 @@ fn spawn_node(
                 })
                 .next(),
         )
-        .unwrap()
         .unwrap();
 
         tracing::info!("Node {} is shut down.", node_info.id());
 
-        assert!((target - snapshot.state().value()).abs() < f64::EPSILON);
+        assert!((target - snapshot.state().unwrap().value()).abs() < f64::EPSILON);
 
         hash_at_target.unwrap()
     })

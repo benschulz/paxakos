@@ -44,7 +44,7 @@ pub enum Event<I: Invocation> {
         /// Round node is in after a snapshot was installed.
         round: RoundNumOf<I>,
         /// State the node is in after a snapshot was installed.
-        state: Arc<StateOf<I>>,
+        state: Option<Arc<StateOf<I>>>,
     },
 
     /// An entry has been committed to the log.
@@ -190,7 +190,7 @@ pub enum ShutdownEvent<I: Invocation> {
         /// Snapshot that may be used to restart the node via
         /// [`resuming_from`][crate::NodeBuilderWithNodeIdAndCommunicator::
         /// resuming_from].
-        snapshot: Option<SnapshotFor<I>>,
+        snapshot: SnapshotFor<I>,
     },
 }
 

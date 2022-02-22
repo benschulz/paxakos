@@ -155,11 +155,11 @@ where
         NodeHandle::new(self.handle_sender.clone(), self.state_keeper.clone())
     }
 
-    fn prepare_snapshot(
-        &self,
-    ) -> LocalBoxFuture<'static, Result<SnapshotFor<Self>, crate::error::PrepareSnapshotError>>
-    {
-        self.state_keeper.prepare_snapshot().boxed_local()
+    fn prepare_snapshot(&self) -> LocalBoxFuture<'static, SnapshotFor<Self>> {
+        self.state_keeper
+            .prepare_snapshot()
+            .map(ShutDown::rule_out)
+            .boxed_local()
     }
 
     fn affirm_snapshot(

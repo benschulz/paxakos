@@ -163,9 +163,7 @@ pub trait Node: Sized {
     fn handle(&self) -> NodeHandle<Self::Invocation>;
 
     /// Requests that snapshot of the node's current state be taken.
-    fn prepare_snapshot(
-        &self,
-    ) -> LocalBoxFuture<'static, Result<SnapshotFor<Self>, crate::error::PrepareSnapshotError>>;
+    fn prepare_snapshot(&self) -> LocalBoxFuture<'static, SnapshotFor<Self>>;
 
     /// Affirms that the given snapshot was written to persistent storage.
     ///
@@ -278,8 +276,7 @@ where
     pub context: invocation::ContextOf<I>,
     pub node_id: invocation::NodeIdOf<I>,
     pub voter: V,
-    pub snapshot: Option<invocation::SnapshotFor<I>>,
-    pub force_passive: bool,
+    pub snapshot: invocation::SnapshotFor<I>,
     pub buffer: B,
     #[cfg(feature = "tracer")]
     pub tracer: Option<Box<dyn Tracer<I>>>,

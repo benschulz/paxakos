@@ -42,7 +42,7 @@ fn worst_case() {
     let node_id = nodes[0].id();
     let concurrency = 10;
     let initial_state = CalcState::new(nodes, concurrency);
-    let initial_snapshot = Snapshot::<CalcState, u64, u32>::initial(initial_state);
+    let initial_snapshot = Snapshot::<CalcState, u64, u32>::initial_with(initial_state);
     let (req_handler, mut node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_id)
@@ -76,7 +76,7 @@ fn worst_case() {
     }
 
     // We take a snapshot of n1 at round 10.
-    let snapshot = futures::executor::block_on(node.prepare_snapshot()).unwrap();
+    let snapshot = futures::executor::block_on(node.prepare_snapshot());
 
     // Act II
     //
@@ -270,7 +270,7 @@ fn setup_node(
     concurrency: usize,
 ) -> CalcNode {
     let initial_state = CalcState::new(nodes, concurrency);
-    let initial_snapshot = Snapshot::<CalcState, u64, u32>::initial(initial_state);
+    let initial_snapshot = Snapshot::<CalcState, u64, u32>::initial_with(initial_state);
 
     let (req_handler, node) = if active {
         futures::executor::block_on(

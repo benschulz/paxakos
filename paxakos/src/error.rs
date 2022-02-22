@@ -23,18 +23,6 @@ pub enum SpawnError {
     Decoration(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
-/// Reason node snapshot couldn't be created.
-#[derive(Debug, Error)]
-pub enum PrepareSnapshotError {
-    /// Node doesn't have state.
-    #[error("node is disoriented")]
-    Disoriented,
-
-    /// Node is shut down.
-    #[error("node is shut down")]
-    ShutDown,
-}
-
 /// Reason node snapshot couldn't be affirmed.
 #[derive(Debug, Error)]
 pub enum AffirmSnapshotError {

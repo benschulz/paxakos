@@ -14,7 +14,6 @@ use crate::error::CommitError;
 use crate::error::Disoriented;
 use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
-use crate::error::PrepareSnapshotError;
 use crate::error::ReadStaleError;
 use crate::invocation::CommitFor;
 use crate::invocation::CoordNumOf;
@@ -102,9 +101,7 @@ impl<I: Invocation> StateKeeperHandle<I> {
         Self { sender }
     }
 
-    pub fn prepare_snapshot(
-        &self,
-    ) -> impl Future<Output = Result<SnapshotFor<I>, PrepareSnapshotError>> {
+    pub fn prepare_snapshot(&self) -> impl Future<Output = Result<SnapshotFor<I>, ShutDown>> {
         dispatch_state_keeper_req!(self, PrepareSnapshot)
     }
 

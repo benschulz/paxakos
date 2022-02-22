@@ -9,7 +9,6 @@ use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
 use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
-use crate::error::PrepareSnapshotError;
 use crate::error::ReadStaleError;
 use crate::invocation::CoordNumOf;
 use crate::invocation::Invocation;
@@ -102,7 +101,7 @@ type PendingCommit<I> = oneshot::Receiver<(RoundNumOf<I>, OutcomeOf<I>)>;
 
 #[derive(Debug)]
 pub enum Response<I: Invocation> {
-    PrepareSnapshot(Result<SnapshotFor<I>, PrepareSnapshotError>),
+    PrepareSnapshot(Result<SnapshotFor<I>, Infallible>),
     AffirmSnapshot(Result<(), AffirmSnapshotError>),
     InstallSnapshot(Result<(), InstallSnapshotError>),
 
