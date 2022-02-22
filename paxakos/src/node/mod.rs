@@ -173,7 +173,10 @@ pub trait Node: Sized {
         snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>>;
 
-    /// Requests that given snapshot be installed.
+    /// Requests that the given snapshot be installed.
+    ///
+    /// The node will retain its current set of promises and preserve its mode
+    /// of participation.
     fn install_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,

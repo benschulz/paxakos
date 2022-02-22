@@ -120,7 +120,9 @@ impl<I: Invocation> NodeHandle<I> {
         self.state_keeper.affirm_snapshot(snapshot)
     }
 
-    /// Requests that given snapshot be installed.
+    /// Requests that the given snapshot be installed.
+    ///
+    /// See [`Node::install_snapshot`][crate::Node::install_snapshot].
     pub fn install_snapshot(
         &self,
         snapshot: SnapshotFor<I>,

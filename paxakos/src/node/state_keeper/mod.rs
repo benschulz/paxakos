@@ -751,10 +751,6 @@ where
         let _ = resp_sender.send(resp);
     }
 
-    fn become_passive(&mut self) {
-        self.participation = Participation::passive();
-    }
-
     fn passive_for(&self, round_num: RoundNumOf<I>) -> bool {
         match self.participation {
             Participation::Active => false,
@@ -914,18 +910,14 @@ where
             state,
             greatest_observed_round_num,
             greatest_observed_coord_num,
-            promises,
             accepted_entries,
             ..
         } = snapshot.deconstruct();
-
-        self.become_passive();
 
         self.state_round = state_round;
         self.state = state.as_ref().map(Arc::clone);
         self.greatest_observed_round_num = greatest_observed_round_num;
         self.greatest_observed_coord_num = greatest_observed_coord_num;
-        self.promises = promises;
         self.accepted_entries = accepted_entries;
 
         self.emit(Event::Install {
