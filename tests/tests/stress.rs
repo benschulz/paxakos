@@ -11,6 +11,7 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use paxakos::autofill;
 use paxakos::invocation::Invocation;
+use paxakos::retry::DoNotRetry;
 use rand::seq::SliceRandom;
 use uuid::Uuid;
 
@@ -292,6 +293,7 @@ where
 {
     type Node = N;
     type Applicable = CalcOp;
+    type RetryPolicy = DoNotRetry<CalcInvocation>;
 
     fn init(&mut self, node: &Self::Node) {
         self.node_id = node.id();
@@ -305,5 +307,9 @@ where
 
     fn interval(&self) -> Option<Duration> {
         Some(Duration::from_millis(200))
+    }
+
+    fn retry_policy(&self) -> Self::RetryPolicy {
+        DoNotRetry::new()
     }
 }

@@ -20,8 +20,11 @@ use std::time::Duration;
 use futures::future::FutureExt;
 use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
+use num_traits::Bounded;
+use num_traits::Zero;
 
 use crate::append::AppendArgs;
+use crate::append::AppendError;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
@@ -62,6 +65,15 @@ pub trait Config {
     /// The applicable that is used to fill gaps, usually a no-op.
     type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
 
+    /// Type of retry policy to be used.
+    ///
+    /// See [`retry_policy`][Config::retry_policy].
+    type RetryPolicy: RetryPolicy<
+        Invocation = InvocationOf<Self::Node>,
+        Error = AppendError<InvocationOf<Self::Node>>,
+        StaticError = AppendError<InvocationOf<Self::Node>>,
+    >;
+
     /// Initializes this configuration.
     #[allow(unused_variables)]
     fn init(&mut self, node: &Self::Node) {}
@@ -80,6 +92,17 @@ pub trait Config {
 
     /// Creates a new heartbeat value.
     fn new_heartbeat(&self) -> Self::Applicable;
+
+    /// Creates a retry policy.
+    ///
+    /// Please note that a node that's fallen too far behind may fail to catch
+    /// up using the heartbeat approach. This is because other nodes may respond
+    /// with [`Conflict::Converged`][crate::Conflict::Converged] without
+    /// providing a log entry. In these cases, the node must ask another node
+    /// for a recent snapshot and install it. To detect such cases, one may use
+    /// a retry policy that checks for [`AppendError::Converged`] and whether
+    /// the node could be `caught_up`.
+    fn retry_policy(&self) -> Self::RetryPolicy;
 }
 
 /// A static configuration.
@@ -123,6 +146,7 @@ where
 {
     type Node = N;
     type Applicable = A;
+    type RetryPolicy = DoNotRetry<InvocationOf<N>>;
 
     fn leader_interval(&self) -> Option<Duration> {
         self.leader_interval
@@ -134,6 +158,10 @@ where
 
     fn new_heartbeat(&self) -> Self::Applicable {
         Self::Applicable::default()
+    }
+
+    fn retry_policy(&self) -> Self::RetryPolicy {
+        DoNotRetry::new()
     }
 }
 
@@ -243,9 +271,9 @@ where
             .append_static(
                 self.config.new_heartbeat(),
                 AppendArgs {
-                    retry_policy: DoNotRetry::new(),
+                    retry_policy: self.config.retry_policy(),
                     importance: Importance::MaintainLeadership(Peeryness::Peery),
-                    ..Default::default()
+                    round: Zero::zero()..=Bounded::max_value(),
                 },
             )
             .map(|_| ())

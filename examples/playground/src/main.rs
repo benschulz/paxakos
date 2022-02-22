@@ -499,6 +499,7 @@ where
 {
     type Node = N;
     type Applicable = PlaygroundLogEntry;
+    type RetryPolicy = DoNotRetry<PlaygroundInvocation>;
 
     fn init(&mut self, node: &Self::Node) {
         self.node_id = node.id();
@@ -527,6 +528,10 @@ where
         });
 
         PlaygroundLogEntry::Heartbeat(Uuid::new_v4())
+    }
+
+    fn retry_policy(&self) -> Self::RetryPolicy {
+        DoNotRetry::new()
     }
 }
 
