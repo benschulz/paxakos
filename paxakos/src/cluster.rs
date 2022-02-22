@@ -274,11 +274,11 @@ mod tests {
         }
 
         fn added_nodes(&self) -> Vec<N> {
-            self.0.clone().unwrap_or_else(Vec::new)
+            self.0.clone().unwrap_or_default()
         }
 
         fn removed_nodes(&self) -> Vec<N> {
-            self.1.clone().unwrap_or_else(Vec::new)
+            self.1.clone().unwrap_or_default()
         }
     }
 
