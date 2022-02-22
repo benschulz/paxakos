@@ -86,9 +86,20 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
         self.apply(log_entry, context).1
     }
 
-    /// Returns the current level of concurrency, defaults to one.
-    fn concurrency(&self) -> std::num::NonZeroUsize {
-        std::num::NonZeroUsize::new(1).unwrap()
+    /// Returns the current level of concurrency.
+    ///
+    /// Implementations must return `Some` when the argument is `Some`.
+    ///
+    /// This function's contract admits two kinds of implementation. The first
+    /// kind returns a constant value independent of the argument. The second
+    /// kind returns `None` when the argument is `None` and `Some(value)`
+    /// otherwise. The latter kind allows for the level of concurrency to change
+    /// dynamically yet remain consistent across the cluster.
+    ///
+    /// The default implementation always returns `Some(1)`.
+    #[allow(unused_variables)]
+    fn concurrency(this: Option<&Self>) -> Option<std::num::NonZeroUsize> {
+        Some(std::num::NonZeroUsize::new(1).unwrap())
     }
 
     /// Returns the set of nodes that make up the cluster at the given round
@@ -101,4 +112,12 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
     /// The order of the returned set must be determisistic, meaning it must be
     /// consistent across the entire cluster.
     fn cluster_at(&self, round_offset: std::num::NonZeroUsize) -> Vec<Self::Node>;
+}
+
+/// Determines the level of concurrency given `state`.
+///
+/// This is a convenience function that delegates to [`State::concurrency`] and
+/// then unwraps the returned value.
+pub fn concurrency_of<S: State>(state: &S) -> std::num::NonZeroUsize {
+    S::concurrency(Some(state)).expect("State::concurrency(Some(...)) returned None")
 }

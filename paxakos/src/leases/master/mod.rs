@@ -171,7 +171,7 @@ where
         offset: NonZeroUsize,
         now: Instant,
     ) -> bool {
-        assert!(offset <= state.concurrency());
+        assert!(offset <= crate::state::concurrency_of(state));
 
         let cluster = state.cluster_at(offset);
 
@@ -414,7 +414,7 @@ where
             }
 
             let state = self.read_stale().await.ok()?;
-            let majority = (1..=state.concurrency().into())
+            let majority = (1..=crate::state::concurrency_of(&*state).into())
                 .all(|o| self.has_majority_at_offset(&*state, NonZeroUsize::new(o).unwrap(), now));
 
             majority.then(|| state)

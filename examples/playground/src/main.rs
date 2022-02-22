@@ -1101,8 +1101,8 @@ impl State for PlaygroundState {
         (self.applied.len(), self.applied.len())
     }
 
-    fn concurrency(&self) -> std::num::NonZeroUsize {
-        self.concurrency
+    fn concurrency(this: Option<&Self>) -> Option<std::num::NonZeroUsize> {
+        this.map(|t| t.concurrency)
     }
 
     fn cluster_at(&self, _round_offset: std::num::NonZeroUsize) -> Vec<Self::Node> {

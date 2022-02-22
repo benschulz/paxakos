@@ -469,7 +469,7 @@ where
                     }
 
                     // Limit the range to the concurrency window.
-                    let concurrency_bound = into_round_num(state.concurrency());
+                    let concurrency_bound = into_round_num(crate::state::concurrency_of(&**state));
                     let range =
                         *range.start()..=std::cmp::min(round + concurrency_bound, *range.end());
 
@@ -599,7 +599,7 @@ where
                             let offset = std::num::NonZeroUsize::new(offset)
                                 .expect("Zero was ruled out via equality check");
 
-                            let bound = state.concurrency();
+                            let bound = crate::state::concurrency_of(&**state);
 
                             // We don't give out reservations past the concurrency bound.
                             assert!(offset <= bound);
@@ -769,7 +769,7 @@ where
                 if self
                     .greatest_observed_round_num
                     .unwrap_or_else(Bounded::max_value)
-                    > self.state_round + into_round_num(state.concurrency())
+                    > self.state_round + into_round_num(crate::state::concurrency_of(&**state))
                 {
                     NodeStatus::Lagging
                 } else if self.greatest_observed_coord_num == self.leadership.1 {
@@ -846,7 +846,8 @@ where
     fn deduce_node(&self, round_num: RoundNumOf<I>, coord_num: CoordNumOf<I>) -> Option<NodeOf<I>> {
         self.state.as_ref().and_then(|state| {
             if round_num > self.state_round
-                && round_num <= self.state_round + into_round_num(state.concurrency())
+                && round_num
+                    <= self.state_round + into_round_num(crate::state::concurrency_of(&**state))
             {
                 // TODO lots of duplication with NodeInner::determine_coord_num
                 let round_offset = crate::util::usize_delta(round_num, self.state_round);
@@ -1253,6 +1254,35 @@ where
         self.pending_commits
             .insert(round_num, (gap_time, coord_num, entry));
 
+        if let Participation::Passive {
+            observed_proposals, ..
+        } = &mut self.participation
+        {
+            // To get out of passivity, we must fully observe `c` rounds, where `c` is the
+            // level of concurrency that was applicable to the first fully observed round.
+            //
+            // (Applicable to a round means right before an entry is applied. If, for
+            // instance, we fully observe round `r` with an applicable concurrency of `1`,
+            // then we may immediately come out of passivity. Even if the entry applied in
+            // `r` increases concurrency.)
+            //
+            // It is important to remember that our criteria for a "fully observed round"
+            // are that the same round and coordination number are observed in an accept and
+            // a commit. This allows us to deduce that the first fully observed round `r`
+            // had not been committed before. This in turn allows us to become active in
+            // round `r + c`, regardless of any potential concurrency increases between now
+            // (`r`) and then (`r + c`) because no node could have seen them before (`r` was
+            // not settled).
+            if observed_proposals.contains(&(round_num, coord_num)) {
+                if let Some(concurrency) = StateOf::<I>::concurrency(self.state.as_deref()) {
+                    let first_active_round = round_num + into_round_num(concurrency);
+                    self.participation = Participation::PartiallyActive(first_active_round);
+
+                    self.emit(Event::Activate(first_active_round));
+                }
+            }
+        }
+
         // Are we missing commits between this one and the last one applied?
         if round_num > self.state_round + One::one() {
             self.emit_gaps(self.state_round);
@@ -1286,33 +1316,6 @@ where
 
         while let Some((_, coord_num, entry)) = self.pending_commits.remove(&(round + One::one())) {
             round = round + One::one();
-
-            if let Participation::Passive {
-                observed_proposals, ..
-            } = &mut self.participation
-            {
-                // To get out of passivity, we must fully observe `c` rounds, where `c` is the
-                // level of concurrency that was applicable to the first fully observed round.
-                //
-                // (Applicable to a round means right before an entry is applied. If, for
-                // instance, we fully observe round `r` with an applicable concurrency of `1`,
-                // then we may immediately come out of passivity. Even if the entry applied in
-                // `r` increases concurrency.)
-                //
-                // It is important to remember that our criteria for a "fully observed round"
-                // are that the same round and coordination number are observed in an accept and
-                // a commit. This allows us to deduce that the first fully observed round `r`
-                // had not been committed before. This in turn allows us to become active in
-                // round `r + c`, regardless of any potential concurrency increases between now
-                // (`r`) and then (`r + c`) because no node could have seen them before (`r` was
-                // not settled).
-                if observed_proposals.contains(&(round, coord_num)) {
-                    let first_active_round = round + into_round_num(state.concurrency());
-                    self.participation = Participation::PartiallyActive(first_active_round);
-
-                    self.emit(Event::Activate(first_active_round));
-                }
-            }
 
             debug!("Applying entry {:?} at round {}.", entry, round);
 
