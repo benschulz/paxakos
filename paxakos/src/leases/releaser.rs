@@ -20,8 +20,8 @@ use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
+use crate::node::EffectOf;
 use crate::node::EventFor;
-use crate::node::EventOf;
 use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
 use crate::node::LogEntryOf;
@@ -38,13 +38,13 @@ use crate::node::YeaOf;
 use crate::retry::RetryPolicy;
 use crate::voting::Voter;
 
-type LeaseOf<N> = <EventOf<N> as AsLeaseEffect>::Lease;
+type LeaseOf<N> = <EffectOf<N> as AsLeaseEffect>::Lease;
 type LeaseIdOf<N> = <LeaseOf<N> as Lease>::Id;
 
 /// Releaser configuration.
 pub trait Config
 where
-    EventOf<Self::Node>: AsLeaseEffect,
+    EffectOf<Self::Node>: AsLeaseEffect,
 {
     /// The node type that is decorated.
     type Node: Node;
@@ -108,7 +108,7 @@ pub trait HasLeases {
 
 pub trait ReleaserBuilderExt
 where
-    EventOf<Self::Node>: AsLeaseEffect,
+    EffectOf<Self::Node>: AsLeaseEffect,
 {
     type Node: Node;
     type Voter: Voter;
@@ -129,7 +129,7 @@ where
 impl<N, V, B> ReleaserBuilderExt for NodeBuilder<N, V, B>
 where
     N: NodeImpl + 'static,
-    EventOf<N>: AsLeaseEffect,
+    EffectOf<N>: AsLeaseEffect,
     V: Voter<
         State = StateOf<N>,
         RoundNum = RoundNumOf<N>,
@@ -149,7 +149,7 @@ where
         config: C,
     ) -> NodeBuilder<Releaser<Self::Node, C>, Self::Voter, Self::Buffer>
     where
-        EventOf<N>: AsLeaseEffect,
+        EffectOf<N>: AsLeaseEffect,
         C: Config<Node = N> + 'static,
     {
         self.decorated_with(config)
@@ -159,7 +159,7 @@ where
 pub struct Releaser<N, C>
 where
     N: Node,
-    EventOf<N>: AsLeaseEffect,
+    EffectOf<N>: AsLeaseEffect,
     C: Config<Node = N>,
 {
     decorated: N,
@@ -177,7 +177,7 @@ where
 impl<N, C> Releaser<N, C>
 where
     N: Node,
-    EventOf<N>: AsLeaseEffect,
+    EffectOf<N>: AsLeaseEffect,
     C: Config<Node = N>,
 {
     fn queue_lease(&mut self, lease_id: LeaseIdOf<N>, timeout: std::time::Instant) {
@@ -196,7 +196,7 @@ where
 impl<N, C> Decoration for Releaser<N, C>
 where
     N: NodeImpl + 'static,
-    EventOf<N>: AsLeaseEffect,
+    EffectOf<N>: AsLeaseEffect,
     C: Config<Node = N> + 'static,
 {
     type Arguments = C;
@@ -230,7 +230,7 @@ where
 impl<N, C> Node for Releaser<N, C>
 where
     N: Node,
-    EventOf<N>: AsLeaseEffect,
+    EffectOf<N>: AsLeaseEffect,
     C: Config<Node = N>,
 {
     type Invocation = InvocationOf<N>;
@@ -385,7 +385,7 @@ where
 impl<N, C> NodeImpl for Releaser<N, C>
 where
     N: NodeImpl,
-    EventOf<N>: AsLeaseEffect,
+    EffectOf<N>: AsLeaseEffect,
     C: Config<Node = N>,
 {
     fn append_impl<A, P, R>(
