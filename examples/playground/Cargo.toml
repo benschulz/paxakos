@@ -17,7 +17,7 @@ rand_distr = "0.4"
 rocket = { version = "0.5.0-rc.1", features = [ "json" ] }
 serde = "1"
 serde_json = "1"
-tokio-util = "0.6"
+tokio-util = { version = "0.7", features = [ "io" ] }
 tracing = "0.1"
-tracing-subscriber = "0.2"
+tracing-subscriber = "0.3"
 uuid = { version = "0.8", features = [ "serde", "v4" ] }
