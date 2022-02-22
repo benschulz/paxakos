@@ -1,9 +1,9 @@
 [package]
 name = "paxakos"
-version = "0.10.0-dev"
+version = "0.10.0"
 edition = "2021"
 license = "GPL-3.0-only"
-authors = [ "benshu <benshu@benshu.de>" ]
+authors = [ "Ben Schulz <benshu@benshu.de>" ]
 readme = "../README.md"
 documentation = "https://docs.rs/paxakos/"
 repository = "https://github.com/benschulz/paxakos"
