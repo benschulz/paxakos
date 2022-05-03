@@ -179,7 +179,7 @@ where
     fn wrap(
         decorated: Self::Decorated,
         arguments: Self::Arguments,
-    ) -> Result<Self, crate::error::SpawnError> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
         Ok(Self {
             decorated,
             config: arguments,

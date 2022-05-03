@@ -22,6 +22,7 @@ use crate::error::ShutDown;
 use crate::error::ShutDownOr;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
+use crate::executor;
 use crate::invocation;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryOf;
@@ -287,13 +288,13 @@ where
         Abstain = invocation::AbstainOf<I>,
     >,
 {
-    pub(crate) async fn spawn<V, B>(
+    pub(crate) async fn spawn<V, B, E>(
         state_keeper_kit: StateKeeperKit<I>,
         handle_sender: mpsc::Sender<super::handle::RequestAndResponseSender<I>>,
         id: NodeIdOf<I>,
         communicator: C,
-        args: super::SpawnArgs<I, V, B>,
-    ) -> (RequestHandler<I>, Core<I, C>)
+        args: super::SpawnArgs<I, V, B, E>,
+    ) -> Result<(RequestHandler<I>, Core<I, C>), executor::ErrorOf<E>>
     where
         V: Voter<
             State = StateOf<I>,
@@ -304,11 +305,12 @@ where
             Nay = NayOf<C>,
         >,
         B: Buffer<RoundNum = RoundNumOf<C>, CoordNum = CoordNumOf<C>, Entry = LogEntryOf<I>>,
+        E: crate::executor::Executor,
     {
         let state_keeper = state_keeper_kit.handle();
 
         let (initial_status, initial_participation, events, proof_of_life) =
-            StateKeeper::spawn(state_keeper_kit, args).await;
+            StateKeeper::spawn(state_keeper_kit, args).await?;
 
         let req_handler = RequestHandler::new(state_keeper.clone());
         let commits = Commits::new();
@@ -328,6 +330,6 @@ where
             handle_sender,
         };
 
-        (req_handler, node)
+        Ok((req_handler, node))
     }
 }

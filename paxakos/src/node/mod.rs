@@ -267,7 +267,7 @@ pub trait Admin {
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 
-pub(crate) struct SpawnArgs<I, V, B>
+pub(crate) struct SpawnArgs<I, V, B, T>
 where
     I: Invocation,
     B: Buffer<
@@ -275,12 +275,14 @@ where
         CoordNum = invocation::CoordNumOf<I>,
         Entry = invocation::LogEntryOf<I>,
     >,
+    T: crate::executor::Executor,
 {
     pub context: invocation::ContextOf<I>,
     pub node_id: invocation::NodeIdOf<I>,
     pub voter: V,
     pub snapshot: invocation::SnapshotFor<I>,
     pub buffer: B,
+    pub executor: T,
     #[cfg(feature = "tracer")]
     pub tracer: Option<Box<dyn Tracer<I>>>,
 }

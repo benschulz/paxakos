@@ -35,6 +35,8 @@ use crate::error::ReadStaleError;
 use crate::event::DirectiveKind;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
+use crate::executor;
+use crate::executor::Executor;
 use crate::invocation::AbstainOf;
 use crate::invocation::ContextOf;
 use crate::invocation::CoordNumOf;
@@ -272,41 +274,44 @@ where
     >,
     B: Buffer<RoundNum = RoundNumOf<I>, CoordNum = CoordNumOf<I>, Entry = LogEntryOf<I>>,
 {
-    pub(crate) async fn spawn(
+    pub(crate) async fn spawn<E: Executor>(
         kit: StateKeeperKit<I>,
-        args: SpawnArgs<I, V, B>,
-    ) -> (
-        NodeStatus,
-        super::Participation<RoundNumOf<I>>,
-        EventStream<I>,
-        ProofOfLife,
-    ) {
+        args: SpawnArgs<I, V, B, E>,
+    ) -> Result<
+        (
+            NodeStatus,
+            super::Participation<RoundNumOf<I>>,
+            EventStream<I>,
+            ProofOfLife,
+        ),
+        executor::ErrorOf<E>,
+    > {
         let (evt_send, evt_recv) = mpsc::channel(32);
 
         let proof_of_life = ProofOfLife::new();
 
         let (send, recv) = oneshot::channel();
 
-        Self::start_and_run_new(args, send, kit.receiver, evt_send);
+        Self::start_and_run_new(args, send, kit.receiver, evt_send)?;
 
         let (initial_status, initial_participation) =
             recv.await.expect("StateKeeper failed to start");
 
-        (
+        Ok((
             initial_status,
             initial_participation,
             EventStream { delegate: evt_recv },
             proof_of_life,
-        )
+        ))
     }
 
-    fn start_and_run_new(
-        spawn_args: SpawnArgs<I, V, B>,
+    fn start_and_run_new<E: Executor>(
+        spawn_args: SpawnArgs<I, V, B, E>,
         start_result_sender: oneshot::Sender<SpawnResult<I>>,
         receiver: mpsc::Receiver<RequestAndResponseSender<I>>,
         event_emitter: mpsc::Sender<ShutdownEvent<I>>,
-    ) {
-        std::thread::spawn(move || {
+    ) -> Result<(), executor::ErrorOf<E>> {
+        spawn_args.executor.execute(async move {
             let context = spawn_args.context;
             let node_id = spawn_args.node_id;
             let voter = spawn_args.voter;
@@ -376,41 +381,39 @@ where
                 tracer,
             };
 
-            state_keeper.init_and_run();
-        });
+            state_keeper.init_and_run().await;
+        })
     }
 
-    fn init_and_run(mut self) {
+    async fn init_and_run(mut self) {
         self.emit(Event::Init {
             status: self.status,
             round: self.state_round,
             state: self.state.as_ref().map(Arc::clone),
         });
 
-        self.run();
+        self.run().await;
     }
 
-    fn run(mut self) {
-        while self.await_and_handle_next_request() {
+    async fn run(mut self) {
+        while self.await_and_handle_next_request().await {
             self.apply_commits();
             self.release_round_nums();
             self.hand_out_round_nums();
             self.detect_and_emit_status_change();
 
-            if !self.flush_event_queue() {
+            if !self.flush_event_queue().await {
                 tracing::warn!("Node was not properly shut down but simply dropped.");
                 return;
             }
         }
 
         tracing::info!("Shutting down.");
-        self.shut_down()
+        self.shut_down().await
     }
 
-    fn await_and_handle_next_request(&mut self) -> bool {
-        let next_request = futures::executor::block_on(futures::future::poll_fn(|cx| {
-            self.receiver.poll_next_unpin(cx)
-        }));
+    async fn await_and_handle_next_request(&mut self) -> bool {
+        let next_request = self.receiver.next().await;
 
         match next_request {
             Some((req, resp_sender)) => {
@@ -499,7 +502,7 @@ where
         }
     }
 
-    fn flush_event_queue(&mut self) -> bool {
+    async fn flush_event_queue(&mut self) -> bool {
         while let Some(event) = self.queued_events.pop_front() {
             let mut timeout = 1;
 
@@ -511,7 +514,7 @@ where
                 let timeout = std::time::Duration::from_millis(timeout);
                 let delay = futures_timer::Delay::new(timeout);
 
-                match futures::executor::block_on(futures::future::select(send, delay)) {
+                match futures::future::select(send, delay).await {
                     futures::future::Either::Left((Ok(_), _)) => break,
                     futures::future::Either::Left((Err(_), _)) => return false,
 
@@ -546,11 +549,11 @@ where
         true
     }
 
-    fn shut_down(mut self) {
+    async fn shut_down(mut self) {
         let snapshot = self.prepare_snapshot();
         let mut emitter = self.event_emitter;
 
-        let _ = futures::executor::block_on(emitter.send(ShutdownEvent::Final { snapshot }));
+        let _ = emitter.send(ShutdownEvent::Final { snapshot }).await;
     }
 
     fn handle_request_msg(&mut self, req: Request<I>, resp_sender: oneshot::Sender<Response<I>>) {

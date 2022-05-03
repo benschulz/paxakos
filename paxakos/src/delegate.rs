@@ -265,7 +265,7 @@ where
     fn wrap(
         decorated: Self::Decorated,
         mut arguments: Self::Arguments,
-    ) -> Result<Self, crate::error::SpawnError> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
         arguments.init(&decorated);
 
         Ok(Self {

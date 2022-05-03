@@ -181,7 +181,7 @@ where
     fn wrap(
         decorated: Self::Decorated,
         arguments: Self::Arguments,
-    ) -> Result<Self, crate::error::SpawnError> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
         Ok(Self {
             decorated,
             _config: arguments.config,
@@ -348,11 +348,7 @@ where
 
 impl<D, I> MasterLeasingNode<(I,)> for D
 where
-    D: Decoration
-        + Node<
-            Invocation = InvocationOf<<D as Decoration>::Decorated>,
-            Communicator = CommunicatorOf<<D as Decoration>::Decorated>,
-        >,
+    D: Decoration,
     <D as Decoration>::Decorated: MasterLeasingNode<I>,
 {
     fn read_master_lax(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>> {

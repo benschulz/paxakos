@@ -11,6 +11,7 @@ use crate::buffer::InMemoryBuffer;
 use crate::communicator::Communicator;
 use crate::decoration::Decoration;
 use crate::error::SpawnError;
+use crate::executor;
 use crate::invocation::AbstainOf;
 use crate::invocation::CommunicationErrorOf;
 use crate::invocation::CoordNumOf;
@@ -42,7 +43,7 @@ use super::NodeKit;
 use super::RequestHandlerFor;
 
 /// Result returned by [`NodeBuilder::spawn`] or [`NodeBuilder::spawn_in`].
-pub type SpawnResult<T> = std::result::Result<T, SpawnError>;
+pub type SpawnResult<N, E> = std::result::Result<(RequestHandlerFor<N>, Shell<N>), SpawnError<E>>;
 
 /// Blank node builder.
 #[derive(Default)]
@@ -108,7 +109,7 @@ where
     >,
 {
     /// Starts the node without any state and in passive mode.
-    pub fn without_state(self) -> NodeBuilder<Core<I, C>> {
+    pub fn without_state(self) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         self.with_snapshot(Snapshot::stale_without_state())
     }
 
@@ -118,7 +119,7 @@ where
     pub fn with_initial_state<S: Into<Option<StateOf<I>>>>(
         self,
         initial_state: S,
-    ) -> NodeBuilder<Core<I, C>> {
+    ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         let snapshot = initial_state
             .into()
             .map(Snapshot::initial_with)
@@ -140,7 +141,10 @@ where
     ///
     /// [`Final`]: crate::event::ShutdownEvent::Final
     /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
-    pub fn resuming_from<S: Into<SnapshotFor<I>>>(self, snapshot: S) -> NodeBuilder<Core<I, C>> {
+    pub fn resuming_from<S: Into<SnapshotFor<I>>>(
+        self,
+        snapshot: S,
+    ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         self.with_snapshot(snapshot.into())
     }
 
@@ -151,7 +155,7 @@ where
     pub fn recovering_with<S: Into<Option<SnapshotFor<I>>>>(
         self,
         snapshot: S,
-    ) -> NodeBuilder<Core<I, C>> {
+    ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         let snapshot = snapshot
             .into()
             .unwrap_or_else(Snapshot::stale_without_state);
@@ -163,7 +167,9 @@ where
     ///
     /// The node will participate passively until it can be certain that it is
     /// not breaking any previous commitments.
-    pub fn recovering_without_state(self) -> NodeBuilder<Core<I, C>> {
+    pub fn recovering_without_state(
+        self,
+    ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         self.with_snapshot(Snapshot::stale_without_state())
     }
 
@@ -183,7 +189,7 @@ where
     pub fn joining_with<S: Into<Option<SnapshotFor<I>>>>(
         self,
         snapshot: S,
-    ) -> NodeBuilder<Core<I, C>> {
+    ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         let snapshot = snapshot
             .into()
             .unwrap_or_else(Snapshot::initial_without_state);
@@ -204,12 +210,17 @@ where
     ///  - it did not participate in any rounds since `r`.
     ///
     /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
-    pub fn joining_without_state(self) -> NodeBuilder<Core<I, C>> {
+    pub fn joining_without_state(
+        self,
+    ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         self.with_snapshot(Snapshot::initial_without_state())
     }
 
     #[doc(hidden)]
-    fn with_snapshot(self, snapshot: SnapshotFor<I>) -> NodeBuilder<Core<I, C>> {
+    fn with_snapshot(
+        self,
+        snapshot: SnapshotFor<I>,
+    ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         NodeBuilder {
             kit: NodeKit::new(),
             node_id: self.node_id,
@@ -217,7 +228,8 @@ where
             snapshot,
             voter: IndiscriminateVoter::new(),
             buffer: InMemoryBuffer::new(1024),
-            finisher: Box::new(Ok),
+            executor: executor::StdThread::default(),
+            finisher: CoreFinisher::new(),
 
             #[cfg(feature = "tracer")]
             tracer: None,
@@ -225,13 +237,89 @@ where
     }
 }
 
-type Finisher<N> = dyn FnOnce(Core<InvocationOf<N>, CommunicatorOf<N>>) -> SpawnResult<N>;
+/// Used to construct the node when `spawn_in` is called.
+///
+/// As decorations are added via `ExtensibleNodeBuilder`, the builder keeps a
+/// stack of the `Decoration::wrap` calls to make. This stack is encoded via
+/// implementations of the `Finisher` trait.
+pub trait Finisher: 'static {
+    /// Type of node constructed by this finisher.
+    type Node: Node;
+
+    /// Wraps the configured decorations around the given `core` node.
+    fn finish(
+        self,
+        core: Core<InvocationOf<Self::Node>, CommunicatorOf<Self::Node>>,
+    ) -> Result<Self::Node, Box<dyn std::error::Error + Send + Sync + 'static>>;
+}
+
+struct CoreFinisher<I, C>(std::marker::PhantomData<(I, C)>);
+
+impl<I, C> CoreFinisher<I, C> {
+    fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<I, C> Finisher for CoreFinisher<I, C>
+where
+    I: Invocation,
+    C: Communicator<
+        Node = NodeOf<I>,
+        RoundNum = RoundNumOf<I>,
+        CoordNum = CoordNumOf<I>,
+        LogEntry = LogEntryOf<I>,
+        Error = CommunicationErrorOf<I>,
+        Yea = YeaOf<I>,
+        Nay = NayOf<I>,
+        Abstain = AbstainOf<I>,
+    >,
+{
+    type Node = Core<I, C>;
+
+    fn finish(
+        self,
+        core: Core<InvocationOf<Self::Node>, CommunicatorOf<Self::Node>>,
+    ) -> Result<Core<I, C>, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        Ok(core)
+    }
+}
+
+struct DecorationFinisher<D: Decoration, I> {
+    arguments: <D as Decoration>::Arguments,
+    inner: I,
+}
+
+impl<D: Decoration, I> DecorationFinisher<D, I> {
+    fn wrap(inner: I, arguments: <D as Decoration>::Arguments) -> Self {
+        DecorationFinisher { arguments, inner }
+    }
+}
+
+impl<D, I> Finisher for DecorationFinisher<D, I>
+where
+    D: Decoration + 'static,
+    I: Finisher<Node = D::Decorated> + 'static,
+{
+    type Node = D;
+
+    fn finish(
+        self,
+        core: Core<InvocationOf<Self::Node>, CommunicatorOf<Self::Node>>,
+    ) -> Result<D, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        self.inner
+            .finish(core)
+            .and_then(move |node| D::wrap(node, self.arguments))
+    }
+}
 
 /// Node builder with all essential information set.
 pub struct NodeBuilder<
     N: Node,
+    F: Finisher<Node = N>,
     V = IndiscriminateVoterFor<N>,
     B = InMemoryBuffer<node::RoundNumOf<N>, node::CoordNumOf<N>, node::LogEntryOf<N>>,
+    E: executor::Executor = executor::StdThread,
 > {
     kit: NodeKit<InvocationOf<N>>,
     node_id: node::NodeIdOf<N>,
@@ -239,15 +327,17 @@ pub struct NodeBuilder<
     communicator: CommunicatorOf<N>,
     snapshot: node::SnapshotFor<N>,
     buffer: B,
-    finisher: Box<Finisher<N>>,
+    executor: E,
+    finisher: F,
 
     #[cfg(feature = "tracer")]
     tracer: Option<Box<dyn Tracer<InvocationOf<N>>>>,
 }
 
-impl<N, V, B> NodeBuilder<N, V, B>
+impl<N, F, V, B, E> NodeBuilder<N, F, V, B, E>
 where
     N: NodeImpl + 'static,
+    F: Finisher<Node = N>,
     V: Voter<
         State = node::StateOf<N>,
         RoundNum = node::RoundNumOf<N>,
@@ -261,6 +351,7 @@ where
         CoordNum = node::CoordNumOf<N>,
         Entry = node::LogEntryOf<N>,
     >,
+    E: executor::Executor,
 {
     /// Sets the applied entry buffer.
     pub fn buffering_applied_entries_in<
@@ -272,7 +363,7 @@ where
     >(
         self,
         buffer: T,
-    ) -> NodeBuilder<N, V, T> {
+    ) -> NodeBuilder<N, F, V, T, E> {
         // https://github.com/rust-lang/rust/issues/86555
         NodeBuilder {
             kit: self.kit,
@@ -281,6 +372,25 @@ where
             communicator: self.communicator,
             snapshot: self.snapshot,
             buffer,
+            executor: self.executor,
+            finisher: self.finisher,
+
+            #[cfg(feature = "tracer")]
+            tracer: self.tracer,
+        }
+    }
+
+    /// Sets the executor to be used.
+    pub fn driven_by<T: executor::Executor>(self, executor: T) -> NodeBuilder<N, F, V, B, T> {
+        // https://github.com/rust-lang/rust/issues/86555
+        NodeBuilder {
+            kit: self.kit,
+            node_id: self.node_id,
+            voter: self.voter,
+            communicator: self.communicator,
+            snapshot: self.snapshot,
+            buffer: self.buffer,
+            executor,
             finisher: self.finisher,
 
             #[cfg(feature = "tracer")]
@@ -297,7 +407,7 @@ where
     }
 
     /// Sets the voting strategy to use.
-    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<N, T, B> {
+    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<N, F, T, B, E> {
         // https://github.com/rust-lang/rust/issues/86555
         NodeBuilder {
             kit: self.kit,
@@ -306,6 +416,7 @@ where
             communicator: self.communicator,
             snapshot: self.snapshot,
             buffer: self.buffer,
+            executor: self.executor,
             finisher: self.finisher,
 
             #[cfg(feature = "tracer")]
@@ -321,7 +432,7 @@ where
     }
 
     /// Spawns the node into context `()`.
-    pub fn spawn(self) -> LocalBoxFuture<'static, SpawnResult<(RequestHandlerFor<N>, Shell<N>)>>
+    pub fn spawn(self) -> LocalBoxFuture<'static, SpawnResult<N, executor::ErrorOf<E>>>
     where
         node::StateOf<N>: State<Context = ()>,
     {
@@ -332,7 +443,7 @@ where
     pub fn spawn_in(
         self,
         context: node::ContextOf<N>,
-    ) -> LocalBoxFuture<'static, SpawnResult<(RequestHandlerFor<N>, Shell<N>)>> {
+    ) -> LocalBoxFuture<'static, SpawnResult<N, executor::ErrorOf<E>>> {
         let finisher = self.finisher;
 
         let receiver = self.kit.receiver;
@@ -348,14 +459,18 @@ where
                 voter: self.voter,
                 snapshot: self.snapshot,
                 buffer: self.buffer,
+                executor: self.executor,
                 #[cfg(feature = "tracer")]
                 tracer: self.tracer,
             },
         )
-        .map(Ok)
+        .map_err(SpawnError::ExecutorError)
         .and_then(|(req_handler, core)| {
             futures::future::ready(
-                finisher(core).map(|node| (req_handler, Shell::new(node, receiver))),
+                finisher
+                    .finish(core)
+                    .map(|node| (req_handler, Shell::new(node, receiver)))
+                    .map_err(SpawnError::Decoration),
             )
         })
         .boxed_local()
@@ -384,9 +499,10 @@ pub trait ExtensibleNodeBuilder {
             > + 'static;
 }
 
-impl<N, V, B> ExtensibleNodeBuilder for NodeBuilder<N, V, B>
+impl<N, F, V, B, E> ExtensibleNodeBuilder for NodeBuilder<N, F, V, B, E>
 where
     N: NodeImpl + 'static,
+    F: Finisher<Node = N>,
     V: Voter<
         State = node::StateOf<N>,
         RoundNum = node::RoundNumOf<N>,
@@ -400,9 +516,11 @@ where
         CoordNum = node::CoordNumOf<N>,
         Entry = node::LogEntryOf<N>,
     >,
+    E: executor::Executor,
 {
     type Node = N;
-    type DecoratedBuilder<D: Decoration<Decorated = Self::Node> + 'static> = NodeBuilder<D, V, B>;
+    type DecoratedBuilder<D: Decoration<Decorated = N> + 'static> =
+        NodeBuilder<D, impl Finisher<Node = D>, V, B, E>;
 
     fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> Self::DecoratedBuilder<D>
     where
@@ -412,8 +530,6 @@ where
                 Communicator = CommunicatorOf<N>,
             > + 'static,
     {
-        let finisher = self.finisher;
-
         NodeBuilder {
             kit: self.kit,
             node_id: self.node_id,
@@ -421,7 +537,8 @@ where
             snapshot: self.snapshot,
             voter: self.voter,
             buffer: self.buffer,
-            finisher: Box::new(move |x| ((finisher)(x)).and_then(|node| D::wrap(node, arguments))),
+            executor: self.executor,
+            finisher: DecorationFinisher::wrap(self.finisher, arguments),
 
             #[cfg(feature = "tracer")]
             tracer: self.tracer,

@@ -1,6 +1,7 @@
 //! Defines the [`Decoration`] trait.
 
-use crate::error::SpawnError;
+use crate::node::CommunicatorOf;
+use crate::node::InvocationOf;
 use crate::node::NodeImpl;
 
 /// A decoration around a `Node`.
@@ -17,10 +18,13 @@ where
     type Arguments: 'static;
 
     /// Type of the decorated node.
-    type Decorated: NodeImpl;
+    type Decorated: NodeImpl<Invocation = InvocationOf<Self>, Communicator = CommunicatorOf<Self>>;
 
     /// Wraps this decoration around the given node, using the given arguments.
-    fn wrap(decorated: Self::Decorated, arguments: Self::Arguments) -> Result<Self, SpawnError>;
+    fn wrap(
+        decorated: Self::Decorated,
+        arguments: Self::Arguments,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>>;
 
     /// Returns a reference to the decorated node.
     fn peek_into(decorated: &Self) -> &Self::Decorated;

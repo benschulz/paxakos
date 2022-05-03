@@ -230,7 +230,7 @@ where
     fn wrap(
         decorated: Self::Decorated,
         _arguments: Self::Arguments,
-    ) -> Result<Self, crate::error::SpawnError> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
         Ok(Self {
             decorated,
             suspended: false,
@@ -409,11 +409,7 @@ where
 
 impl<D, I> LeadershipAwareNode<(I,)> for D
 where
-    D: Decoration
-        + Node<
-            Invocation = InvocationOf<<D as Decoration>::Decorated>,
-            Communicator = CommunicatorOf<<D as Decoration>::Decorated>,
-        >,
+    D: Decoration,
     <D as Decoration>::Decorated: LeadershipAwareNode<I>,
 {
     fn lax_leadership(&self) -> &[LeadershipFor<D>] {
@@ -450,11 +446,7 @@ impl<N: Node> LeadershipAwareNode<()> for TrackLeadership<N> {
 
 impl<D, I> MaybeLeadershipAwareNode<(I,)> for D
 where
-    D: Decoration
-        + Node<
-            Invocation = InvocationOf<<D as Decoration>::Decorated>,
-            Communicator = CommunicatorOf<<D as Decoration>::Decorated>,
-        > + 'static,
+    D: Decoration + 'static,
     <D as Decoration>::Decorated: MaybeLeadershipAwareNode<I>,
 {
     fn lax_leadership(&self) -> Option<&[LeadershipFor<D>]> {

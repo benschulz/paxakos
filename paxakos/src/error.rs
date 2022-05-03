@@ -16,7 +16,11 @@ use crate::invocation::NayOf;
 /// Reason spawning a node failed.
 #[non_exhaustive]
 #[derive(Debug, Error)]
-pub enum SpawnError {
+pub enum SpawnError<E> {
+    /// Failed to start task to maintain `State`.
+    #[error("executor raised an error")]
+    ExecutorError(E),
+
     /// A decoration's [`wrap` method][crate::decoration::Decoration::wrap]
     /// failed.
     #[error("a node decoration raised an error")]

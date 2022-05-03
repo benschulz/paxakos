@@ -384,6 +384,10 @@
 
 // https://github.com/rust-lang/rust/issues/44265
 #![feature(generic_associated_types)]
+// https://github.com/rust-lang/rust/issues/63063
+#![feature(type_alias_impl_trait)]
+//
+
 //
 // Lint configuration
 #![warn(rust_2018_idioms)]
@@ -402,6 +406,7 @@ pub mod decoration;
 pub mod delegate;
 pub mod error;
 pub mod event;
+pub mod executor;
 #[cfg(feature = "heartbeats")]
 pub mod heartbeats;
 pub mod invocation;
