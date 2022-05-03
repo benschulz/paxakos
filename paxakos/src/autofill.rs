@@ -251,12 +251,17 @@ where
             while let Some(&QueuedGap { round, .. }) =
                 self.queued_gaps.peek().filter(|g| g.due_time <= now)
             {
-                if self.appends.len() >= batch_size - self.time_out_corner.len() {
-                    break;
+                // TODO this check can be elided when queued_gaps is kept "in sync" with
+                //      known_gaps (see below)
+                if self.known_gaps.contains(&round) {
+                    if self.appends.len() >= batch_size - self.time_out_corner.len() {
+                        break;
+                    }
+
+                    self.initiate_append(round);
                 }
 
                 self.queued_gaps.pop();
-                self.initiate_append(round);
             }
 
             let mut none = true;
@@ -435,7 +440,11 @@ where
                 }
 
                 crate::Event::Apply { round, .. } => {
-                    self.known_gaps.remove(round);
+                    // Once https://github.com/rust-lang/rust/issues/71503 is stabilized
+                    // this can be made a bit less clumsy
+                    if self.known_gaps.remove(round) && self.known_gaps.is_empty() {
+                        self.queued_gaps.clear();
+                    }
                 }
 
                 _ => {}
