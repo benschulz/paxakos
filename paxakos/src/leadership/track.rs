@@ -180,8 +180,9 @@ impl<N: Node> Inferrer<N> {
                 }
             }
         } else {
+            // retain mandates that aren't overridden
             self.mandates
-                .retain(|r, m| *r < round_num || coord_num < m.mandate);
+                .retain(|r, m| *r < round_num || m.mandate > coord_num);
 
             self.mandates.insert(
                 round_num,
