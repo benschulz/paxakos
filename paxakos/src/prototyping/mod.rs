@@ -89,7 +89,7 @@ impl<I: Invocation> RetryPolicy for RetryIndefinitely<I> {
                 let delay = rand::thread_rng().gen_range(0..=limit);
                 let delay = std::time::Duration::from_millis(delay);
 
-                futures_timer::Delay::new(delay).await;
+                sleep(delay).await;
             }
 
             Ok(())
@@ -305,7 +305,7 @@ macro_rules! send_fn {
                             }
                         }
 
-                        futures_timer::Delay::new(e2e_delay).await;
+                        sleep(e2e_delay).await;
 
                         if dropped {
                             return Err(DirectCommunicatorError::Timeout);
@@ -341,7 +341,7 @@ macro_rules! send_fn {
                             }
                         }
 
-                        futures_timer::Delay::new(e2e_delay).await;
+                        sleep(e2e_delay).await;
 
                         if dropped {
                             return Err(DirectCommunicatorError::Timeout);
@@ -444,6 +444,12 @@ fn roll_for_failure(rate: f32) -> bool {
     use rand::Rng;
 
     rand::thread_rng().gen::<f32>() < rate
+}
+
+async fn sleep(duration: std::time::Duration) {
+    if duration > std::time::Duration::ZERO {
+        futures_timer::Delay::new(duration).await;
+    }
 }
 
 fn delay(distr: &rand_distr::Normal<f32>) -> std::time::Duration {
