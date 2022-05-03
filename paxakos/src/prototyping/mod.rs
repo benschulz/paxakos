@@ -145,11 +145,9 @@ impl<I: Invocation> DirectCommunicators<I> {
         link.insert((from, to), delay);
     }
 
-    pub fn register(&self, node_id: NodeIdOf<I>, handler: RequestHandler<I>) {
-        futures::executor::block_on(async {
-            let mut handlers = self.request_handlers.lock().await;
-            handlers.insert(node_id, handler);
-        });
+    pub async fn register(&self, node_id: NodeIdOf<I>, handler: RequestHandler<I>) {
+        let mut handlers = self.request_handlers.lock().await;
+        handlers.insert(node_id, handler);
     }
 
     pub fn events(&self) -> impl Stream<Item = DirectCommunicatorEvent<I>> {

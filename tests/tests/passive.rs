@@ -292,7 +292,7 @@ fn setup_node(
         .unwrap()
     };
 
-    communicators.register(node_id, req_handler);
+    futures::executor::block_on(communicators.register(node_id, req_handler));
 
     node
 }

@@ -179,7 +179,7 @@ fn spawn_node(
         )
         .unwrap();
 
-        communicators.register(node_info.id(), handler);
+        futures::executor::block_on(communicators.register(node_info.id(), handler));
 
         let mut queued_ops = ops.into_iter().collect::<Vec<_>>();
         queued_ops.shuffle(&mut rand::thread_rng());

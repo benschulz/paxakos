@@ -95,7 +95,7 @@ fn spawn_node(
 
         send.send(node.handle()).unwrap();
 
-        communicators.register(node_info.id(), handler);
+        futures::executor::block_on(communicators.register(node_info.id(), handler));
 
         futures::executor::block_on(futures::future::poll_fn(|cx| {
             let _ = node.poll_events(cx);

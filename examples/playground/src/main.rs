@@ -311,7 +311,7 @@ async fn spawn_node(
         )
         .unwrap();
 
-        communicators.register(n.id(), handler);
+        futures::executor::block_on(communicators.register(n.id(), handler));
 
         let _ = node_handle_send.send(node.handle());
 
