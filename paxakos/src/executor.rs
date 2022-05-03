@@ -53,3 +53,21 @@ impl Executor for StdThread {
             .map(|_| ())
     }
 }
+
+/// Executor that delegates to `wasm_bindgen_futures::spawn_local`.
+#[cfg(feature = "wasm-bindgen-futures")]
+pub struct WasmExecutor;
+
+#[cfg(feature = "wasm-bindgen-futures")]
+impl Executor for WasmExecutor {
+    type Error = ();
+
+    fn execute<F: std::future::Future<Output = ()> + Send + 'static>(
+        self,
+        task: F,
+    ) -> Result<(), Self::Error> {
+        wasm_bindgen_futures::spawn_local(task);
+
+        Ok(())
+    }
+}
