@@ -1,6 +1,5 @@
 use std::convert::Infallible;
 use std::task::Poll;
-use std::time::Instant;
 
 use either::Either;
 use futures::channel::mpsc;
@@ -28,7 +27,7 @@ use crate::State;
 #[derive(Clone, Copy, Debug)]
 pub struct Lease<I> {
     pub lessee: Option<I>,
-    pub end: Instant,
+    pub end: instant::Instant,
 }
 
 #[derive(Debug)]
@@ -154,10 +153,10 @@ where
 }
 
 pub struct GeneralLeaseGrantingVoter<S: State, V: Voter> {
-    created_at: Instant,
+    created_at: instant::Instant,
     leader_coord_num: CoordNumOf<V>,
     leader_id: Option<NodeIdOf<S>>,
-    moratorium: Option<Instant>,
+    moratorium: Option<instant::Instant>,
     delegate: V,
     subscriptions: SmallVec<[mpsc::Sender<Lease<NodeIdOf<S>>>; 1]>,
 }
@@ -169,7 +168,7 @@ where
 {
     pub fn from(voter: V) -> Self {
         Self {
-            created_at: Instant::now(),
+            created_at: instant::Instant::now(),
             leader_coord_num: Zero::zero(),
             leader_id: None,
             moratorium: None,
@@ -216,7 +215,7 @@ where
             Decision::Nay(n) => Decision::Nay(n),
             Decision::Yea(()) => match self.moratorium {
                 Some(deadline) => {
-                    let now = std::time::Instant::now();
+                    let now = instant::Instant::now();
 
                     if now >= deadline
                         || self.leader_id.is_some() && self.leader_id == candidate.map(|l| l.id())
@@ -248,7 +247,7 @@ where
             Decision::Yea(y) => {
                 // TODO allow deriving from State
                 let duration = std::time::Duration::from_millis(1500);
-                let now = std::time::Instant::now();
+                let now = instant::Instant::now();
 
                 // Make "sure" there can be no overlap with a lease from a previous run.
                 //

@@ -89,7 +89,7 @@ pub trait Lease {
     fn id(&self) -> Self::Id;
 
     /// The value returned need not be equal, even for two consecutive calls.
-    fn timeout(&self) -> std::time::Instant;
+    fn timeout(&self) -> instant::Instant;
 }
 
 pub trait HasLeases {
@@ -153,7 +153,7 @@ where
     EffectOf<N>: AsLeaseEffect,
     C: Config<Node = N>,
 {
-    fn queue_lease(&mut self, lease_id: LeaseIdOf<N>, timeout: std::time::Instant) {
+    fn queue_lease(&mut self, lease_id: LeaseIdOf<N>, timeout: instant::Instant) {
         let timeout_id = self.next_timeout_id;
         self.next_timeout_id += 1;
 
@@ -253,7 +253,7 @@ where
         }
 
         loop {
-            let now = std::time::Instant::now();
+            let now = instant::Instant::now();
 
             while self.queue.peek().filter(|q| q.timeout <= now).is_some() {
                 let queued = self.queue.pop().unwrap();
@@ -385,7 +385,7 @@ where
 struct QueuedLease<I> {
     lease_id: I,
     timeout_id: usize,
-    timeout: std::time::Instant,
+    timeout: instant::Instant,
 }
 
 impl<I> Eq for QueuedLease<I> {}

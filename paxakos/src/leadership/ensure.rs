@@ -109,7 +109,7 @@ where
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct QueuedGap<R: RoundNum> {
     round: R,
-    due_time: std::time::Instant,
+    due_time: instant::Instant,
 }
 
 impl<R: RoundNum> Ord for QueuedGap<R> {

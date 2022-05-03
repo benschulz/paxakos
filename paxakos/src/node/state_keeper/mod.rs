@@ -11,7 +11,6 @@ use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
-use std::time::Instant;
 
 use futures::channel::mpsc;
 use futures::channel::oneshot;
@@ -102,7 +101,7 @@ enum AcceptPolicy<I: Invocation> {
 type SpawnResult<I> = (NodeStatus, super::Participation<RoundNumOf<I>>);
 type RoundNumRequest<I> = (RangeInclusive<RoundNumOf<I>>, ResponseSender<I>);
 type AcceptedEntry<I> = (CoordNumOf<I>, Arc<LogEntryOf<I>>);
-type PendingCommit<I> = (Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
+type PendingCommit<I> = (instant::Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
 
 struct Init<S: State, R: RoundNum, C: CoordNum> {
     state_round: R,
@@ -807,7 +806,7 @@ where
                 leader,
                 round_num,
                 coord_num,
-                timestamp: Instant::now(),
+                timestamp: instant::Instant::now(),
             });
         }
     }
@@ -1243,7 +1242,7 @@ where
             .range(round_num..)
             .next()
             .map(|e| e.1 .0)
-            .unwrap_or_else(Instant::now);
+            .unwrap_or_else(instant::Instant::now);
 
         debug!("Queuing entry {:?} for round {}.", entry, round_num);
         self.pending_commits

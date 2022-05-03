@@ -1,7 +1,6 @@
 //! Defines the [`Event`] enum and related types.
 
 use std::sync::Arc;
-use std::time::Instant;
 
 use crate::invocation::CoordNumOf;
 use crate::invocation::EffectOf;
@@ -91,7 +90,7 @@ pub enum Event<I: Invocation> {
         /// Coordination number with which the directive was issued.
         coord_num: CoordNumOf<I>,
         /// Time the directive was (locally) registered.
-        timestamp: Instant,
+        timestamp: instant::Instant,
     },
 }
 
@@ -160,7 +159,7 @@ impl<I: Invocation> std::fmt::Debug for Event<I> {
 #[derive(Clone, Debug)]
 pub struct Gap<R: RoundNum> {
     /// The point in time when the gap appeared.
-    pub since: std::time::Instant,
+    pub since: instant::Instant,
 
     /// The locations of the gap within the log.
     pub rounds: std::ops::Range<R>,

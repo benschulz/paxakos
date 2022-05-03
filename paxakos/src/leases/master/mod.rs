@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::task::Poll;
-use std::time::Instant;
 
 pub use communicator::LeaseRecordingCommunicator;
 pub use communicator::ToLeaseDuration;
@@ -98,7 +97,7 @@ pub trait Config {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Lease<I> {
     pub lessor: I,
-    pub end: Instant,
+    pub end: instant::Instant,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -138,7 +137,7 @@ where
     N: Node + 'static,
     C: Config<Node = N>,
 {
-    fn has_own_lease(&self, now: Instant) -> bool {
+    fn has_own_lease(&self, now: instant::Instant) -> bool {
         self.leases_by_lessor
             .get(&self.id())
             .map(|l| l.end > now)
@@ -149,7 +148,7 @@ where
         &self,
         state: &StateOf<N>,
         offset: NonZeroUsize,
-        now: Instant,
+        now: instant::Instant,
     ) -> bool {
         assert!(offset <= crate::state::concurrency_of(state));
 
@@ -245,7 +244,7 @@ where
             }
         }
 
-        let now = Instant::now();
+        let now = instant::Instant::now();
 
         while let Some(&QueuedLease(lease)) = self.leases_by_end.peek().filter(|l| l.0.end <= now) {
             if let hash_map::Entry::Occupied(e) = self.leases_by_lessor.entry(lease.lessor) {
@@ -367,7 +366,7 @@ where
 {
     fn read_master_lax(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>> {
         async move {
-            let now = Instant::now();
+            let now = instant::Instant::now();
 
             if !self.has_own_lease(now) {
                 return None;
@@ -383,7 +382,7 @@ where
 
     fn read_master_strict(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>> {
         async move {
-            let now = Instant::now();
+            let now = instant::Instant::now();
 
             if !self.has_own_lease(now) {
                 return None;

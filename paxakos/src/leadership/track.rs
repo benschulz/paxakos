@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::task::Poll;
-use std::time::Instant;
 
 use futures::future::LocalBoxFuture;
 use num_traits::Bounded;
@@ -103,14 +102,14 @@ struct Inferrer<N: Node> {
 struct Mandate<N: Node> {
     mandate: CoordNumOf<N>,
     leader: NodeIdOf<N>,
-    last_directive_at: Instant,
+    last_directive_at: instant::Instant,
 }
 
 pub struct Leadership<N, R: RoundNum, C> {
     pub leader: N,
     pub rounds: RangeInclusive<R>,
     pub mandate: C,
-    pub last_directive_at: Instant,
+    pub last_directive_at: instant::Instant,
 }
 
 impl<N: Node> Inferrer<N> {
@@ -160,7 +159,7 @@ impl<N: Node> Inferrer<N> {
         leader: &NodeOf<N>,
         round_num: RoundNumOf<N>,
         coord_num: CoordNumOf<N>,
-        timestamp: Instant,
+        timestamp: instant::Instant,
     ) {
         let leader = leader.id();
 

@@ -1,6 +1,5 @@
 use std::task::Poll;
 use std::time::Duration;
-use std::time::Instant;
 
 use futures::channel::mpsc;
 use futures::future::LocalBoxFuture;
@@ -126,7 +125,7 @@ where
                 (
                     r,
                     async move {
-                        let pre = Instant::now();
+                        let pre = instant::Instant::now();
 
                         Ok(match s.await? {
                             Acceptance::Given(y) => {

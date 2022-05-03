@@ -193,7 +193,7 @@ pub struct Autofill<N: Node, C> {
     queued_gaps: BinaryHeap<QueuedGap<RoundNumOf<N>>>,
 
     timer: Option<futures_timer::Delay>,
-    time_out_corner: VecDeque<std::time::Instant>,
+    time_out_corner: VecDeque<instant::Instant>,
 
     appends: futures::stream::FuturesUnordered<
         LocalBoxFuture<'static, Option<AppendError<InvocationOf<N>>>>,
@@ -203,7 +203,7 @@ pub struct Autofill<N: Node, C> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct QueuedGap<R: RoundNum> {
     round: R,
-    due_time: std::time::Instant,
+    due_time: instant::Instant,
 }
 
 impl<R: RoundNum> Ord for QueuedGap<R> {
@@ -236,7 +236,7 @@ where
     }
 
     fn fill_gaps(&mut self, cx: &mut std::task::Context<'_>) {
-        let now = std::time::Instant::now();
+        let now = instant::Instant::now();
 
         while self
             .time_out_corner
@@ -414,7 +414,7 @@ where
                 }
 
                 crate::Event::Gaps(ref gaps) => {
-                    let now = std::time::Instant::now();
+                    let now = instant::Instant::now();
                     let delay = self.config.delay();
 
                     let new_gaps = gaps

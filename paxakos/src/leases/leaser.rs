@@ -42,11 +42,11 @@ pub trait LeaseResult<V = ()> {
 pub struct Leased<I, V = ()> {
     lease_id: I,
     value: V,
-    timeout: std::time::Instant,
+    timeout: instant::Instant,
 }
 
 impl<I: Copy> Leased<I> {
-    pub fn new(lease_id: I, timeout: std::time::Instant) -> Self {
+    pub fn new(lease_id: I, timeout: instant::Instant) -> Self {
         Self {
             lease_id,
             value: (),
@@ -334,7 +334,7 @@ where
         }
 
         loop {
-            let now = std::time::Instant::now();
+            let now = instant::Instant::now();
 
             while self.queue.peek().filter(|q| q.extend <= now).is_some() {
                 let queued = self.queue.pop().unwrap();
@@ -377,7 +377,7 @@ where
             self.timer = self
                 .queue
                 .peek()
-                .map(|q| futures_timer::Delay::new(q.extend - std::time::Instant::now()));
+                .map(|q| futures_timer::Delay::new(q.extend - now));
 
             match self.timer.as_mut().map(|t| t.poll_unpin(cx)) {
                 None | Some(Poll::Pending) => break,
@@ -406,7 +406,7 @@ enum TakenOrExtended<I: Copy> {
 struct QueuedLease<I> {
     lease_id: I,
     state: Weak<atomic::AtomicU8>,
-    extend: std::time::Instant,
+    extend: instant::Instant,
     args: LeaseArgs,
 }
 
