@@ -95,7 +95,7 @@ impl<I: Invocation> std::fmt::Debug for PrepareError<I> {
                 .field(abstention)
                 .finish(),
             PrepareError::Supplanted(coord_num) => f
-                .debug_tuple("PrepareError::Conflict")
+                .debug_tuple("PrepareError::Supplanted")
                 .field(coord_num)
                 .finish(),
             PrepareError::Converged(coord_num, converged) => f
