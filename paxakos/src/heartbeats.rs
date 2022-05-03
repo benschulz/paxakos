@@ -199,7 +199,8 @@ where
     decorated: N,
     config: C,
 
-    timer: Option<futures_timer::Delay>,
+    timer: Option<(instant::Instant, futures_timer::Delay)>,
+    due_time: Option<instant::Instant>,
 
     appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, ()>>,
 
@@ -213,7 +214,7 @@ where
     N: MaybeLeadershipAwareNode<I> + 'static,
     C: Config<Node = N>,
 {
-    fn new_timer(&mut self) -> Option<futures_timer::Delay> {
+    fn update_due_time(&mut self) {
         let delay = match self.decorated.strict_leadership() {
             Some(leadership) => {
                 if leadership.first().map(|l| l.leader) == Some(self.id()) {
@@ -238,7 +239,14 @@ where
             }
         };
 
-        delay.map(futures_timer::Delay::new)
+        let delay_and_time = delay.map(|d| (d, instant::Instant::now() + d));
+        self.due_time = delay_and_time.map(|(_, t)| t);
+
+        self.timer = delay_and_time.map(|(d, t)| match self.timer.take() {
+            None => (t, futures_timer::Delay::new(d)),
+            Some((t2, _)) if t2 > t => (t, futures_timer::Delay::new(d)),
+            Some(x) => x,
+        });
     }
 
     fn send_heartbeat(&mut self) {
@@ -278,6 +286,7 @@ where
             config: arguments,
 
             timer: None,
+            due_time: None,
 
             appends: futures::stream::FuturesUnordered::new(),
 
@@ -326,29 +335,33 @@ where
                 crate::Event::Init {
                     status: new_status, ..
                 }
-                | crate::Event::StatusChange { new_status, .. } => {
-                    self.timer = match new_status {
-                        NodeStatus::Disoriented => None,
-                        _ => self.new_timer(),
-                    };
+                | crate::Event::StatusChange { new_status, .. }
+                    if *new_status != NodeStatus::Disoriented =>
+                {
+                    self.update_due_time();
                 }
 
                 crate::Event::Install { .. } | crate::Event::Apply { .. } => {
-                    self.timer = self.new_timer();
+                    self.update_due_time();
                 }
 
                 _ => {}
             }
         }
 
-        while let Some(timer) = &mut self.timer {
+        while let Some((t, timer)) = &mut self.timer {
             if timer.poll_unpin(cx).is_pending() {
                 break;
             }
 
-            self.send_heartbeat();
+            if let Some(due_time) = self.due_time {
+                if *t >= due_time {
+                    self.send_heartbeat();
+                }
+            }
 
-            self.timer = self.new_timer();
+            self.timer = None;
+            self.update_due_time();
         }
 
         let _ = self.appends.poll_next_unpin(cx);
