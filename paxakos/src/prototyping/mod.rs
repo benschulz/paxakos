@@ -37,7 +37,7 @@ use crate::NodeInfo;
 use crate::RequestHandler;
 
 /// A `NodeInfo` implementation for prototyping.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct PrototypingNode(usize);
 
 static NODE_ID_DISPENSER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
