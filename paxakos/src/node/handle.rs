@@ -134,10 +134,15 @@ impl<I: Invocation> NodeHandle<I> {
     ///
     /// As the name implies the state may be stale, i.e. other node's may have
     /// advanced the shared state without this node being aware.
-    pub fn read_stale(
+    pub fn read_stale<F, T>(
         &self,
-    ) -> impl Future<Output = Result<Arc<StateOf<I>>, crate::error::ReadStaleError>> {
-        self.state_keeper.try_read_stale()
+        f: F,
+    ) -> impl Future<Output = Result<T, crate::error::ReadStaleError>>
+    where
+        F: FnOnce(&StateOf<I>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.state_keeper.try_read_stale(f)
     }
 
     /// Appends `applicable` to the shared log.

@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::convert::Infallible;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
@@ -37,7 +38,9 @@ pub enum Request<I: Invocation> {
         snapshot: SnapshotFor<I>,
     },
 
-    ReadStale,
+    ReadStale {
+        f: ReadStaleFunc<I>,
+    },
 
     AwaitCommitOf {
         entry_id: LogEntryIdOf<I>,
@@ -97,6 +100,16 @@ pub enum Request<I: Invocation> {
     Shutdown,
 }
 
+pub struct ReadStaleFunc<I: Invocation>(
+    pub Box<dyn FnOnce(&StateOf<I>) -> Box<dyn Any + Send> + Send>,
+);
+
+impl<I: Invocation> std::fmt::Debug for ReadStaleFunc<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ReadStaleFunc(..)").finish()
+    }
+}
+
 type PendingCommit<I> = oneshot::Receiver<(RoundNumOf<I>, OutcomeOf<I>)>;
 
 #[derive(Debug)]
@@ -105,7 +118,7 @@ pub enum Response<I: Invocation> {
     AffirmSnapshot(Result<(), AffirmSnapshotError>),
     InstallSnapshot(Result<(), InstallSnapshotError>),
 
-    ReadStale(Result<Arc<StateOf<I>>, ReadStaleError>),
+    ReadStale(Result<Box<dyn Any + Send>, ReadStaleError>),
 
     AwaitCommitOf(Result<PendingCommit<I>, Infallible>),
 

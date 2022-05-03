@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
@@ -138,8 +136,12 @@ where
         self.wrapped.install_snapshot(snapshot)
     }
 
-    fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<StateOf<Self>>, Disoriented>> {
-        self.wrapped.read_stale()
+    fn read_stale<F, T>(&self, f: F) -> LocalBoxFuture<'_, Result<T, Disoriented>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.wrapped.read_stale(f)
     }
 
     fn append<A, P, R>(

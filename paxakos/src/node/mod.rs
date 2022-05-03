@@ -13,8 +13,6 @@ mod snapshot;
 mod state_keeper;
 mod status;
 
-use std::sync::Arc;
-
 use futures::channel::mpsc;
 use futures::future::BoxFuture;
 use futures::future::LocalBoxFuture;
@@ -171,7 +169,10 @@ pub trait Node: Sized {
     ///
     /// As the name implies the state may be stale, i.e. other node's may have
     /// advanced the shared state without this node being aware.
-    fn read_stale(&self) -> LocalBoxFuture<'_, Result<Arc<StateOf<Self>>, Disoriented>>;
+    fn read_stale<F, T>(&self, f: F) -> LocalBoxFuture<'_, Result<T, Disoriented>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static;
 
     /// Appends `applicable` to the shared log.
     fn append<A, P, R>(

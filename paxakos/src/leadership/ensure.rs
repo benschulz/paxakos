@@ -259,11 +259,12 @@ where
         self.decorated.install_snapshot(snapshot)
     }
 
-    fn read_stale(
-        &self,
-    ) -> futures::future::LocalBoxFuture<'_, Result<std::sync::Arc<StateOf<Self>>, Disoriented>>
+    fn read_stale<F, T>(&self, f: F) -> LocalBoxFuture<'_, Result<T, Disoriented>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static,
     {
-        self.decorated.read_stale()
+        self.decorated.read_stale(f)
     }
 
     fn append<A, P, R>(

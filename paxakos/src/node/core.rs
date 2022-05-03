@@ -1,5 +1,4 @@
 use std::rc::Rc;
-use std::sync::Arc;
 
 use futures::channel::mpsc;
 use futures::future::FutureExt;
@@ -207,9 +206,13 @@ where
             .boxed_local()
     }
 
-    fn read_stale(&self) -> LocalBoxFuture<'static, Result<Arc<StateOf<I>>, Disoriented>> {
+    fn read_stale<F, T>(&self, f: F) -> LocalBoxFuture<'_, Result<T, Disoriented>>
+    where
+        F: FnOnce(&StateOf<Self::Invocation>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
         self.state_keeper
-            .read_stale(&self.proof_of_life)
+            .read_stale(&self.proof_of_life, f)
             .boxed_local()
     }
 

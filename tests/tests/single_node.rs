@@ -27,8 +27,8 @@ fn single_append() {
     let result = futures::executor::block_on(result).unwrap();
     assert!((42.0 - result).abs() < f64::EPSILON);
 
-    let state = futures::executor::block_on(node.read_stale()).unwrap();
-    assert!((42.0 - state.value()).abs() < f64::EPSILON);
+    let v = futures::executor::block_on(node.read_stale(|s| s.value())).unwrap();
+    assert!((42.0 - v).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -47,8 +47,8 @@ fn multiple_serial_append() {
     let result = futures::executor::block_on(result).unwrap();
     assert!((126.0 - result).abs() < f64::EPSILON);
 
-    let state = futures::executor::block_on(node.read_stale()).unwrap();
-    assert!((126.0 - state.value()).abs() < f64::EPSILON);
+    let v = futures::executor::block_on(node.read_stale(|s| s.value())).unwrap();
+    assert!((126.0 - v).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -87,8 +87,8 @@ fn multiple_concurrent_appends() {
 
     futures::executor::block_on(futures.for_each_concurrent(None, |_| futures::future::ready(())));
 
-    let state = futures::executor::block_on(node.read_stale()).unwrap();
-    assert!((target - state.value()).abs() < f64::EPSILON);
+    let v = futures::executor::block_on(node.read_stale(|s| s.value())).unwrap();
+    assert!((target - v).abs() < f64::EPSILON);
 }
 
 fn setup_node() -> paxakos::Shell<paxakos::Core<CalcInvocation, DirectCommunicator<CalcInvocation>>>

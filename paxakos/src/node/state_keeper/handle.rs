@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::Debug;
 use std::future::Future;
 use std::ops::RangeInclusive;
@@ -27,6 +28,7 @@ use crate::invocation::RoundNumOf;
 use crate::invocation::SnapshotFor;
 use crate::invocation::StateOf;
 use crate::invocation::YeaOf;
+use crate::node::state_keeper::msg::ReadStaleFunc;
 use crate::node::Commit;
 use crate::LogEntry;
 
@@ -119,11 +121,16 @@ impl<I: Invocation> StateKeeperHandle<I> {
         dispatch_state_keeper_req!(self, InstallSnapshot, { snapshot })
     }
 
-    pub fn read_stale(
+    pub fn read_stale<F, T>(
         &self,
         _proof_of_life: &ProofOfLife,
-    ) -> impl Future<Output = Result<Arc<StateOf<I>>, Disoriented>> {
-        self.try_read_stale().map(|r| {
+        f: F,
+    ) -> impl Future<Output = Result<T, Disoriented>>
+    where
+        F: FnOnce(&StateOf<I>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.try_read_stale(f).map(|r| {
             r.map_err(|e| match e {
                 ReadStaleError::ShutDown => unreachable!("proof of life given"),
                 ReadStaleError::Disoriented => Disoriented,
@@ -131,8 +138,21 @@ impl<I: Invocation> StateKeeperHandle<I> {
         })
     }
 
-    pub fn try_read_stale(&self) -> impl Future<Output = Result<Arc<StateOf<I>>, ReadStaleError>> {
-        dispatch_state_keeper_req!(self, ReadStale)
+    pub fn try_read_stale<F, T>(&self, f: F) -> impl Future<Output = Result<T, ReadStaleError>>
+    where
+        F: FnOnce(&StateOf<I>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        let boxed: Box<dyn FnOnce(&StateOf<I>) -> Box<dyn Any + Send> + Send> =
+            Box::new(|s| Box::new(f(s)) as Box<dyn Any + Send>);
+
+        let result = dispatch_state_keeper_req!(self, ReadStale, { f: ReadStaleFunc(boxed) });
+
+        async move {
+            result
+                .await
+                .map(|t| *t.downcast::<T>().expect("downcast failed"))
+        }
     }
 
     pub fn await_commit_of(

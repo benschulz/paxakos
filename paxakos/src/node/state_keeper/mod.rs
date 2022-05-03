@@ -568,8 +568,8 @@ where
                 Response::InstallSnapshot(self.install_snapshot(snapshot))
             }
 
-            Request::ReadStale => Response::ReadStale(match &self.state {
-                Some(s) => Ok(Arc::clone(s)),
+            Request::ReadStale { f } => Response::ReadStale(match &self.state {
+                Some(s) => Ok(f.0(s)),
                 None => Err(ReadStaleError::Disoriented),
             }),
 
