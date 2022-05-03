@@ -15,7 +15,6 @@ use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::error::ShutDownOr;
 use crate::node::AppendResultFor;
-use crate::node::CommunicatorOf;
 use crate::node::EffectOf;
 use crate::node::EventFor;
 use crate::node::ImplAppendResultFor;
@@ -207,7 +206,6 @@ where
     C: Config<Node = N>,
 {
     type Invocation = InvocationOf<N>;
-    type Communicator = CommunicatorOf<N>;
     type Shutdown = <N as Node>::Shutdown;
 
     fn id(&self) -> NodeIdOf<Self> {

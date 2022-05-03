@@ -22,7 +22,6 @@ use futures::future::LocalBoxFuture;
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
-use crate::communicator::Communicator;
 use crate::error::Disoriented;
 use crate::error::ShutDown;
 use crate::error::ShutDownOr;
@@ -52,8 +51,6 @@ use state_keeper::StateKeeperKit;
 pub type AbstainOf<N> = invocation::AbstainOf<InvocationOf<N>>;
 /// Shorthand to extract invocation's `CommunicationError` type out of `N`.
 pub type CommunicationErrorOf<N> = invocation::CommunicationErrorOf<InvocationOf<N>>;
-/// Shorthand to extract `Communicator` type out of `N`.
-pub type CommunicatorOf<N> = <N as Node>::Communicator;
 /// Shorthand to extract state's `Context` type out of `N`.
 pub type ContextOf<N> = invocation::ContextOf<InvocationOf<N>>;
 /// Shorthand to extract invocation's `CoordNum` type out of `N`.
@@ -120,18 +117,6 @@ pub type VoteFor<N> = invocation::VoteFor<InvocationOf<N>>;
 pub trait Node: Sized {
     /// Parametrization of the paxakos algorithm.
     type Invocation: Invocation;
-
-    /// Type of communicator this node uses.
-    type Communicator: Communicator<
-        Node = invocation::NodeOf<Self::Invocation>,
-        RoundNum = invocation::RoundNumOf<Self::Invocation>,
-        CoordNum = invocation::CoordNumOf<Self::Invocation>,
-        LogEntry = invocation::LogEntryOf<Self::Invocation>,
-        Error = invocation::CommunicationErrorOf<Self::Invocation>,
-        Yea = invocation::YeaOf<Self::Invocation>,
-        Nay = invocation::NayOf<Self::Invocation>,
-        Abstain = invocation::AbstainOf<Self::Invocation>,
-    >;
 
     /// Type that will perform graceful shutdown if requsted.
     type Shutdown: Shutdown<Invocation = Self::Invocation>;

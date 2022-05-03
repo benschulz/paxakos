@@ -18,7 +18,6 @@ use crate::event::DirectiveKind;
 use crate::invocation;
 use crate::invocation::Invocation;
 use crate::node::AppendResultFor;
-use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
 use crate::node::Core;
 use crate::node::EventFor;
@@ -254,7 +253,6 @@ where
     N: Node,
 {
     type Invocation = InvocationOf<N>;
-    type Communicator = CommunicatorOf<N>;
     type Shutdown = <N as Node>::Shutdown;
 
     fn id(&self) -> NodeIdOf<Self> {

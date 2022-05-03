@@ -1,6 +1,5 @@
 //! Defines the [`Decoration`] trait.
 
-use crate::node::CommunicatorOf;
 use crate::node::InvocationOf;
 use crate::node::NodeImpl;
 
@@ -18,7 +17,7 @@ where
     type Arguments: 'static;
 
     /// Type of the decorated node.
-    type Decorated: NodeImpl<Invocation = InvocationOf<Self>, Communicator = CommunicatorOf<Self>>;
+    type Decorated: NodeImpl<Invocation = InvocationOf<Self>>;
 
     /// Wraps this decoration around the given node, using the given arguments.
     fn wrap(

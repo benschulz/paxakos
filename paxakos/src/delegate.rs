@@ -23,7 +23,6 @@ use crate::invocation;
 use crate::leadership::track::LeadershipAwareNode;
 use crate::node::AppendResultFor;
 use crate::node::CommitFor;
-use crate::node::CommunicatorOf;
 use crate::node::EventFor;
 use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
@@ -294,7 +293,6 @@ where
     C: Config<Node = N> + 'static,
 {
     type Invocation = InvocationOf<N>;
-    type Communicator = CommunicatorOf<N>;
     type Shutdown = <N as Node>::Shutdown;
 
     fn id(&self) -> NodeIdOf<Self> {

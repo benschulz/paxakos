@@ -8,7 +8,6 @@ use paxakos::invocation::Invocation;
 use paxakos::Shell;
 use uuid::Uuid;
 
-use paxakos::communicator::Communicator;
 use paxakos::event::Gap;
 use paxakos::invocation::CoordNumOf;
 use paxakos::invocation::LogEntryOf;
@@ -140,10 +139,9 @@ fn commit<I: Invocation>(
     let _ = futures::executor::block_on(req_handler.handle_commit(round_num, coord_num, log_entry));
 }
 
-fn next_gaps_event<N, C>(node: &mut N) -> EventFor<N>
+fn next_gaps_event<N>(node: &mut N) -> EventFor<N>
 where
-    N: Node<Invocation = CalcInvocation, Communicator = C>,
-    C: Communicator,
+    N: Node<Invocation = CalcInvocation>,
 {
     futures::executor::block_on(
         futures::stream::poll_fn(move |cx| node.poll_events(cx).map(Some))

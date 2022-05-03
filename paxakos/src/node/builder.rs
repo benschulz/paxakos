@@ -34,7 +34,6 @@ use crate::Shell;
 use crate::State;
 
 use super::snapshot::Snapshot;
-use super::CommunicatorOf;
 use super::Core;
 use super::IndiscriminateVoterFor;
 use super::InvocationOf;
@@ -246,10 +245,22 @@ pub trait Finisher: 'static {
     /// Type of node constructed by this finisher.
     type Node: Node;
 
+    /// Type of communicator used by the constructed node.
+    type Communicator: Communicator<
+        Node = node::NodeOf<Self::Node>,
+        RoundNum = node::RoundNumOf<Self::Node>,
+        CoordNum = node::CoordNumOf<Self::Node>,
+        LogEntry = node::LogEntryOf<Self::Node>,
+        Error = node::CommunicationErrorOf<Self::Node>,
+        Yea = node::YeaOf<Self::Node>,
+        Nay = node::NayOf<Self::Node>,
+        Abstain = node::AbstainOf<Self::Node>,
+    >;
+
     /// Wraps the configured decorations around the given `core` node.
     fn finish(
         self,
-        core: Core<InvocationOf<Self::Node>, CommunicatorOf<Self::Node>>,
+        core: Core<InvocationOf<Self::Node>, Self::Communicator>,
     ) -> Result<Self::Node, Box<dyn std::error::Error + Send + Sync + 'static>>;
 }
 
@@ -276,10 +287,11 @@ where
     >,
 {
     type Node = Core<I, C>;
+    type Communicator = C;
 
     fn finish(
         self,
-        core: Core<InvocationOf<Self::Node>, CommunicatorOf<Self::Node>>,
+        core: Core<InvocationOf<Self::Node>, Self::Communicator>,
     ) -> Result<Core<I, C>, Box<dyn std::error::Error + Send + Sync + 'static>> {
         Ok(core)
     }
@@ -302,10 +314,11 @@ where
     I: Finisher<Node = D::Decorated> + 'static,
 {
     type Node = D;
+    type Communicator = <I as Finisher>::Communicator;
 
     fn finish(
         self,
-        core: Core<InvocationOf<Self::Node>, CommunicatorOf<Self::Node>>,
+        core: Core<InvocationOf<Self::Node>, Self::Communicator>,
     ) -> Result<D, Box<dyn std::error::Error + Send + Sync + 'static>> {
         self.inner
             .finish(core)
@@ -324,7 +337,7 @@ pub struct NodeBuilder<
     kit: NodeKit<InvocationOf<N>>,
     node_id: node::NodeIdOf<N>,
     voter: V,
-    communicator: CommunicatorOf<N>,
+    communicator: <F as Finisher>::Communicator,
     snapshot: node::SnapshotFor<N>,
     buffer: B,
     executor: E,
@@ -492,11 +505,7 @@ pub trait ExtensibleNodeBuilder {
         arguments: <D as Decoration>::Arguments,
     ) -> Self::DecoratedBuilder<D>
     where
-        D: Decoration<
-                Decorated = Self::Node,
-                Invocation = InvocationOf<Self::Node>,
-                Communicator = CommunicatorOf<Self::Node>,
-            > + 'static;
+        D: Decoration<Decorated = Self::Node, Invocation = InvocationOf<Self::Node>> + 'static;
 }
 
 impl<N, F, V, B, E> ExtensibleNodeBuilder for NodeBuilder<N, F, V, B, E>
@@ -524,11 +533,7 @@ where
 
     fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> Self::DecoratedBuilder<D>
     where
-        D: Decoration<
-                Decorated = N,
-                Invocation = InvocationOf<N>,
-                Communicator = CommunicatorOf<N>,
-            > + 'static,
+        D: Decoration<Decorated = N, Invocation = InvocationOf<N>> + 'static,
     {
         NodeBuilder {
             kit: self.kit,

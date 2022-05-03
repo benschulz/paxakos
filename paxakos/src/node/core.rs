@@ -95,7 +95,6 @@ where
     >,
 {
     type Invocation = I;
-    type Communicator = C;
 
     type Shutdown = DefaultShutdown<I>;
 

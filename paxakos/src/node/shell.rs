@@ -22,7 +22,6 @@ use super::handle::BoxedRetryPolicy;
 use super::handle::NodeHandleRequest;
 use super::handle::NodeHandleResponse;
 use super::AppendResultFor;
-use super::CommunicatorOf;
 use super::ImplAppendResultFor;
 use super::InvocationOf;
 use super::LogEntryOf;
@@ -87,7 +86,6 @@ where
     N: NodeImpl,
 {
     type Invocation = InvocationOf<N>;
-    type Communicator = CommunicatorOf<N>;
 
     type Shutdown = ShutdownOf<N>;
 
