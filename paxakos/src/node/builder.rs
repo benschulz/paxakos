@@ -15,6 +15,7 @@ use crate::executor;
 use crate::invocation::AbstainOf;
 use crate::invocation::CommunicationErrorOf;
 use crate::invocation::CoordNumOf;
+use crate::invocation::FrozenStateOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryOf;
 use crate::invocation::NayOf;
@@ -22,7 +23,6 @@ use crate::invocation::NodeIdOf;
 use crate::invocation::NodeOf;
 use crate::invocation::RoundNumOf;
 use crate::invocation::SnapshotFor;
-use crate::invocation::StateOf;
 use crate::invocation::YeaOf;
 use crate::node;
 #[cfg(feature = "tracer")]
@@ -115,7 +115,7 @@ where
     /// Starts a new cluster with the given initial state.
     ///
     /// The round number will be [zero](num_traits::Zero).
-    pub fn with_initial_state<S: Into<Option<StateOf<I>>>>(
+    pub fn with_initial_state<S: Into<Option<FrozenStateOf<I>>>>(
         self,
         initial_state: S,
     ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {

@@ -1124,6 +1124,8 @@ impl PlaygroundState {
 }
 
 impl State for PlaygroundState {
+    type Frozen = Self;
+
     type Context = ();
 
     type LogEntry = PlaygroundLogEntry;
@@ -1148,5 +1150,9 @@ impl State for PlaygroundState {
 
     fn cluster_at(&self, _round_offset: std::num::NonZeroUsize) -> Vec<Self::Node> {
         self.nodes.clone()
+    }
+
+    fn freeze(&self) -> Self::Frozen {
+        self.clone()
     }
 }

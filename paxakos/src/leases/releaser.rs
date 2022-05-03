@@ -16,6 +16,7 @@ use crate::error::ShutDownOr;
 use crate::node::AppendResultFor;
 use crate::node::EffectOf;
 use crate::node::EventFor;
+use crate::node::FrozenStateOf;
 use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
 use crate::node::Node;
@@ -64,7 +65,7 @@ where
     fn update(&mut self, event: &EventFor<Self::Node>) {}
 
     /// Returns the active leases for `state`.
-    fn active_leases(&self, state: &StateOf<Self::Node>) -> Self::Leases;
+    fn active_leases(&self, state: &FrozenStateOf<Self::Node>) -> Self::Leases;
 
     /// Prepares to release the lease with the given id.
     fn release(&self, lease_id: LeaseIdOf<Self::Node>) -> Self::Applicable;

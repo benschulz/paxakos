@@ -89,6 +89,8 @@ impl CalcState {
 }
 
 impl State for CalcState {
+    type Frozen = Self;
+
     type Context = ();
 
     type LogEntry = CalcOp;
@@ -131,5 +133,9 @@ impl State for CalcState {
 
     fn cluster_at(&self, _round_offset: std::num::NonZeroUsize) -> Vec<Self::Node> {
         self.nodes.clone()
+    }
+
+    fn freeze(&self) -> Self::Frozen {
+        self.clone()
     }
 }

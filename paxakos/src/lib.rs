@@ -64,6 +64,8 @@
 //! }
 //!
 //! impl State for CalcState {
+//! #   type Frozen = Self;
+//! #
 //!     type Context = ();
 //!
 //!     type LogEntry = CalcOp;
@@ -99,6 +101,10 @@
 //!         }
 //!
 //!         (self.value, self.value)
+//!     }
+//!
+//!     fn freeze(&self) -> Self::Frozen {
+//!         self.clone()
 //!     }
 //! }
 //! ```

@@ -40,6 +40,7 @@ use crate::executor::Executor;
 use crate::invocation::AbstainOf;
 use crate::invocation::ContextOf;
 use crate::invocation::CoordNumOf;
+use crate::invocation::FrozenStateOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryIdOf;
 use crate::invocation::LogEntryOf;
@@ -55,6 +56,8 @@ use crate::invocation::YeaOf;
 use crate::log_entry::LogEntry;
 use crate::node::NodeInfo;
 use crate::state;
+use crate::state::Frozen;
+use crate::state::FrozenOf;
 use crate::state::State;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
@@ -106,7 +109,7 @@ type PendingCommit<I> = (instant::Instant, CoordNumOf<I>, Arc<LogEntryOf<I>>);
 
 struct Init<S: State, R: RoundNum, C: CoordNum> {
     state_round: R,
-    state: Option<Arc<S>>,
+    state: Option<Arc<FrozenOf<S>>>,
     greatest_observed_round_num: Option<R>,
     greatest_observed_coord_num: C,
     participation: Participation<R, C>,
@@ -239,7 +242,7 @@ where
     /// Round number of the last applied log entry, initially `Zero::zero()`.
     state_round: RoundNumOf<I>,
     /// Current state or `None` iff the node is `Disoriented`.
-    state: Option<Arc<StateOf<I>>>,
+    state: Option<StateOf<I>>,
 
     round_num_requests: VecDeque<RoundNumRequest<I>>,
     acquired_round_nums: HashSet<RoundNumOf<I>>,
@@ -357,7 +360,7 @@ where
                 leadership: (Zero::zero(), Zero::zero()),
 
                 state_round,
-                state,
+                state: state.as_deref().map(|s| s.thaw()),
 
                 round_num_requests: VecDeque::new(),
                 acquired_round_nums: HashSet::new(),
@@ -381,15 +384,15 @@ where
                 tracer,
             };
 
-            state_keeper.init_and_run().await;
+            state_keeper.init_and_run(state).await;
         })
     }
 
-    async fn init_and_run(mut self) {
+    async fn init_and_run(mut self, state: Option<Arc<FrozenStateOf<I>>>) {
         self.emit(Event::Init {
             status: self.status,
             round: self.state_round,
-            state: self.state.as_ref().map(Arc::clone),
+            state,
         });
 
         self.run().await;
@@ -454,7 +457,7 @@ where
 
         match self.state.as_ref() {
             Some(state) => {
-                let concurrency_bound = into_round_num(crate::state::concurrency_of(&**state));
+                let concurrency_bound = into_round_num(crate::state::concurrency_of(state));
                 let concurrency_range = round + One::one()..=round + concurrency_bound;
 
                 let mut available = NumberIter::from_range(concurrency_range)
@@ -602,7 +605,7 @@ where
                             let offset = std::num::NonZeroUsize::new(offset)
                                 .expect("Zero was ruled out via equality check");
 
-                            let bound = crate::state::concurrency_of(&**state);
+                            let bound = crate::state::concurrency_of(state);
 
                             // We don't give out reservations past the concurrency bound.
                             assert!(offset <= bound);
@@ -768,7 +771,7 @@ where
                 if self
                     .greatest_observed_round_num
                     .unwrap_or_else(Bounded::max_value)
-                    > self.state_round + into_round_num(crate::state::concurrency_of(&**state))
+                    > self.state_round + into_round_num(crate::state::concurrency_of(state))
                 {
                     NodeStatus::Lagging
                 } else if self.greatest_observed_coord_num == self.leadership.1 {
@@ -846,7 +849,7 @@ where
         self.state.as_ref().and_then(|state| {
             if round_num > self.state_round
                 && round_num
-                    <= self.state_round + into_round_num(crate::state::concurrency_of(&**state))
+                    <= self.state_round + into_round_num(crate::state::concurrency_of(state))
             {
                 // TODO lots of duplication with NodeInner::determine_coord_num
                 let round_offset = crate::util::usize_delta(round_num, self.state_round);
@@ -889,7 +892,7 @@ where
     fn prepare_snapshot(&mut self) -> SnapshotFor<I> {
         Snapshot::new(
             self.state_round,
-            self.state.as_ref().map(Arc::clone),
+            self.state.as_ref().map(|s| Arc::new(s.freeze())),
             self.greatest_observed_round_num,
             self.greatest_observed_coord_num,
             self.participation.clone(),
@@ -918,7 +921,7 @@ where
         } = snapshot.deconstruct();
 
         self.state_round = state_round;
-        self.state = state.as_ref().map(Arc::clone);
+        self.state = state.as_deref().map(|s| s.thaw());
         self.greatest_observed_round_num = greatest_observed_round_num;
         self.greatest_observed_coord_num = greatest_observed_coord_num;
         self.accepted_entries = accepted_entries;
@@ -1028,7 +1031,7 @@ where
                 round_num,
                 coord_num,
                 self.deduce_node(round_num, coord_num).as_ref(),
-                self.state.as_deref(),
+                self.state.as_ref(),
             );
 
             match voting_decision {
@@ -1165,7 +1168,7 @@ where
                     coord_num,
                     &*log_entry,
                     leader.as_ref(),
-                    self.state.as_deref(),
+                    self.state.as_ref(),
                 ) {
                     voting::Decision::Abstain(never) => assert_unreachable!(never),
                     voting::Decision::Nay(rejection) => {
@@ -1269,7 +1272,7 @@ where
             // (`r`) and then (`r + c`) because no node could have seen them before (`r` was
             // not settled).
             if observed_proposals.contains(&(round_num, coord_num)) {
-                if let Some(concurrency) = StateOf::<I>::concurrency(self.state.as_deref()) {
+                if let Some(concurrency) = StateOf::<I>::concurrency(self.state.as_ref()) {
                     let first_active_round = round_num + into_round_num(concurrency);
                     self.participation = Participation::PartiallyActive(first_active_round);
 
@@ -1298,7 +1301,7 @@ where
         self.state = Some(state);
     }
 
-    fn apply_commits_to(&mut self, state: Arc<StateOf<I>>) -> (RoundNumOf<I>, Arc<StateOf<I>>) {
+    fn apply_commits_to(&mut self, mut state: StateOf<I>) -> (RoundNumOf<I>, StateOf<I>) {
         if !self
             .pending_commits
             .contains_key(&(self.state_round + One::one()))
@@ -1307,7 +1310,6 @@ where
         }
 
         let mut round = self.state_round;
-        let mut state = Arc::try_unwrap(state).unwrap_or_else(|s| (&*s).clone());
 
         while let Some((_, coord_num, entry)) = self.pending_commits.remove(&(round + One::one())) {
             round = round + One::one();
@@ -1347,7 +1349,7 @@ where
             self.emit_gaps(round);
         }
 
-        (round, Arc::new(state))
+        (round, state)
     }
 
     fn clean_up_after_applies(&mut self) {

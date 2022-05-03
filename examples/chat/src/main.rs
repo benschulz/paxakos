@@ -158,6 +158,8 @@ impl ChatState {
 }
 
 impl State for ChatState {
+    type Frozen = Self;
+
     type Context = ();
 
     type LogEntry = ChatMessage;
@@ -183,5 +185,9 @@ impl State for ChatState {
 
     fn cluster_at(&self, _round_offset: std::num::NonZeroUsize) -> Vec<Self::Node> {
         self.nodes.clone()
+    }
+
+    fn freeze(&self) -> Self::Frozen {
+        self.clone()
     }
 }

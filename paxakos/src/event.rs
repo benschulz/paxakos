@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use crate::invocation::CoordNumOf;
 use crate::invocation::EffectOf;
+use crate::invocation::FrozenStateOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryOf;
 use crate::invocation::NodeOf;
 use crate::invocation::RoundNumOf;
 use crate::invocation::SnapshotFor;
-use crate::invocation::StateOf;
 use crate::node::NodeStatus;
 use crate::RoundNum;
 
@@ -23,7 +23,7 @@ pub enum Event<I: Invocation> {
         /// Round the node is in.
         round: RoundNumOf<I>,
         /// Initial state or `None` when no snapshot was given.
-        state: Option<Arc<StateOf<I>>>,
+        state: Option<Arc<FrozenStateOf<I>>>,
     },
 
     /// Node's status changed.
@@ -43,7 +43,7 @@ pub enum Event<I: Invocation> {
         /// Round node is in after a snapshot was installed.
         round: RoundNumOf<I>,
         /// State the node is in after a snapshot was installed.
-        state: Option<Arc<StateOf<I>>>,
+        state: Option<Arc<FrozenStateOf<I>>>,
     },
 
     /// An entry has been committed to the log.

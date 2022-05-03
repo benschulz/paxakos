@@ -8,6 +8,9 @@ use crate::NodeInfo;
 /// Type alias to extract a state's [`Context`][State::Context] type.
 pub type ContextOf<S> = <S as State>::Context;
 
+/// Type alias to extract a state's [`Frozen`][State::Frozen] type.
+pub type FrozenOf<S> = <S as State>::Frozen;
+
 /// Type alias to extract a state's [`LogEntry`][State::LogEntry] type.
 pub type LogEntryOf<S> = <S as State>::LogEntry;
 
@@ -29,7 +32,10 @@ pub type OutcomeOf<S> = <S as State>::Outcome;
 pub type EffectOf<S> = <S as State>::Effect;
 
 /// Distributed state to which log entries are applied.
-pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
+pub trait State: 'static + Debug + Send + Sized + Sync {
+    /// Frozen representation of this state type.
+    type Frozen: Frozen<Self> + Send + Sync + Debug;
+
     /// Type of log entry that can be applied to this state.
     type LogEntry: LogEntry;
 
@@ -112,6 +118,21 @@ pub trait State: 'static + Clone + Debug + Send + Sized + Sync {
     /// The order of the returned set must be determisistic, meaning it must be
     /// consistent across the entire cluster.
     fn cluster_at(&self, round_offset: std::num::NonZeroUsize) -> Vec<Self::Node>;
+
+    /// Creates a frozen copy of this state object to create a snapshot with.
+    fn freeze(&self) -> Self::Frozen;
+}
+
+/// A frozen value that may be thawed.
+pub trait Frozen<S> {
+    /// Thaws this value.
+    fn thaw(&self) -> S;
+}
+
+impl<S: Clone> Frozen<S> for S {
+    fn thaw(&self) -> S {
+        self.clone()
+    }
 }
 
 /// Determines the level of concurrency given `state`.

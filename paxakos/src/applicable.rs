@@ -51,6 +51,8 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 /// #     }
 /// # }
 /// # impl paxakos::State for MyState {
+/// #     type Frozen = Self;
+/// #
 /// #     type LogEntry = MyLogEntry;
 /// #
 /// #     type Context = ();
@@ -70,6 +72,10 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 /// #     }
 /// #
 /// #     fn cluster_at(&self, _round_offset: std::num::NonZeroUsize) -> Vec<Self::Node> {
+/// #         unimplemented!()
+/// #     }
+/// #
+/// #     fn freeze(&self) -> Self::Frozen {
 /// #         unimplemented!()
 /// #     }
 /// # }
