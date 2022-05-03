@@ -192,7 +192,7 @@ pub struct Autofill<N: Node, C> {
     known_gaps: HashSet<RoundNumOf<N>>,
     queued_gaps: BinaryHeap<QueuedGap<RoundNumOf<N>>>,
 
-    timer: Option<futures_timer::Delay>,
+    timer: Option<(instant::Instant, futures_timer::Delay)>,
     time_out_corner: VecDeque<instant::Instant>,
 
     appends: futures::stream::FuturesUnordered<
@@ -298,14 +298,19 @@ where
             if wake_time <= now {
                 self.timer = None;
                 cx.waker().wake_by_ref();
-            } else {
+            } else if self
+                .timer
+                .as_ref()
+                .filter(|(t, _)| *t == wake_time)
+                .is_none()
+            {
                 let mut timer = futures_timer::Delay::new(wake_time - now);
 
                 // register with reactor
                 if timer.poll_unpin(cx).is_ready() {
                     cx.waker().wake_by_ref();
                 } else {
-                    self.timer = Some(timer);
+                    self.timer = Some((wake_time, timer));
                 }
             }
         } else {
