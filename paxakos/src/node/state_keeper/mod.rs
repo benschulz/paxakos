@@ -1358,10 +1358,12 @@ where
             self.applied_entry_buffer
                 .insert(round, coord_num, Arc::clone(&entry));
 
+            let new_concurrency = state::concurrency_of(&state);
             self.emit(Event::Apply {
                 round,
                 log_entry: entry,
                 effect: event,
+                new_concurrency,
             });
         }
 

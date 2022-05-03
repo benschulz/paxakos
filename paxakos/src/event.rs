@@ -65,6 +65,8 @@ pub enum Event<I: Invocation> {
         log_entry: Arc<LogEntryOf<I>>,
         /// The event data that the application.
         effect: EffectOf<I>,
+        /// Concurrency after this apply.
+        new_concurrency: std::num::NonZeroUsize,
     },
 
     /// A log entry was queued, preceeding entries are still missing.
@@ -130,11 +132,13 @@ impl<I: Invocation> std::fmt::Debug for Event<I> {
                 round,
                 log_entry,
                 effect: result,
+                new_concurrency,
             } => f
                 .debug_struct("Event::Apply")
                 .field("round", round)
                 .field("log_entry", log_entry)
                 .field("result", result)
+                .field("new_concurrency", new_concurrency)
                 .finish(),
             Event::Gaps(gaps) => f.debug_tuple("Event::Gaps").field(gaps).finish(),
             Event::Directive {
