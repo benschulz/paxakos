@@ -93,6 +93,23 @@ pub struct NodeBuilderWithNodeIdAndCommunicator<I: Invocation, C: Communicator> 
     communicator: C,
 }
 
+// yeah, this needs a better name
+pub enum Stateyness<I: Invocation> {
+    None,
+    Resume(SnapshotFor<I>),
+    Recover(SnapshotFor<I>),
+}
+
+impl<I: Invocation> Into<SnapshotFor<I>> for Stateyness<I> {
+    fn into(self) -> SnapshotFor<I> {
+        match self {
+            Stateyness::None => Snapshot::stale_without_state(),
+            Stateyness::Resume(s) => s,
+            Stateyness::Recover(s) => s.into_stale(),
+        }
+    }
+}
+
 impl<I, C> NodeBuilderWithNodeIdAndCommunicator<I, C>
 where
     I: Invocation,
@@ -107,6 +124,13 @@ where
         Abstain = AbstainOf<I>,
     >,
 {
+    pub fn with(
+        self,
+        stateyness: Stateyness<I>,
+    ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
+        self.with_snapshot(stateyness.into())
+    }
+
     /// Starts the node without any state and in passive mode.
     pub fn without_state(self) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
         self.with_snapshot(Snapshot::stale_without_state())
