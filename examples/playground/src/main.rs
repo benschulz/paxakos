@@ -549,8 +549,8 @@ impl<N: Node<Invocation = PlaygroundInvocation>> autofill::Config for AutofillCo
         10
     }
 
-    fn delay(&self) -> Duration {
-        Duration::from_millis(1000)
+    fn delay(&self) -> Option<Duration> {
+        Some(Duration::from_millis(1000))
     }
 
     fn new_filler(&self) -> Self::Applicable {

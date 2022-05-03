@@ -83,7 +83,7 @@ pub trait Config {
     fn batch_size(&self) -> usize;
 
     /// The amount of time to wait before attempting to fill a gap.
-    fn delay(&self) -> Duration;
+    fn delay(&self) -> Option<Duration>;
 
     /// Creates a new filler value.
     fn new_filler(&self) -> Self::Applicable;
@@ -135,8 +135,8 @@ where
         self.batch_size
     }
 
-    fn delay(&self) -> Duration {
-        self.delay
+    fn delay(&self) -> Option<Duration> {
+        Some(self.delay)
     }
 
     fn new_filler(&self) -> Self::Applicable {
@@ -421,22 +421,23 @@ where
                 }
 
                 crate::Event::Gaps(ref gaps) => {
-                    let now = instant::Instant::now();
-                    let delay = self.config.delay();
+                    if let Some(delay) = self.config.delay() {
+                        let now = instant::Instant::now();
 
-                    let new_gaps = gaps
-                        .iter()
-                        .flat_map(|g| NumberIter::from_range(g.rounds.clone()))
-                        .filter(|r| !self.known_gaps.contains(r))
-                        .collect::<Vec<_>>();
-                    for gap in &new_gaps {
-                        self.queued_gaps.push(QueuedGap {
-                            round: *gap,
-                            due_time: now + delay,
-                        });
+                        let new_gaps = gaps
+                            .iter()
+                            .flat_map(|g| NumberIter::from_range(g.rounds.clone()))
+                            .filter(|r| !self.known_gaps.contains(r))
+                            .collect::<Vec<_>>();
+                        for gap in &new_gaps {
+                            self.queued_gaps.push(QueuedGap {
+                                round: *gap,
+                                due_time: now + delay,
+                            });
+                        }
+
+                        self.known_gaps.extend(new_gaps);
                     }
-
-                    self.known_gaps.extend(new_gaps);
                 }
 
                 crate::Event::Apply { round, .. } => {
