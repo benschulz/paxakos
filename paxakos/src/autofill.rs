@@ -33,20 +33,14 @@ use crate::append::AppendError;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
-use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::error::ShutDownOr;
-use crate::node::builder::NodeBuilder;
-use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
-use crate::node::CoordNumOf;
 use crate::node::EventFor;
 use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
-use crate::node::LogEntryOf;
-use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeImpl;
 use crate::node::NodeStatus;
@@ -55,11 +49,10 @@ use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::StaticAppendResultFor;
-use crate::node::YeaOf;
+use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::DoNotRetry;
 use crate::retry::RetryPolicy;
 use crate::util::NumberIter;
-use crate::voting::Voter;
 use crate::Node;
 use crate::RoundNum;
 
@@ -159,43 +152,28 @@ where
 
 /// Extends `NodeBuilder` to conveniently decorate a node with `Autofill`.
 pub trait AutofillBuilderExt: Sized {
-    /// Node type to be decorated.
+    /// Type of node to be decorated.
     type Node: Node;
-    /// Voter type.
-    type Voter: Voter;
-    /// Buffer type.
-    type Buffer: Buffer;
+
+    /// Type of builder after `Autofill` decoration is applied with config `C`.
+    type DecoratedBuilder<C: Config<Node = Self::Node> + 'static>;
 
     /// Decorates the node with `Autofill` using the given configuration.
-    fn fill_gaps<C>(
-        self,
-        config: C,
-    ) -> NodeBuilder<Autofill<Self::Node, C>, Self::Voter, Self::Buffer>
+    fn fill_gaps<C>(self, config: C) -> Self::DecoratedBuilder<C>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V, B> AutofillBuilderExt for NodeBuilder<N, V, B>
+impl<B> AutofillBuilderExt for B
 where
-    N: NodeImpl + 'static,
-    V: Voter<
-        State = StateOf<N>,
-        RoundNum = RoundNumOf<N>,
-        CoordNum = CoordNumOf<N>,
-        Abstain = AbstainOf<N>,
-        Yea = YeaOf<N>,
-        Nay = NayOf<N>,
-    >,
-    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
+    B: ExtensibleNodeBuilder,
+    B::Node: NodeImpl + 'static,
 {
-    type Node = N;
-    type Voter = V;
-    type Buffer = B;
+    type Node = B::Node;
+    type DecoratedBuilder<C: Config<Node = Self::Node> + 'static> =
+        B::DecoratedBuilder<Autofill<B::Node, C>>;
 
-    fn fill_gaps<C>(
-        self,
-        config: C,
-    ) -> NodeBuilder<Autofill<Self::Node, C>, Self::Voter, Self::Buffer>
+    fn fill_gaps<C>(self, config: C) -> Self::DecoratedBuilder<C>
     where
         C: Config<Node = Self::Node> + 'static,
     {

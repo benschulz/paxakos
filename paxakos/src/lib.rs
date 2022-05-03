@@ -382,6 +382,8 @@
 //! [State]: crate::state::State
 //! [State::cluster_at]: crate::state::State::cluster_at
 
+// https://github.com/rust-lang/rust/issues/44265
+#![feature(generic_associated_types)]
 //
 // Lint configuration
 #![warn(rust_2018_idioms)]

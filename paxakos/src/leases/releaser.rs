@@ -11,21 +11,15 @@ use futures::stream::StreamExt;
 use crate::append::AppendArgs;
 use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
-use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::error::ShutDownOr;
-use crate::node::builder::NodeBuilder;
-use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
-use crate::node::CoordNumOf;
 use crate::node::EffectOf;
 use crate::node::EventFor;
 use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
-use crate::node::LogEntryOf;
-use crate::node::NayOf;
 use crate::node::Node;
 use crate::node::NodeIdOf;
 use crate::node::NodeImpl;
@@ -34,9 +28,8 @@ use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::StaticAppendResultFor;
-use crate::node::YeaOf;
+use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::RetryPolicy;
-use crate::voting::Voter;
 
 type LeaseOf<N> = <EffectOf<N> as AsLeaseEffect>::Lease;
 type LeaseIdOf<N> = <LeaseOf<N> as Lease>::Id;
@@ -111,46 +104,26 @@ where
     EffectOf<Self::Node>: AsLeaseEffect,
 {
     type Node: Node;
-    type Voter: Voter;
-    type Buffer: Buffer<
-        RoundNum = RoundNumOf<Self::Node>,
-        CoordNum = CoordNumOf<Self::Node>,
-        Entry = LogEntryOf<Self::Node>,
-    >;
+    type DecoratedBuilder<C: Config<Node = Self::Node> + 'static>;
 
-    fn release_leases<C>(
-        self,
-        config: C,
-    ) -> NodeBuilder<Releaser<Self::Node, C>, Self::Voter, Self::Buffer>
+    fn release_leases<C>(self, config: C) -> Self::DecoratedBuilder<C>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V, B> ReleaserBuilderExt for NodeBuilder<N, V, B>
+impl<B> ReleaserBuilderExt for B
 where
-    N: NodeImpl + 'static,
-    EffectOf<N>: AsLeaseEffect,
-    V: Voter<
-        State = StateOf<N>,
-        RoundNum = RoundNumOf<N>,
-        CoordNum = CoordNumOf<N>,
-        Abstain = AbstainOf<N>,
-        Yea = YeaOf<N>,
-        Nay = NayOf<N>,
-    >,
-    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
+    B: ExtensibleNodeBuilder,
+    B::Node: NodeImpl + 'static,
+    EffectOf<B::Node>: AsLeaseEffect,
 {
-    type Node = N;
-    type Voter = V;
-    type Buffer = B;
+    type Node = B::Node;
+    type DecoratedBuilder<C: Config<Node = Self::Node> + 'static> =
+        B::DecoratedBuilder<Releaser<Self::Node, C>>;
 
-    fn release_leases<C>(
-        self,
-        config: C,
-    ) -> NodeBuilder<Releaser<Self::Node, C>, Self::Voter, Self::Buffer>
+    fn release_leases<C>(self, config: C) -> Self::DecoratedBuilder<C>
     where
-        EffectOf<N>: AsLeaseEffect,
-        C: Config<Node = N> + 'static,
+        C: Config<Node = Self::Node> + 'static,
     {
         self.decorated_with(config)
     }

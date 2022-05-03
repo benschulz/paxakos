@@ -320,31 +320,6 @@ where
         self
     }
 
-    /// Adds a decoration to wrap around the resulting node.
-    pub fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> NodeBuilder<D, V, B>
-    where
-        D: Decoration<
-            Decorated = N,
-            Invocation = InvocationOf<N>,
-            Communicator = CommunicatorOf<N>,
-        >,
-    {
-        let finisher = self.finisher;
-
-        NodeBuilder {
-            kit: self.kit,
-            node_id: self.node_id,
-            communicator: self.communicator,
-            snapshot: self.snapshot,
-            voter: self.voter,
-            buffer: self.buffer,
-            finisher: Box::new(move |x| ((finisher)(x)).and_then(|node| D::wrap(node, arguments))),
-
-            #[cfg(feature = "tracer")]
-            tracer: self.tracer,
-        }
-    }
-
     /// Spawns the node into context `()`.
     pub fn spawn(self) -> LocalBoxFuture<'static, SpawnResult<(RequestHandlerFor<N>, Shell<N>)>>
     where
@@ -384,5 +359,72 @@ where
             )
         })
         .boxed_local()
+    }
+}
+
+/// Declares the `decorated_with` method to add decorations to the node being
+/// built.
+pub trait ExtensibleNodeBuilder {
+    /// Node type without decoration applied.
+    type Node: NodeImpl;
+
+    /// Type of this builder after decoration `D` is applied.
+    type DecoratedBuilder<D: Decoration<Decorated = Self::Node> + 'static>;
+
+    /// Adds a decoration to wrap around the resulting node.
+    fn decorated_with<D>(
+        self,
+        arguments: <D as Decoration>::Arguments,
+    ) -> Self::DecoratedBuilder<D>
+    where
+        D: Decoration<
+                Decorated = Self::Node,
+                Invocation = InvocationOf<Self::Node>,
+                Communicator = CommunicatorOf<Self::Node>,
+            > + 'static;
+}
+
+impl<N, V, B> ExtensibleNodeBuilder for NodeBuilder<N, V, B>
+where
+    N: NodeImpl + 'static,
+    V: Voter<
+        State = node::StateOf<N>,
+        RoundNum = node::RoundNumOf<N>,
+        CoordNum = node::CoordNumOf<N>,
+        Abstain = node::AbstainOf<N>,
+        Yea = node::YeaOf<N>,
+        Nay = node::NayOf<N>,
+    >,
+    B: Buffer<
+        RoundNum = node::RoundNumOf<N>,
+        CoordNum = node::CoordNumOf<N>,
+        Entry = node::LogEntryOf<N>,
+    >,
+{
+    type Node = N;
+    type DecoratedBuilder<D: Decoration<Decorated = Self::Node> + 'static> = NodeBuilder<D, V, B>;
+
+    fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> Self::DecoratedBuilder<D>
+    where
+        D: Decoration<
+                Decorated = N,
+                Invocation = InvocationOf<N>,
+                Communicator = CommunicatorOf<N>,
+            > + 'static,
+    {
+        let finisher = self.finisher;
+
+        NodeBuilder {
+            kit: self.kit,
+            node_id: self.node_id,
+            communicator: self.communicator,
+            snapshot: self.snapshot,
+            voter: self.voter,
+            buffer: self.buffer,
+            finisher: Box::new(move |x| ((finisher)(x)).and_then(|node| D::wrap(node, arguments))),
+
+            #[cfg(feature = "tracer")]
+            tracer: self.tracer,
+        }
     }
 }

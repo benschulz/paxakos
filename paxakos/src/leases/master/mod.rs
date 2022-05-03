@@ -18,19 +18,14 @@ pub use voter::LeaseGrantingVoter;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
-use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::error::ShutDownOr;
-use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
-use crate::node::CoordNumOf;
 use crate::node::EventFor;
 use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
-use crate::node::LogEntryOf;
-use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeImpl;
 use crate::node::Participation;
@@ -38,11 +33,9 @@ use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::StaticAppendResultFor;
-use crate::node::YeaOf;
+use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::RetryPolicy;
-use crate::voting::Voter;
 use crate::Node;
-use crate::NodeBuilder;
 use crate::NodeInfo;
 use crate::State;
 
@@ -54,46 +47,33 @@ pub trait MasterLeasingNode<I>: Node {
 
 pub trait MasterLeasesBuilderExt {
     type Node: Node + 'static;
-    type Voter: Voter;
-    type Buffer: Buffer<
-        RoundNum = RoundNumOf<Self::Node>,
-        CoordNum = CoordNumOf<Self::Node>,
-        Entry = LogEntryOf<Self::Node>,
-    >;
+    type DecoratedBuilder<C: Config<Node = Self::Node> + 'static>;
 
     fn maintain_master_lease<C>(
         self,
         communicator_subscription: communicator::Subscription<NodeIdOf<Self::Node>>,
         voter_subscription: voter::Subscription<NodeIdOf<Self::Node>>,
         config: C,
-    ) -> NodeBuilder<MasterLeases<Self::Node, C>, Self::Voter, Self::Buffer>
+    ) -> Self::DecoratedBuilder<C>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V, B> MasterLeasesBuilderExt for NodeBuilder<N, V, B>
+impl<B> MasterLeasesBuilderExt for B
 where
-    N: NodeImpl + 'static,
-    V: Voter<
-        State = StateOf<N>,
-        RoundNum = RoundNumOf<N>,
-        CoordNum = CoordNumOf<N>,
-        Abstain = AbstainOf<N>,
-        Yea = YeaOf<N>,
-        Nay = NayOf<N>,
-    >,
-    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
+    B: ExtensibleNodeBuilder,
+    B::Node: NodeImpl + 'static,
 {
-    type Node = N;
-    type Voter = V;
-    type Buffer = B;
+    type Node = B::Node;
+    type DecoratedBuilder<C: Config<Node = Self::Node> + 'static> =
+        B::DecoratedBuilder<MasterLeases<B::Node, C>>;
 
     fn maintain_master_lease<C>(
         self,
         communicator_subscription: communicator::Subscription<NodeIdOf<Self::Node>>,
         voter_subscription: voter::Subscription<NodeIdOf<Self::Node>>,
         config: C,
-    ) -> NodeBuilder<MasterLeases<Self::Node, C>, Self::Voter, Self::Buffer>
+    ) -> Self::DecoratedBuilder<C>
     where
         C: Config<Node = Self::Node> + 'static,
     {

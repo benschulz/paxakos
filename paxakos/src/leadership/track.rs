@@ -11,7 +11,6 @@ use num_traits::Zero;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
-use crate::buffer::Buffer;
 use crate::communicator::Communicator;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
@@ -19,8 +18,6 @@ use crate::error::ShutDownOr;
 use crate::event::DirectiveKind;
 use crate::invocation;
 use crate::invocation::Invocation;
-use crate::node::builder::NodeBuilder;
-use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
 use crate::node::CoordNumOf;
@@ -28,8 +25,6 @@ use crate::node::Core;
 use crate::node::EventFor;
 use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
-use crate::node::LogEntryOf;
-use crate::node::NayOf;
 use crate::node::Node;
 use crate::node::NodeIdOf;
 use crate::node::NodeImpl;
@@ -41,9 +36,8 @@ use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::StaticAppendResultFor;
-use crate::node::YeaOf;
+use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::RetryPolicy;
-use crate::voting::Voter;
 use crate::RoundNum;
 use crate::Shell;
 
@@ -75,38 +69,20 @@ pub trait MaybeLeadershipAwareNode<I>: Node {
 
 pub trait TrackLeadershipBuilderExt {
     type Node: Node;
-    type Voter: Voter;
-    type Buffer: Buffer<
-        RoundNum = RoundNumOf<Self::Node>,
-        CoordNum = CoordNumOf<Self::Node>,
-        Entry = LogEntryOf<Self::Node>,
-    >;
+    type DecoratedBuilder;
 
-    fn track_leadership(
-        self,
-    ) -> NodeBuilder<TrackLeadership<Self::Node>, Self::Voter, Self::Buffer>;
+    fn track_leadership(self) -> Self::DecoratedBuilder;
 }
 
-impl<N, V, B> TrackLeadershipBuilderExt for NodeBuilder<N, V, B>
+impl<B> TrackLeadershipBuilderExt for B
 where
-    N: NodeImpl + 'static,
-    V: Voter<
-        State = StateOf<N>,
-        RoundNum = RoundNumOf<N>,
-        CoordNum = CoordNumOf<N>,
-        Abstain = AbstainOf<N>,
-        Yea = YeaOf<N>,
-        Nay = NayOf<N>,
-    >,
-    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
+    B: ExtensibleNodeBuilder,
+    B::Node: NodeImpl + 'static,
 {
-    type Node = N;
-    type Voter = V;
-    type Buffer = B;
+    type Node = B::Node;
+    type DecoratedBuilder = B::DecoratedBuilder<TrackLeadership<B::Node>>;
 
-    fn track_leadership(
-        self,
-    ) -> NodeBuilder<TrackLeadership<Self::Node>, Self::Voter, Self::Buffer> {
+    fn track_leadership(self) -> Self::DecoratedBuilder {
         self.decorated_with(())
     }
 }

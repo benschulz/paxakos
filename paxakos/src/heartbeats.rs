@@ -28,21 +28,15 @@ use crate::append::AppendError;
 use crate::append::Importance;
 use crate::append::Peeryness;
 use crate::applicable::ApplicableTo;
-use crate::buffer::Buffer;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::error::ShutDownOr;
 use crate::leadership::track::MaybeLeadershipAwareNode;
-use crate::node::builder::NodeBuilder;
-use crate::node::AbstainOf;
 use crate::node::AppendResultFor;
 use crate::node::CommunicatorOf;
-use crate::node::CoordNumOf;
 use crate::node::EventFor;
 use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
-use crate::node::LogEntryOf;
-use crate::node::NayOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeImpl;
 use crate::node::NodeStatus;
@@ -51,10 +45,9 @@ use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
 use crate::node::StaticAppendResultFor;
-use crate::node::YeaOf;
+use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::DoNotRetry;
 use crate::retry::RetryPolicy;
-use crate::voting::Voter;
 use crate::Node;
 
 /// Heartbeats configuration.
@@ -167,45 +160,30 @@ where
 
 /// Extends `NodeBuilder` to conveniently decorate a node with `Heartbeats`.
 pub trait HeartbeatsBuilderExt<I = ()> {
-    /// Node type to be decorated.
-    type Node: MaybeLeadershipAwareNode<I> + 'static;
-    /// Voter type.
-    type Voter: Voter;
-    /// Buffer type.
-    type Buffer: Buffer;
+    /// Type of node to be decorated.
+    type Node: Node;
+
+    /// Type of builder after `Heartbeats` decoration is applied with config
+    /// `C`.
+    type DecoratedBuilder<C: Config<Node = Self::Node> + 'static>;
 
     /// Decorates the node with `Heartbeats` using the given configuration.
-    #[allow(clippy::type_complexity)]
-    fn send_heartbeats<C>(
-        self,
-        config: C,
-    ) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter, Self::Buffer>
+    fn send_heartbeats<C>(self, config: C) -> Self::DecoratedBuilder<C>
     where
         C: Config<Node = Self::Node> + 'static;
 }
 
-impl<N, V, B, I> HeartbeatsBuilderExt<I> for NodeBuilder<N, V, B>
+impl<I, B> HeartbeatsBuilderExt<I> for B
 where
-    N: NodeImpl + MaybeLeadershipAwareNode<I> + 'static,
-    V: Voter<
-        State = StateOf<N>,
-        RoundNum = RoundNumOf<N>,
-        CoordNum = CoordNumOf<N>,
-        Abstain = AbstainOf<N>,
-        Yea = YeaOf<N>,
-        Nay = NayOf<N>,
-    >,
-    B: Buffer<RoundNum = RoundNumOf<N>, CoordNum = CoordNumOf<N>, Entry = LogEntryOf<N>>,
+    I: 'static,
+    B: ExtensibleNodeBuilder,
+    B::Node: MaybeLeadershipAwareNode<I> + 'static,
 {
-    type Node = N;
-    type Voter = V;
-    type Buffer = B;
+    type Node = B::Node;
+    type DecoratedBuilder<C: Config<Node = Self::Node> + 'static> =
+        B::DecoratedBuilder<Heartbeats<B::Node, C, I>>;
 
-    #[allow(clippy::type_complexity)]
-    fn send_heartbeats<C>(
-        self,
-        config: C,
-    ) -> NodeBuilder<Heartbeats<Self::Node, C, I>, Self::Voter, Self::Buffer>
+    fn send_heartbeats<C>(self, config: C) -> Self::DecoratedBuilder<C>
     where
         C: Config<Node = Self::Node> + 'static,
     {
