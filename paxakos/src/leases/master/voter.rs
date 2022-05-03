@@ -22,7 +22,8 @@ use crate::voting::YeaOf;
 use crate::CoordNum;
 use crate::NodeInfo;
 use crate::RoundNum;
-use crate::State;
+
+use super::State;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Lease<I> {
@@ -245,19 +246,14 @@ where
             Decision::Abstain(a) => Decision::Abstain(a),
             Decision::Nay(n) => Decision::Nay(n),
             Decision::Yea(y) => {
-                // TODO allow deriving from State
-                let duration = std::time::Duration::from_millis(1500);
+                let duration = state
+                    .map(|s| s.lease_duration())
+                    .unwrap_or(instant::Duration::ZERO);
                 let now = instant::Instant::now();
 
-                // Make "sure" there can be no overlap with a lease from a previous run.
-                //
-                // TODO This is crude and, once lease durations may be derived, prone to
-                //      double-lending when lease durations are reduced.
-                //
-                //      I don't see any way around this except through documentation. When
-                //      durations are reduced, this must happen continuously rather than
-                //      discretely, i.e. reducing by 500ms will take 500ms.
-                let no_potential_conflicts = self.created_at + duration < now;
+                let no_potential_conflicts = state
+                    .map(|s| self.created_at + s.previous_lease_duration() < now)
+                    .unwrap_or(true);
 
                 if no_potential_conflicts && coord_num == self.leader_coord_num {
                     let lessee = leader.map(|l| l.id());

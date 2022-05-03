@@ -25,6 +25,7 @@ use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeImpl;
+use crate::node::NodeOf;
 use crate::node::Participation;
 use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
@@ -34,12 +35,18 @@ use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::RetryPolicy;
 use crate::Node;
 use crate::NodeInfo;
-use crate::State;
+use crate::State as _;
 
 pub trait MasterLeasingNode<I>: Node {
-    fn read_master_lax(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>>;
+    fn read_master_lax<F, T>(&self, f: F) -> LocalBoxFuture<'_, Option<T>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static;
 
-    fn read_master_strict(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>>;
+    fn read_master_strict<F, T>(&self, f: F) -> LocalBoxFuture<'_, Option<T>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static;
 }
 
 pub trait MasterLeasesBuilderExt {
@@ -88,8 +95,63 @@ pub struct Arguments<C, I> {
     voter_subscription: voter::Subscription<I>,
 }
 
+pub trait State: crate::State {
+    /// Duration of a master lease.
+    fn lease_duration(&self) -> instant::Duration;
+
+    /// Remaining duration of a lease this node gave out _in a previous run_ or
+    /// `ZERO`.
+    ///
+    /// This value is concerned with the following scenario.
+    ///
+    /// 1. `lease_duration` is `d1`
+    /// 2. Node A hands out a lease to node B.
+    /// 3. Node A crashes.
+    /// 4. `lease_duration` is set to `d2` < `d1`.
+    /// 5. A node other than node A creates a snapshot (lease duration is `d2`).
+    /// 6. Node A recovers using the snapshot.
+    /// 7. Node A is asked to cast a vote by node C and must decide whether the
+    ///    new lease would be in conflict with any it handed out before its
+    ///    crash.
+    ///
+    /// If the time it takes to create, transfer and recover from a snapshot
+    /// will always be greater than the `lease_duration`, then an implementation
+    /// can safely return `ZERO`.
+    fn previous_lease_duration(&self) -> instant::Duration;
+}
+
 pub trait Config {
+    /// The node type that is decorated.
     type Node: Node;
+
+    /// Initializes this configuration.
+    #[allow(unused_variables)]
+    fn init(&mut self, node: &Self::Node) {}
+
+    /// Updates the configuration with the given event.
+    #[allow(unused_variables)]
+    fn update(&mut self, event: &EventFor<Self::Node>) {}
+
+    /// Upper bound on the amount of time dilation that may be seen within a
+    /// [State::lease_duration].
+    ///
+    /// This value can and in some cases should be node-specific. The
+    /// implementation of [`Instant::now()`](std::time::Instant::now)
+    /// dictates what a valid upper bound is. We're concerned with the following
+    /// scenario.
+    ///
+    /// 1. `lease_duration` is `d`.
+    /// 2. This node begins appending a log entry.
+    /// 3. A majority of nodes accept the log entry and hand out leases.
+    /// 4. This node receives the acceptances and considers itself master until
+    ///    `t2 + d`.
+    /// 5. This node attempts a master read and needs to decide wheter it's
+    ///    still master.
+    ///
+    /// If this node's system (backing `Instant::now()`) dilates/stretches time
+    /// between `t2` and `t5` then this dilation must be compensated for by this
+    /// value, `dilation_margin`.
+    fn dilation_margin(&self) -> instant::Duration;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -120,7 +182,7 @@ where
     C: Config<Node = N>,
 {
     decorated: N,
-    _config: C,
+    config: C,
 
     communicator_subscription: communicator::Subscription<NodeIdOf<N>>,
     voter_subscription: voter::Subscription<NodeIdOf<N>>,
@@ -129,7 +191,6 @@ where
     leases_by_lessor: HashMap<NodeIdOf<N>, Lease<NodeIdOf<N>>>,
 }
 
-// TODO defensively subtract some duration to account for clock drift
 impl<N, C> MasterLeases<N, C>
 where
     N: Node + 'static,
@@ -138,32 +199,27 @@ where
     fn has_own_lease(&self, now: instant::Instant) -> bool {
         self.leases_by_lessor
             .get(&self.id())
-            .map(|l| l.end > now)
+            .map(|l| self.is_valid_at(l, now))
             .unwrap_or(false)
     }
 
-    fn has_majority_at_offset(
-        &self,
-        state: &StateOf<N>,
-        offset: NonZeroUsize,
-        now: instant::Instant,
-    ) -> bool {
-        assert!(offset <= crate::state::concurrency_of(state));
-
-        let cluster = state.cluster_at(offset);
-
+    fn has_majority_of(&self, cluster: Vec<NodeOf<N>>, now: instant::Instant) -> bool {
         // TODO handle weights (once implemented)
         let leases = cluster
             .iter()
             .filter(|n| {
                 self.leases_by_lessor
                     .get(&n.id())
-                    .map(|l| l.end > now)
+                    .map(|l| self.is_valid_at(l, now))
                     .unwrap_or(false)
             })
             .count();
 
         leases > cluster.len() / 2
+    }
+
+    fn is_valid_at(&self, lease: &Lease<NodeIdOf<N>>, t: instant::Instant) -> bool {
+        lease.end - self.config.dilation_margin() > t
     }
 }
 
@@ -181,7 +237,7 @@ where
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
         Ok(Self {
             decorated,
-            _config: arguments.config,
+            config: arguments.config,
 
             communicator_subscription: arguments.communicator_subscription,
             voter_subscription: arguments.voter_subscription,
@@ -349,12 +405,20 @@ where
     D: Decoration,
     <D as Decoration>::Decorated: MasterLeasingNode<I>,
 {
-    fn read_master_lax(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>> {
-        Decoration::peek_into(self).read_master_lax()
+    fn read_master_lax<F, T>(&self, f: F) -> LocalBoxFuture<'_, Option<T>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        Decoration::peek_into(self).read_master_lax(f)
     }
 
-    fn read_master_strict(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>> {
-        Decoration::peek_into(self).read_master_strict()
+    fn read_master_strict<F, T>(&self, f: F) -> LocalBoxFuture<'_, Option<T>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        Decoration::peek_into(self).read_master_strict(f)
     }
 }
 
@@ -363,7 +427,11 @@ where
     N: Node + 'static,
     C: Config<Node = N>,
 {
-    fn read_master_lax(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>> {
+    fn read_master_lax<F, T>(&self, f: F) -> LocalBoxFuture<'_, Option<T>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
         async move {
             let now = instant::Instant::now();
 
@@ -371,15 +439,26 @@ where
                 return None;
             }
 
-            let state = self.read_stale().await.ok()?;
-            let majority = self.has_majority_at_offset(&*state, NonZeroUsize::new(1).unwrap(), now);
+            let cluster = self
+                .read_stale(|s| s.cluster_at(NonZeroUsize::new(1).unwrap()))
+                .await
+                .ok()?;
+            let majority = self.has_majority_of(cluster, now);
 
-            majority.then(|| state)
+            if majority {
+                self.read_stale(f).await.ok()
+            } else {
+                None
+            }
         }
         .boxed_local()
     }
 
-    fn read_master_strict(&self) -> LocalBoxFuture<'_, Option<Arc<StateOf<Self>>>> {
+    fn read_master_strict<F, T>(&self, f: F) -> LocalBoxFuture<'_, Option<T>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
         async move {
             let now = instant::Instant::now();
 
@@ -387,11 +466,21 @@ where
                 return None;
             }
 
-            let state = self.read_stale().await.ok()?;
-            let majority = (1..=crate::state::concurrency_of(&*state).into())
-                .all(|o| self.has_majority_at_offset(&*state, NonZeroUsize::new(o).unwrap(), now));
+            let clusters = self
+                .read_stale(|s| {
+                    (1..=crate::state::concurrency_of(s).into())
+                        .map(|o| s.cluster_at(NonZeroUsize::new(o).unwrap()))
+                        .collect::<Vec<_>>()
+                })
+                .await
+                .ok()?;
+            let majority = clusters.into_iter().all(|c| self.has_majority_of(c, now));
 
-            majority.then(|| state)
+            if majority {
+                self.read_stale(f).await.ok()
+            } else {
+                None
+            }
         }
         .boxed_local()
     }
