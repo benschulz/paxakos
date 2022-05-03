@@ -4,6 +4,7 @@ mod msg;
 
 use std::collections::btree_map;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -453,16 +454,21 @@ where
 
         match self.state.as_ref() {
             Some(state) => {
+                let concurrency_bound = into_round_num(crate::state::concurrency_of(&**state));
+                let concurrency_range = round + One::one()..=round + concurrency_bound;
+
+                let mut available = NumberIter::from_range(concurrency_range)
+                    .filter(|r| !acquireds.contains(r) && !deferreds.contains_key(r))
+                    .collect::<BTreeSet<_>>();
+
                 let mut ix = 0;
 
-                'next_request: while ix < requests.len() {
+                while let Some(next_available) = available.iter().next() && ix < requests.len() {
                     let (range, _) = &requests[ix];
 
-                    // Rounds up to and including `r` have already converged.
-                    let range = std::cmp::max(round + One::one(), *range.start())..=*range.end();
-
-                    // If the range is empty, we'll never be able to provide a reservation.
-                    if range.is_empty() {
+                    // Have rounds up to and including `range.end()` have already converged?
+                    // If so, we'll never be able to provide a reservation.
+                    if range.end() < next_available {
                         let (_, send) = requests.remove(ix).unwrap();
                         let _ = send.send(Response::AcquireRoundNum(Err(
                             AcquireRoundNumError::Converged,
@@ -470,22 +476,17 @@ where
                         continue;
                     }
 
-                    // Limit the range to the concurrency window.
-                    let concurrency_bound = into_round_num(crate::state::concurrency_of(&**state));
-                    let range =
-                        *range.start()..=std::cmp::min(round + concurrency_bound, *range.end());
+                    if let Some(round_num) = available.range(range.clone()).next().copied() {
+                        acquireds.insert(round_num);
 
-                    for round_num in NumberIter::from_range(range) {
-                        if !acquireds.contains(&round_num) && !deferreds.contains_key(&round_num) {
-                            acquireds.insert(round_num);
+                        let (_, send) = requests.remove(ix).unwrap();
+                        let _ = send.send(Response::AcquireRoundNum(Ok(RoundNumReservation {
+                            round_num,
+                            sender: sender.clone(),
+                        })));
 
-                            let (_, send) = requests.remove(ix).unwrap();
-                            let _ = send.send(Response::AcquireRoundNum(Ok(RoundNumReservation {
-                                round_num,
-                                sender: sender.clone(),
-                            })));
-                            continue 'next_request;
-                        }
+                        available.remove(&round_num);
+                        continue;
                     }
 
                     ix += 1;

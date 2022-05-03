@@ -386,6 +386,8 @@
 #![feature(generic_associated_types)]
 // https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
+// https://github.com/rust-lang/rust/issues/53667
+#![feature(let_chains)]
 //
 
 //
