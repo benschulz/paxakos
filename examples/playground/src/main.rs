@@ -15,6 +15,7 @@ use paxakos::autofill;
 use paxakos::autofill::AutofillBuilderExt;
 use paxakos::heartbeats::HeartbeatsBuilderExt;
 use paxakos::invocation::Invocation;
+use paxakos::leadership;
 use paxakos::leadership::ensure::EnsureLeadershipBuilderExt;
 use paxakos::leadership::track::LeadershipAwareNode;
 use paxakos::leadership::track::TrackLeadershipBuilderExt;
@@ -305,25 +306,7 @@ async fn spawn_node(
                 .track_leadership()
                 .fill_gaps(AutofillConfig::new(rt_gaps, listeners_gaps))
                 .send_heartbeats(HeartbeatConfig::new(rt_heartbeat, listeners_heartbeat))
-                .ensure_leadership(|c| {
-                    c.with_entry(move || {
-                        let listeners = listeners_ensure.clone();
-
-                        rt_ensure.spawn(async move {
-                            emit_event(
-                                &*listeners,
-                                Action {
-                                    node: node_id.to_string(),
-                                    action: "ensure-leadership",
-                                },
-                            )
-                            .await
-                        });
-
-                        PlaygroundLogEntry::EnsureLeadership(Uuid::new_v4())
-                    })
-                    .every(Duration::from_secs(10))
-                })
+                .ensure_leadership(EnsureLeadershipConfig::new(rt_ensure, listeners_ensure))
                 .spawn(),
         )
         .unwrap();
@@ -586,6 +569,64 @@ impl<N: Node<Invocation = PlaygroundInvocation>> autofill::Config for AutofillCo
         });
 
         PlaygroundLogEntry::Fill(Uuid::new_v4())
+    }
+
+    fn retry_policy(&self) -> Self::RetryPolicy {
+        DoNotRetry::new()
+    }
+}
+
+struct EnsureLeadershipConfig<N> {
+    runtime: rocket::tokio::runtime::Handle,
+    listeners: Arc<Mutex<Vec<Listener>>>,
+    node_id: usize,
+
+    _p: std::marker::PhantomData<N>,
+}
+
+impl<N> EnsureLeadershipConfig<N> {
+    fn new(runtime: rocket::tokio::runtime::Handle, listeners: Arc<Mutex<Vec<Listener>>>) -> Self {
+        Self {
+            runtime,
+            listeners,
+            node_id: usize::MAX,
+
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<N: Node<Invocation = PlaygroundInvocation>> leadership::ensure::Config
+    for EnsureLeadershipConfig<N>
+{
+    type Node = N;
+    type Applicable = PlaygroundLogEntry;
+    type RetryPolicy = DoNotRetry<PlaygroundInvocation>;
+
+    fn init(&mut self, node: &Self::Node) {
+        self.node_id = node.id();
+    }
+
+    fn interval(&self) -> Option<Duration> {
+        Some(Duration::from_millis(10000))
+    }
+
+    fn new_leadership_taker(&self) -> Self::Applicable {
+        let node_id = self.node_id;
+        let listeners = self.listeners.clone();
+
+        self.runtime.spawn(async move {
+            emit_event(
+                &*listeners,
+                Action {
+                    node: node_id.to_string(),
+                    action: "ensure-leadership",
+                },
+            )
+            .await
+        });
+
+        PlaygroundLogEntry::EnsureLeadership(Uuid::new_v4())
     }
 
     fn retry_policy(&self) -> Self::RetryPolicy {

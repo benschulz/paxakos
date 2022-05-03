@@ -6,6 +6,7 @@ use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 
 use crate::append::AppendArgs;
+use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::decoration::Decoration;
@@ -35,6 +36,43 @@ use crate::voting::Voter;
 use crate::Node;
 use crate::RoundNum;
 
+/// Ensure leadership configuration.
+pub trait Config {
+    /// The node type that is decorated.
+    type Node: Node;
+
+    /// The applicable that is used to take leadership, usually a no-op.
+    type Applicable: ApplicableTo<StateOf<Self::Node>> + 'static;
+
+    /// Type of retry policy to be used.
+    ///
+    /// See [`retry_policy`][Config::retry_policy].
+    type RetryPolicy: RetryPolicy<
+        Invocation = InvocationOf<Self::Node>,
+        Error = AppendError<InvocationOf<Self::Node>>,
+        StaticError = AppendError<InvocationOf<Self::Node>>,
+    >;
+
+    /// Initializes this configuration.
+    #[allow(unused_variables)]
+    fn init(&mut self, node: &Self::Node) {}
+
+    /// Updates the configuration with the given event.
+    #[allow(unused_variables)]
+    fn update(&mut self, event: &EventFor<Self::Node>) {}
+
+    /// Interval after which leadership is taken.
+    fn interval(&self) -> Option<Duration> {
+        None
+    }
+
+    /// Creates a new value to take leadership.
+    fn new_leadership_taker(&self) -> Self::Applicable;
+
+    /// Creates a retry policy.
+    fn retry_policy(&self) -> Self::RetryPolicy;
+}
+
 pub trait EnsureLeadershipBuilderExt {
     type Node: Node + 'static;
     type Voter: Voter;
@@ -44,23 +82,12 @@ pub trait EnsureLeadershipBuilderExt {
         Entry = LogEntryOf<Self::Node>,
     >;
 
-    fn ensure_leadership<C, P>(
+    fn ensure_leadership<C>(
         self,
-        configure: C,
-    ) -> NodeBuilder<EnsureLeadership<Self::Node, P>, Self::Voter, Self::Buffer>
+        config: C,
+    ) -> NodeBuilder<EnsureLeadership<Self::Node, C>, Self::Voter, Self::Buffer>
     where
-        C: FnOnce(
-            EnsureLeadershipBuilderBlank<Self::Node>,
-        ) -> EnsureLeadershipBuilder<Self::Node, P>,
-        P: Fn() -> LogEntryOf<Self::Node> + 'static;
-}
-
-// TODO jitter
-pub struct EnsureLeadershipBuilder<N, P> {
-    entry_producer: P,
-    interval: Duration,
-
-    _node: std::marker::PhantomData<N>,
+        C: Config<Node = Self::Node> + 'static;
 }
 
 impl<N, V, B> EnsureLeadershipBuilderExt for NodeBuilder<N, V, B>
@@ -80,88 +107,25 @@ where
     type Voter = V;
     type Buffer = B;
 
-    fn ensure_leadership<C, P>(
+    fn ensure_leadership<C>(
         self,
-        configure: C,
-    ) -> NodeBuilder<EnsureLeadership<Self::Node, P>, Self::Voter, Self::Buffer>
+        config: C,
+    ) -> NodeBuilder<EnsureLeadership<Self::Node, C>, Self::Voter, Self::Buffer>
     where
-        C: FnOnce(EnsureLeadershipBuilderBlank<N>) -> EnsureLeadershipBuilder<N, P>,
-        P: Fn() -> LogEntryOf<N> + 'static,
+        C: Config<Node = N> + 'static,
     {
-        self.decorated_with(configure(EnsureLeadershipBuilderBlank::new()).build())
-    }
-}
-
-pub struct EnsureLeadershipBuilderBlank<N: Node>(std::marker::PhantomData<N>);
-
-impl<N: Node> EnsureLeadershipBuilderBlank<N> {
-    fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-
-    pub fn with_entry<P>(self, entry_producer: P) -> EnsureLeadershipBuilderWithEntry<N, P>
-    where
-        P: Fn() -> LogEntryOf<N>,
-    {
-        EnsureLeadershipBuilderWithEntry {
-            entry_producer,
-            _node: std::marker::PhantomData,
-        }
-    }
-}
-
-pub struct EnsureLeadershipBuilderWithEntry<N, P> {
-    entry_producer: P,
-
-    _node: std::marker::PhantomData<N>,
-}
-
-impl<N, P> EnsureLeadershipBuilderWithEntry<N, P>
-where
-    N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
-{
-    pub fn every(self, interval: Duration) -> EnsureLeadershipBuilder<N, P> {
-        EnsureLeadershipBuilder {
-            entry_producer: self.entry_producer,
-            interval,
-
-            _node: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<N, P> EnsureLeadershipBuilder<N, P>
-where
-    N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
-{
-    fn build(self) -> EnsureLeadershipArgs<N, P> {
-        EnsureLeadershipArgs {
-            entry_producer: self.entry_producer,
-            interval: self.interval,
-
-            _node: std::marker::PhantomData,
-        }
+        self.decorated_with(config)
     }
 }
 
 #[derive(Debug)]
-pub struct EnsureLeadershipArgs<N, P> {
-    entry_producer: P,
-    interval: Duration,
-
-    _node: std::marker::PhantomData<N>,
-}
-
-#[derive(Debug)]
-pub struct EnsureLeadership<N, P>
+pub struct EnsureLeadership<N, C>
 where
     N: Node,
-    P: Fn() -> LogEntryOf<N> + 'static,
+    C: Config,
 {
     decorated: N,
-    arguments: EnsureLeadershipArgs<N, P>,
+    config: C,
 
     timer: Option<futures_timer::Delay>,
 
@@ -189,17 +153,17 @@ impl<R: RoundNum> PartialOrd for QueuedGap<R> {
     }
 }
 
-impl<N, P> EnsureLeadership<N, P>
+impl<N, C> EnsureLeadership<N, C>
 where
     N: Node + 'static,
-    P: Fn() -> LogEntryOf<N> + 'static,
+    C: Config<Node = N>,
 {
     fn ensure_leadership(&mut self) {
-        let log_entry = (self.arguments.entry_producer)();
+        let log_entry = self.config.new_leadership_taker();
 
         let append = self
             .decorated
-            .append_static(log_entry, ())
+            .append_static(log_entry, self.config.retry_policy())
             .map(|_| ())
             .boxed_local();
 
@@ -207,21 +171,23 @@ where
     }
 }
 
-impl<N, P> Decoration for EnsureLeadership<N, P>
+impl<N, C> Decoration for EnsureLeadership<N, C>
 where
     N: NodeImpl + 'static,
-    P: Fn() -> LogEntryOf<N> + 'static,
+    C: Config<Node = N> + 'static,
 {
-    type Arguments = EnsureLeadershipArgs<N, P>;
+    type Arguments = C;
     type Decorated = N;
 
     fn wrap(
         decorated: Self::Decorated,
-        arguments: Self::Arguments,
+        mut arguments: Self::Arguments,
     ) -> Result<Self, crate::error::SpawnError> {
+        arguments.init(&decorated);
+
         Ok(Self {
             decorated,
-            arguments,
+            config: arguments,
 
             timer: None,
 
@@ -238,10 +204,10 @@ where
     }
 }
 
-impl<N, F> Node for EnsureLeadership<N, F>
+impl<N, C> Node for EnsureLeadership<N, C>
 where
     N: Node + 'static,
-    F: Fn() -> LogEntryOf<N> + 'static,
+    C: Config<Node = N>,
 {
     type Invocation = InvocationOf<N>;
     type Communicator = CommunicatorOf<N>;
@@ -263,19 +229,21 @@ where
         let event = self.decorated.poll_events(cx);
 
         if let Poll::Ready(event) = &event {
+            self.config.update(event);
+
             match event {
                 crate::Event::Init {
                     status: new_status, ..
                 }
                 | crate::Event::StatusChange { new_status, .. } => {
-                    self.timer = match new_status {
-                        NodeStatus::Disoriented => None,
-                        _ => Some(futures_timer::Delay::new(self.arguments.interval)),
+                    self.timer = match (new_status, self.config.interval()) {
+                        (NodeStatus::Disoriented, _) | (_, None) => None,
+                        (_, Some(i)) => Some(futures_timer::Delay::new(i)),
                     };
                 }
 
                 crate::Event::Install { .. } | crate::Event::Apply { .. } => {
-                    self.timer = Some(futures_timer::Delay::new(self.arguments.interval));
+                    self.timer = self.config.interval().map(futures_timer::Delay::new);
                 }
 
                 _ => {}
@@ -289,7 +257,7 @@ where
 
             self.ensure_leadership();
 
-            self.timer = Some(futures_timer::Delay::new(self.arguments.interval));
+            self.timer = self.config.interval().map(futures_timer::Delay::new);
         }
 
         let _ = self.appends.poll_next_unpin(cx);
@@ -358,10 +326,10 @@ where
     }
 }
 
-impl<N, F> NodeImpl for EnsureLeadership<N, F>
+impl<N, C> NodeImpl for EnsureLeadership<N, C>
 where
     N: NodeImpl + 'static,
-    F: Fn() -> LogEntryOf<N> + 'static,
+    C: Config<Node = N>,
 {
     fn append_impl<A, P, R>(
         &self,

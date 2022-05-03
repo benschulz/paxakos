@@ -174,10 +174,7 @@ fn spawn_node(
                 ))
                 .send_heartbeats(HeartbeatConfig::new())
                 .track_leadership()
-                .ensure_leadership(|c| {
-                    c.with_entry(|| CalcOp::Div(1.0, Uuid::new_v4()))
-                        .every(Duration::from_millis(500))
-                })
+                .ensure_leadership(EnsureLeadershipConfig::new())
                 .spawn_in(()),
         )
         .unwrap();
@@ -306,6 +303,47 @@ where
 
     fn interval(&self) -> Option<Duration> {
         Some(Duration::from_millis(200))
+    }
+
+    fn retry_policy(&self) -> Self::RetryPolicy {
+        DoNotRetry::new()
+    }
+}
+
+struct EnsureLeadershipConfig<N> {
+    node_id: usize,
+
+    _p: std::marker::PhantomData<N>,
+}
+
+impl<N> EnsureLeadershipConfig<N> {
+    fn new() -> Self {
+        Self {
+            node_id: usize::MAX,
+
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<N> paxakos::leadership::ensure::Config for EnsureLeadershipConfig<N>
+where
+    N: Node<Invocation = CalcInvocation>,
+{
+    type Node = N;
+    type Applicable = CalcOp;
+    type RetryPolicy = DoNotRetry<CalcInvocation>;
+
+    fn init(&mut self, node: &Self::Node) {
+        self.node_id = node.id();
+    }
+
+    fn interval(&self) -> Option<Duration> {
+        Some(Duration::from_millis(500))
+    }
+
+    fn new_leadership_taker(&self) -> Self::Applicable {
+        CalcOp::Div(1.0, Uuid::new_v4())
     }
 
     fn retry_policy(&self) -> Self::RetryPolicy {
