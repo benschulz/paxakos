@@ -244,7 +244,9 @@ where
     /// Current state or `None` iff the node is `Disoriented`.
     state: Option<StateOf<I>>,
 
+    concurrency_bound: RoundNumOf<I>,
     round_num_requests: VecDeque<RoundNumRequest<I>>,
+    available_round_nums: BTreeSet<RoundNumOf<I>>,
     acquired_round_nums: HashSet<RoundNumOf<I>>,
 
     pending_commits: BTreeMap<RoundNumOf<I>, PendingCommit<I>>,
@@ -362,7 +364,9 @@ where
                 state_round,
                 state: state.as_deref().map(|s| s.thaw()),
 
+                concurrency_bound: Zero::zero(),
                 round_num_requests: VecDeque::new(),
+                available_round_nums: BTreeSet::new(),
                 acquired_round_nums: HashSet::new(),
 
                 greatest_observed_round_num,
@@ -439,6 +443,10 @@ where
                 Ok(Some(req)) => match req {
                     Release::RoundNum(n) => {
                         self.acquired_round_nums.remove(&n);
+
+                        if !self.is_round_num_unavailable(n) {
+                            self.available_round_nums.insert(n);
+                        }
                     }
                 },
                 Ok(None) => unreachable!(),
@@ -447,26 +455,39 @@ where
         }
     }
 
+    fn is_round_num_unavailable(&self, round_num: RoundNumOf<I>) -> bool {
+        round_num <= self.state_round
+            || round_num > self.concurrency_bound
+            || self.acquired_round_nums.contains(&round_num)
+            || self.pending_commits.contains_key(&round_num)
+    }
+
     fn hand_out_round_nums(&mut self) {
         let round = self.state_round;
 
         let requests = &mut self.round_num_requests;
+        let availables = &mut self.available_round_nums;
         let acquireds = &mut self.acquired_round_nums;
-        let deferreds = &self.pending_commits;
         let sender = &self.release_sender;
 
         match self.state.as_ref() {
             Some(state) => {
-                let concurrency_bound = into_round_num(crate::state::concurrency_of(state));
-                let concurrency_range = round + One::one()..=round + concurrency_bound;
+                let concurrency = into_round_num(crate::state::concurrency_of(state));
+                let concurrency_bound = round + concurrency;
 
-                let mut available = NumberIter::from_range(concurrency_range)
-                    .filter(|r| !acquireds.contains(r) && !deferreds.contains_key(r))
-                    .collect::<BTreeSet<_>>();
+                if self.concurrency_bound < concurrency_bound {
+                    for r in NumberIter::from_range(
+                        (self.concurrency_bound + One::one())..=concurrency_bound,
+                    ) {
+                        availables.insert(r);
+                    }
+
+                    self.concurrency_bound = concurrency_bound;
+                }
 
                 let mut ix = 0;
 
-                while let Some(next_available) = available.iter().next() && ix < requests.len() {
+                while let Some(next_available) = availables.iter().next() && ix < requests.len() {
                     let (range, _) = &requests[ix];
 
                     // Have rounds up to and including `range.end()` have already converged?
@@ -479,7 +500,7 @@ where
                         continue;
                     }
 
-                    if let Some(round_num) = available.range(range.clone()).next().copied() {
+                    if let Some(round_num) = availables.range(range.clone()).next().copied() {
                         acquireds.insert(round_num);
 
                         let (_, send) = requests.remove(ix).unwrap();
@@ -488,7 +509,7 @@ where
                             sender: sender.clone(),
                         })));
 
-                        available.remove(&round_num);
+                        availables.remove(&round_num);
                         continue;
                     }
 
@@ -1251,6 +1272,7 @@ where
         debug!("Queuing entry {:?} for round {}.", entry, round_num);
         self.pending_commits
             .insert(round_num, (gap_time, coord_num, entry));
+        self.available_round_nums.remove(&round_num);
 
         if let Participation::Passive {
             observed_proposals, ..
