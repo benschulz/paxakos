@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>playground — paxakos</title>
+    <style type="text/css">
+      * {
+        margin: 0;
+        box-sizing: border-box;
+        padding: 0;
+        font-family: sans-serif;
+      }
+
+      html {
+        font-size: 16px /* 1rem */;
+      }
+
+      body {
+        display: flex;
+        margin: 0;
+        overflow-x: hidden;
+        background: black;
+        flex-direction: column;
+        color: white;
+      }
+
+      h1 {
+        font-size: 2rem;
+        font-weight: bold;
+      }
+
+      h2 {
+        font-size: 1.625rem;
+        font-weight: bold;
+      }
+
+      h3 {
+        font-size: 1.25rem;
+        font-weight: bold;
+      }
+
+      form {
+        margin: 1rem 0;
+        display: grid;
+        grid-template-columns: max-content minmax(15rem, max-content);
+        gap: 1rem;
+        justify-items: left;
+      }
+
+      fieldset {
+        display: contents;
+      }
+
+      legend {
+        grid-column: 1/-1;
+      }
+
+      fieldset:not(:first-child) > legend {
+        margin-top: 1rem;
+      }
+
+      button,
+      input {
+        height: 1.625rem;
+      }
+
+      button,
+      input[type='submit'] {
+        padding: 0 1rem;
+      }
+
+      input[type='number'] {
+        text-align: right;
+      }
+
+      label,
+      span {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      dl {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(1rem, max-content) minmax(8rem, max-content));
+        gap: 0.5rem 0.5rem;
+      }
+
+      dt {
+        justify-self: end;
+      }
+
+      dt::after {
+        content: ':';
+      }
+
+      li {
+        margin: 0 0 0 2rem;
+        height: 2rem;
+        line-height: 2rem;
+      }
+
+      .visualization {
+        position: relative;
+      }
+
+      .visualization__layers {
+        position: relative;
+        display: block;
+        overflow: hidden;
+        margin: auto;
+        width: min(95vw, 60vh);
+        height: min(95vw, 60vh);
+      }
+
+      .visualization__node-layer {
+        position: absolute;
+        transform: rotate(calc(var(--n) * 360deg / var(--node-count)));
+        top: 10%;
+        left: 10%;
+        right: 10%;
+        bottom: 10%;
+        pointer-events: none;
+
+        transition: 0.5s;
+        transition-property: transform;
+      }
+
+      .visualization__node {
+        position: absolute;
+        box-sizing: border-box;
+        transform: rotate(calc(var(--n) * -360deg / var(--node-count)));
+        left: 43%;
+        width: 14%;
+        height: 14%;
+        border-radius: 50%;
+
+        transition: 0.5s;
+        transition-property: transform;
+      }
+
+      .node {
+        display: flex;
+        background: grey;
+        justify-content: center;
+        align-items: center;
+        color: #000;
+        pointer-events: auto;
+        cursor: pointer;
+      }
+
+      .node--active {
+        background: deepskyblue;
+      }
+
+      .node--terminated {
+        background: rgb(153, 69, 69);
+      }
+
+      .node[data-leader]::after {
+        position: absolute;
+        display: block;
+        box-sizing: border-box;
+        top: -15%;
+        right: -15%;
+        width: 30%;
+        height: 30%;
+        border-radius: 50%;
+        background: deepskyblue;
+        color: #000;
+        padding: calc(15% - 0.5em);
+        line-height: 1em;
+        text-align: center;
+        font-size: 10px;
+        content: attr(data-leader);
+      }
+
+      .visualization__link-layer {
+        position: absolute;
+        transform: rotate(calc(var(--n) * 360deg / var(--node-count)));
+        top: 15.6%;
+        left: 15.6%;
+        right: 15.6%;
+        bottom: 15.6%;
+
+        transition: 0.5s;
+        transition-property: transform;
+      }
+
+      .visualization__link {
+        position: absolute;
+        display: block;
+        transform-origin: top;
+        transform: translate(-0.5px) rotate(var(--rot));
+        left: 50%;
+        width: 1px;
+        height: var(--h);
+
+        transition: 0.5s;
+        transition-property: transform top;
+      }
+
+      .link::after {
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: white;
+        opacity: var(--usage);
+        content: '';
+      }
+
+      .visualization__packet {
+        position: absolute;
+        display: block;
+        z-index: 2;
+        top: 0;
+        margin: -3.5px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: deepskyblue;
+      }
+
+      .visualization__packet--in-transmission {
+        top: 100%;
+      }
+
+      .visualization__packet--dropping {
+        width: 0;
+        height: 0;
+        opacity: 0;
+      }
+
+      .visualization__packet--positive {
+        background: rgb(69, 153, 107);
+      }
+
+      .visualization__packet--negative {
+        background: rgb(153, 69, 69);
+      }
+
+      .node__action {
+        position: absolute;
+        display: flex;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        align-items: center;
+        justify-content: center;
+        animation: pulse 1s 1;
+        opacity: 0;
+        font-size: 1.5em;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 0;
+          transform: translateY(0);
+        }
+
+        50% {
+          opacity: 1;
+        }
+
+        100% {
+          opacity: 0;
+          transform: translateY(-40%);
+        }
+      }
+
+      .node__action--heartbeat::after {
+        content: '❤️';
+      }
+
+      .node__action--fill::after {
+        content: '✨';
+      }
+
+      .node__action--ensure-leadership::after {
+        content: '👑';
+      }
+
+      .timeline {
+        transition: 0.5s;
+        position: relative;
+        transform-origin: left;
+        transform: scale(var(--scale)) translateX(var(--translateX));
+        margin-top: var(--height);
+        height: 15px;
+      }
+
+      .timeline__node {
+        transition: 0.4s;
+        position: absolute;
+        display: flex;
+        left: calc(var(--round) * 15px - (100px - 15px) / 2);
+        width: 100px;
+        height: var(--height);
+        bottom: 15px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .timeline__node::before {
+        content: attr(data-name);
+      }
+
+      .timeline__node::after {
+        content: '↓';
+      }
+
+      .timeline__rounds {
+        box-sizing: border-box;
+        width: 100000%;
+        height: 15px;
+        border: 1px solid white;
+        border-left: none;
+        border-right: none;
+        background-image: linear-gradient(90deg, white 0px, white 1px, black 1px, black 15px);
+        background-size: 15px 15px;
+      }
+
+      .timeline__concurrency {
+        position: absolute;
+        display: block;
+        left: var(--left);
+        bottom: 0;
+        width: var(--width);
+        height: 15px;
+        background: rgba(0, 191, 255, 0.3);
+      }
+
+      .timeline__concurrency::before {
+        transform: rotate(-75deg);
+        transform-origin: top left;
+        clip-path: polygon(0 0, 100% 0, 100% 100%, /*height/tan(75deg)*/ 8.57437415779px 100%);
+        position: absolute;
+        display: inline-block;
+        background: rgba(0, 191, 255, 0.3);
+        height: 32px;
+        line-height: 32px;
+        padding: 0 0.5em 0 1.5em;
+        content: 'Concurrency';
+      }
+
+      .timeline__action {
+        position: absolute;
+        display: flex;
+        top: 0.5px;
+        left: calc(var(--round) * 15px + 0.5px);
+        width: 15px;
+        height: 14px;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+      }
+
+      .timeline__action--heartbeat::after {
+        content: '❤️';
+      }
+
+      .timeline__action--fill::after {
+        content: '✨';
+      }
+
+      .timeline__action--ensure-leadership::after {
+        content: '👑';
+      }
+
+      .timeline__action--reconfigure::after {
+        content: '🔧';
+      }
+
+      .timeline__current-round {
+        transition: 0.4s;
+        position: absolute;
+        display: flex;
+        left: calc(var(--round) * 15px - (100px - 15px) / 2);
+        width: 100px;
+        height: 2.5em;
+        top: 15px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .timeline__current-round::before {
+        content: '↑';
+      }
+
+      .timeline__current-round::after {
+        counter-reset: round var(--round);
+        content: 'R' counter(round);
+      }
+
+      h1,
+      .control {
+        margin: 0 1rem;
+      }
+
+      .control__navigation {
+        display: flex;
+        margin: 0 0 2rem;
+        align-items: baseline;
+        gap: 1rem;
+      }
+
+      .control__navigation-item {
+        color: white;
+        text-decoration: none;
+      }
+
+      .control__navigation-item--active {
+        text-decoration: underline;
+      }
+
+      .node-selector {
+        display: inline-flex;
+        width: 2rem;
+        height: 2rem;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .node-selector__checkbox {
+        -webkit-appearance: none;
+        position: absolute;
+        z-index: -1;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 1rem;
+        background: hsl(195, 100%, 25%);
+        cursor: pointer;
+      }
+
+      .node-selector__checkbox:checked {
+        background: deepskyblue;
+      }
+
+      .link-control {
+        display: flex;
+        margin: 3rem 1rem;
+        align-items: center;
+      }
+
+      .link-control:first-child {
+        margin-top: 1rem;
+      }
+
+      .link-control__node {
+        display: flex;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        background: deepskyblue;
+        align-items: center;
+        justify-content: center;
+        color: black;
+      }
+
+      .link-control__node::before {
+        content: attr(data-name);
+      }
+
+      .link-control__links {
+        flex: 1 1 auto;
+      }
+
+      .link-control__link {
+        position: relative;
+        display: flex;
+        justify-content: center;
+      }
+
+      .link-control__link--there {
+        margin-bottom: 8px;
+        border-bottom: 1px solid white;
+      }
+
+      .link-control__link--there::after {
+        position: absolute;
+        transform-origin: bottom right;
+        transform: rotate(-45deg);
+        right: 0;
+        bottom: -1px;
+        width: 5px;
+        height: 5px;
+        border-color: white;
+        border-style: solid;
+        border-width: 0 1px 1px 0;
+        content: '';
+      }
+
+      .link-control__link--back {
+        margin-top: 8px;
+        border-top: 1px solid white;
+      }
+
+      .link-control__link--back::before {
+        position: absolute;
+        transform-origin: top left;
+        transform: rotate(-45deg);
+        top: -1px;
+        left: 0;
+        width: 5px;
+        height: 5px;
+        border-color: white;
+        border-style: solid;
+        border-width: 1px 0 0 1px;
+        content: '';
+      }
+
+      .link-control__link > * {
+        flex: 0 0 auto;
+      }
+
+      .link-control__link > label {
+        margin: 0 5px 0 15px;
+      }
+
+      .link-control__link > input {
+        flex: 0 1 150px;
+        width: 0;
+      }
+
+      .setup {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: black;
+        padding: 32px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>Playground</h1>
+
+    <div id="visualization" class="visualization"></div>
+    <div id="controls" class="control"></div>
+
+    <div id="setup" class="setup"></div>
+
+    <template id="tpl-setup">
+      <h2>Setup</h2>
+
+      <form>
+        <label for="initial-node-count">Node Count</label>
+        <input id="initial-node-count" type="number" min="1" max="15" step="1" value="5" />
+
+        <label for="initial-concurrency">Concurrency</label>
+        <input id="initial-concurrency" type="number" min="1" max="100" step="1" value="10" />
+
+        <label for="initial-link-packet-loss">Packet Loss</label>
+        <span>
+          <input id="initial-link-packet-loss" type="range" min="0" max="1" step="0.005" value="0.025" />
+          <output for="initial-link-packet-loss"></output>
+        </span>
+
+        <span>Link Delay</span>
+        <div style="display: flex; flex-direction: column">
+          <div>
+            <label>
+              μ
+              <input id="initial-link-delay-mean" type="range" min="0" max="1000" step="5" value="300"
+            /></label>
+            <output for="initial-link-delay-mean"></output>
+          </div>
+
+          <div>
+            <label>
+              σ
+              <input id="initial-link-delay-std-dev" type="range" min="0" max="200" step="5" value="50"
+            /></label>
+            <output for="initial-link-delay-std-dev"></output>
+          </div>
+        </div>
+
+        <input id="go" type="submit" value="Go" />
+      </form>
+    </template>
+    <template id="tpl-status">
+      <dl>
+        <dt>Status</dt>
+        <dd id="status" class="node__status"></dd>
+
+        <dt>Round</dt>
+        <dd id="round" class="node__round"></dd>
+      </dl>
+
+      <div style="margin: 1rem 0">
+        <button id="shut-down">Shut Down</button>
+        <button id="shoot-down">Shoot Down</button>
+        <button id="take-snapshot">Take Snapshot</button>
+      </div>
+
+      <h3>Snapshots</h3>
+      <ul id="snapshots" class="snapshots"></ul>
+    </template>
+    <template id="tpl-snapshot">
+      <li>
+        Round <span id="round"></span>, taken by node <span id="node"></span>
+        <button id="recover">Recover</button>
+        <button id="resume" disabled>Resume</button>
+      </li>
+    </template>
+    <template id="tpl-dummy-appends">
+      <form>
+        <label for="action-count">Number of Actions</label>
+        <input id="action-count" type="number" min="1" max="1000" step="1" value="10" />
+
+        <label for="min-round">From Round</label>
+        <input id="min-round" type="number" min="1" max="1000000000" step="1" value="1" />
+
+        <label for="max-round">Until Round</label>
+        <input id="max-round" type="number" min="1" max="1000000000" step="1" value="1000000000" />
+
+        <input id="queue-appends" type="submit" value="Queue Appends" />
+      </form>
+    </template>
+    <template id="tpl-reconfiguration">
+      <form>
+        <label>Nodes</label>
+        <div id="nodes" style="display: flex; gap: 0.375rem; flex-wrap: wrap"></div>
+
+        <label for="new-concurrency">Concurrency</label>
+        <input id="new-concurrency" type="number" min="1" max="100" step="1" />
+
+        <fieldset>
+          <legend><h3>Heartbeat</h3></legend>
+
+          <label for="new-heartbeat-interval">Interval</label>
+          <span>
+            <input id="new-heartbeat-interval" type="range" min="0" max="30000" step="500" />
+            <output for="new-heartbeat-interval"></output>
+          </span>
+
+          <label for="new-leader-heartbeat-interval">Leader Interval</label>
+          <span>
+            <input id="new-leader-heartbeat-interval" type="range" min="0" max="30000" step="500" />
+            <output for="new-leader-heartbeat-interval"></output>
+          </span>
+        </fieldset>
+
+        <fieldset>
+          <legend><h3>Ensure Leadership</h3></legend>
+
+          <label for="new-ensure-leadership-interval">Interval</label>
+          <span>
+            <input id="new-ensure-leadership-interval" type="range" min="0" max="30000" step="500" />
+            <output for="new-ensure-leadership-interval"></output>
+          </span>
+        </fieldset>
+
+        <fieldset>
+          <legend><h3>Autofill</h3></legend>
+
+          <label for="new-autofill-delay">Delay</label>
+          <span>
+            <input id="new-autofill-delay" type="range" min="0" max="5000" step="250" />
+            <output for="new-autofill-delay"></output>
+          </span>
+
+          <label for="new-autofill-batch-size">Batch Size</label>
+          <input id="new-autofill-batch-size" type="number" min="1" max="100" step="1" />
+        </fieldset>
+
+        <input id="reconfigure" type="submit" value="Reconfigure" />
+      </form>
+    </template>
+    <template id="tpl-node">
+      <label id="node" class="node-selector">
+        <input id="checkbox" type="checkbox" class="node-selector__checkbox" />
+        <span id="name"></span>
+      </label>
+    </template>
+    <template id="tpl-links">
+      <h3>Packet Loss Rate / Delay</h3>
+      <div id="links"></div>
+    </template>
+    <template id="tpl-link">
+      <div class="link-control">
+        <div id="from-node" class="link-control__node"></div>
+
+        <div class="link-control__links">
+          <div id="there" class="link-control__link link-control__link--there"></div>
+          <div id="back" class="link-control__link link-control__link--back"></div>
+        </div>
+
+        <div id="to-node" class="link-control__node"></div>
+      </div>
+    </template>
+    <template id="tpl-link-controls">
+      <input id="packet-loss" class="packet-loss" type="range" min="0" max="1" step="0.005" />
+      <output for="packet-loss" class="packet-loss-output" style="min-width: 70px; text-align: right"></output>
+
+      <span style="margin: 0px 20px 0px 35px">/</span>
+
+      <label>μ</label>
+      <input id="delay-mean" class="delay-mean" type="range" min="0" max="1000" step="5" />
+      <output for="delay-mean" class="delay-mean-output" style="min-width: 70px; text-align: right"></output>
+
+      <label>σ</label>
+      <input id="delay-std-dev" class="delay-std-dev" type="range" min="0" max="200" step="5" />
+      <output for="delay-std-dev" class="delay-std-dev-output" style="min-width: 70px; text-align: right"></output>
+    </template>
+  </body>
+  <script type="module">
+    import init, { Cluster, ClusterBuilder, Network, Nodes } from '../pkg/playground_wasm.js';
+
+    const ROUND_WIDTH = 15;
+
+    (async () => {
+      await init();
+
+      const setup = document.querySelector('#setup');
+      const {
+        initialNodeCount,
+        initialConcurrency,
+        initialLinkPacketLoss,
+        initialLinkDelayMean,
+        initialLinkDelayStdDev,
+        go,
+      } = instantiateTemplate('tpl-setup', (e) => setup.appendChild(e));
+
+      initialLinkPacketLoss.bindOutput(renderPercentage);
+      initialLinkDelayMean.bindOutput(renderQuantity('ms'));
+      initialLinkDelayStdDev.bindOutput(renderQuantity('ms'));
+
+      go.addEventListener('click', () => {
+        setup.remove();
+        window.location.hash = '';
+
+        setupCluster(
+          initialNodeCount.valueAsNumber,
+          initialConcurrency.valueAsNumber,
+          initialLinkPacketLoss.valueAsNumber,
+          initialLinkDelayMean.valueAsNumber,
+          initialLinkDelayStdDev.valueAsNumber,
+        );
+      });
+
+      function setupCluster(
+        initialNodeCount,
+        initialConcurrency,
+        initialLinkPacketLoss,
+        initialLinkDelayMean,
+        initialLinkDelayStdDev,
+      ) {
+        const nodes = [];
+        const nodesById = {};
+        const links = [];
+
+        const snapshots = [];
+        const actions = {
+          heartbeat: {},
+          fill: {},
+          'ensure-leadership': {},
+          reconfigure: {},
+        };
+
+        window.onresize = updateRounds;
+
+        let currentConcurrency = initialConcurrency;
+        let currentConfiguration = null;
+
+        let minRound = 0;
+        let maxRound = 0;
+
+        const newPackets = [];
+        const appendedPackets = [];
+        let totalPackets = 0;
+        let inFlightPackets = 0;
+
+        let animationReq = requestAnimationFrame(animate);
+        let doUpdateGraphLayout = false;
+        let doUpdateRounds = false;
+        let doUpdateBindings = false;
+
+        const visualization = document.querySelector('.visualization');
+
+        const timeline = visualization.appendChild(
+          createElement('div', {
+            classes: ['visualization__timeline', 'timeline'],
+            cssProps: { height: '1.5em' },
+          }),
+        );
+
+        const rounds = timeline.appendChild(createElement('div', { classes: ['timeline__rounds'] }));
+
+        const concurrencyWindow = timeline.appendChild(
+          createElement('div', {
+            classes: ['timeline__concurrency'],
+            cssProps: { width: `${initialConcurrency * ROUND_WIDTH}px` },
+          }),
+        );
+
+        const currentRound = timeline.appendChild(
+          createElement('div', {
+            classes: ['timeline__current-round'],
+            cssProps: { round: 0 },
+          }),
+        );
+
+        const visualizationLayers = visualization.appendChild(
+          createElement('div', { classes: ['visualization__layers'] }),
+        );
+
+        const controls = document.querySelector('#controls');
+
+        const builder = new ClusterBuilder({
+          apply(nodeId, round, action, newConcurrency) {
+            const node = nodesById[nodeId];
+            const oldRound = node.round;
+
+            node.round = round;
+
+            if (round > maxRound) {
+              maxRound = round;
+              currentConcurrency = newConcurrency;
+              concurrencyWindow.style.setProperty('--width', `${currentConcurrency * ROUND_WIDTH}px`);
+            }
+
+            if (oldRound === minRound) {
+              minRound = nodes.map((n) => n.round).reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY);
+            }
+
+            handleTimelineAction(nodeId, round, action);
+
+            updateRounds();
+            updateBindings();
+          },
+
+          autofill(nodeId) {
+            showNodeAction(nodeId, 'fill');
+          },
+
+          commit(nodeId, round, action) {
+            handleTimelineAction(nodeId, round, action);
+          },
+
+          e2eDelayUpdated(from, to, mean, stdDev) {
+            links[from][to].delay.mean = mean;
+            links[from][to].delay.stdDev = stdDev;
+
+            document.querySelectorAll(`.delay-mean.from-${from}.to-${to}`).forEach((i) => (i.value = mean));
+            document.querySelectorAll(`.delay-std-dev.from-${from}.to-${to}`).forEach((i) => (i.value = stdDev));
+
+            document
+              .querySelectorAll(`.delay-mean-output.from-${from}.to-${to}`)
+              .forEach((d) => (d.textContent = `${mean.toLocaleString()} ms`));
+            document
+              .querySelectorAll(`.delay-std-dev-output.from-${from}.to-${to}`)
+              .forEach((d) => (d.textContent = `${stdDev.toLocaleString()} ms`));
+          },
+
+          ensureLeadership(nodeId) {
+            showNodeAction(nodeId, 'ensure-leadership');
+          },
+
+          heartbeat(nodeId) {
+            showNodeAction(nodeId, 'heartbeat');
+          },
+
+          newLeader(nodeId, leaderId) {
+            const node = nodesById[nodeId];
+
+            if (typeof leaderId === 'number') {
+              const leaderNode = nodesById[leaderId];
+              node.element.dataset.leader = leaderNode.name;
+            } else {
+              delete node.element.dataset.leader;
+            }
+          },
+
+          newSnapshot(snapshot) {
+            const ix = snapshots.findIndex((s) => s.round <= snapshot.round);
+            const index = ix >= 0 ? ix : snapshots.length;
+            snapshots.splice(index, 0, snapshot);
+
+            document.querySelectorAll('.snapshots').forEach((el) => {
+              const hash = window.location.hash.substring(1);
+              const nodeId = /^\/node-(\d+)(\/|$)/i.exec(hash)[1];
+              instantiateSnapshotTemplate(nodesById[nodeId], el, index, snapshot);
+            });
+          },
+
+          packet(from, to, delay, dropped, response) {
+            ++links[from][to].packets;
+            ++totalPackets;
+
+            animatePacket({
+              from,
+              to,
+              delay,
+              dropped,
+              response,
+            });
+          },
+
+          packetLossUpdated(from, to, packetLoss) {
+            links[from][to].packetLoss = packetLoss;
+
+            document.querySelectorAll(`.packet-loss.from-${from}.to-${to}`).forEach((i) => (i.value = packetLoss));
+
+            document
+              .querySelectorAll(`.packet-loss-output.from-${from}.to-${to}`)
+              .forEach((d) => (d.textContent = `${(100 * packetLoss).toLocaleString()} %`));
+          },
+
+          participationChanged(nodeId, active) {
+            const node = nodesById[nodeId];
+
+            node.element.classList.toggle('node--active', active);
+          },
+
+          reconfigured(round, newConfiguration) {
+            if (!currentConfiguration || round === maxRound) {
+              currentConfiguration = newConfiguration;
+            }
+          },
+
+          statusChanged(nodeId, newStatus) {
+            const node = nodesById[nodeId];
+            node.status = newStatus;
+
+            updateBindings();
+          },
+        });
+
+        function showNodeAction(nodeId, action) {
+          const node = visualizationLayers.querySelector(`.node[data-id="${nodeId}"]`);
+
+          const element = createElement('div', {
+            classes: ['node__action', `node__action--${action}`],
+          });
+
+          requestAnimationFrame(() => {
+            node.appendChild(element);
+
+            setTimeout(() => element.remove(), 1500);
+          });
+        }
+
+        function handleTimelineAction(nodeId, round, action) {
+          // TODO have it fade in as individual nodes commit/apply
+          if (actions[action] && !actions[action][round]) {
+            actions[action][round] = rounds.appendChild(
+              // TODO lazily create them in animate (that lets us remove those out of sight)
+              createElement('div', {
+                classes: ['timeline__action', `timeline__action--${action}`],
+                cssProps: { round },
+              }),
+            );
+          }
+        }
+
+        builder.setDefaultPacketLoss(initialLinkPacketLoss);
+        builder.setDefaultE2eDelay(initialLinkDelayMean, initialLinkDelayStdDev);
+        builder.setInitialConcurrency(initialConcurrency);
+
+        const cluster = builder.build();
+
+        for (let i = 0; i < initialNodeCount; ++i) {
+          addNode(cluster.addNode());
+        }
+
+        nodes.forEach((n) => {
+          n.handle = cluster.startNode(n.identity);
+        });
+
+        function addNode(identity) {
+          updateGraphLayout();
+
+          const id = identity.id();
+          const n = nodes.length;
+          const name = `${n + 1}`;
+          const layer = visualizationLayers.appendChild(
+            createElement('div', {
+              classes: ['visualization__node-layer'],
+              cssProps: { n },
+            }),
+          );
+          const element = layer.appendChild(
+            createElement('a', {
+              classes: ['visualization__node', 'node'],
+              data: { id, name },
+              props: { href: `#/node-${id}` },
+              text: name,
+            }),
+          );
+          const linkLayer = visualizationLayers.insertBefore(
+            createElement('div', {
+              classes: ['visualization__link-layer'],
+              cssProps: { n },
+            }),
+            visualizationLayers.firstChild,
+          );
+
+          const timelineNode = timeline.appendChild(
+            createElement('div', {
+              data: { id, name },
+              classes: ['timeline__node'],
+            }),
+          );
+          timeline.style.setProperty('--height', `${n + 2}.5em`);
+
+          const node = {
+            id,
+            identity,
+            element,
+            layer,
+            linkLayer,
+            name,
+            round: 0,
+            status: 'Unknown',
+            handle: null,
+          };
+
+          nodes.push(node);
+          nodesById[id] = node;
+          links.push([]);
+
+          for (let i = 0; i < n; ++i) {
+            addLink(i, n);
+            addLink(n, i);
+          }
+
+          return node;
+        }
+
+        function addLink(from, to) {
+          const layer = nodes[from].linkLayer;
+          const element = layer.appendChild(
+            createElement('div', {
+              data: { from, to },
+              classes: ['visualization__link', 'link', `from-${from}`, `to-${to}`],
+              cssProps: { usage: 0.2 },
+            }),
+          );
+
+          links[from][to] = {
+            from,
+            to,
+            element,
+            delay: {
+              mean: initialLinkDelayMean,
+              stdDev: initialLinkDelayStdDev,
+            },
+            packetLoss: initialLinkPacketLoss,
+            packets: 0,
+          };
+        }
+
+        window.addEventListener('hashchange', (e) => {
+          const newHash = e.newURL.substring(e.newURL.indexOf('#') + 1);
+
+          const routes = [
+            [/^\/?$/i, routeToOverview],
+            [/^\/node-(\d+)\/?$/i, routeToNodeStatus],
+            [/^\/node-(\d+)\/status\/?$/i, routeToNodeStatus],
+            [/^\/node-(\d+)\/dummy-appends\/?$/i, routeToNodeDummyAppends],
+            [/^\/node-(\d+)\/reconfigure\/?$/i, routeToNodeReconfiguration],
+            [/^\/node-(\d+)\/links\/?$/i, routeToNodeLinks],
+          ];
+          const match = routes.map((r) => [r[0].exec(newHash), r[1]]).filter((r) => !!r[0])[0];
+          if (match) {
+            const [, ...args] = match[0];
+            const newState = match[1](...args);
+          }
+        });
+
+        function routeToOverview() {
+          destroyControl();
+        }
+
+        function routeToNodeStatus(nodeId) {
+          const node = nodes.find((n) => n.id == nodeId);
+
+          destroyControl();
+          setupNodeControlNavigation(node);
+
+          const {
+            status,
+            round,
+            shutDown,
+            shootDown,
+            takeSnapshot,
+            snapshots: snapshotsEl,
+          } = instantiateTemplate('tpl-status', (e) => controls.appendChild(e));
+
+          shutDown.bindDisabled(() => !node.handle);
+          shootDown.bindDisabled(() => !node.handle);
+          takeSnapshot.bindDisabled(() => !node.handle);
+
+          status.bindTextContent(() => node.status);
+          round.bindTextContent(() => node.round);
+
+          shutDown.addEventListener('click', () => {
+            node.handle.shutDown();
+            node.handle = null;
+          });
+          shootDown.addEventListener('click', () => {
+            node.handle.crash();
+            node.handle = null;
+          });
+          takeSnapshot.addEventListener('click', () => node.handle.takeSnapshot());
+
+          snapshots.forEach((s, i) => {
+            instantiateSnapshotTemplate(node, snapshotsEl.element, i, s);
+          });
+        }
+
+        function instantiateSnapshotTemplate(node, snapshotsEl, index, snapshot) {
+          const {
+            round,
+            node: nodeEl,
+            recover,
+            resume,
+          } = instantiateTemplate('tpl-snapshot', (e) => snapshotsEl.insertBefore(e, snapshotsEl.children[index]));
+
+          nodeEl.textContent = nodesById[snapshot.nodeId].name;
+          round.textContent = snapshot.round;
+
+          recover.bindDisabled(() => !!node.handle);
+          if (node.id === snapshot.nodeId && node.round == snapshot.round) {
+            resume.bindDisabled(() => !!node.handle || !snapshot.resumable);
+          }
+
+          recover.addEventListener('click', () => {
+            node.handle = cluster.recoverNode(node.identity, snapshot);
+            updateBindings();
+          });
+          resume.addEventListener('click', () => {
+            node.handle = cluster.resumeNode(node.identity, snapshot);
+            updateBindings();
+          });
+        }
+
+        function routeToNodeDummyAppends(nodeId) {
+          const node = nodes.find((n) => n.id == nodeId);
+
+          destroyControl();
+          setupNodeControlNavigation(node);
+
+          const { queueAppends, minRound, maxRound, actionCount } = instantiateTemplate('tpl-dummy-appends', (e) =>
+            controls.appendChild(e),
+          );
+
+          queueAppends.bindDisabled(() => !node.handle);
+
+          queueAppends.addEventListener('click', () => {
+            node.handle.queueAppends(
+              minRound.valueAsNumber || 0,
+              maxRound.valueAsNumber || 1000000000,
+              actionCount.valueAsNumber || 1,
+            );
+          });
+        }
+
+        function routeToNodeReconfiguration(nodeId) {
+          const node = nodes.find((n) => n.id == nodeId);
+
+          destroyControl();
+          setupNodeControlNavigation(node);
+
+          const {
+            nodes: nodesEl,
+            newConcurrency,
+            newHeartbeatInterval,
+            newLeaderHeartbeatInterval,
+            newEnsureLeadershipInterval,
+            newAutofillDelay,
+            newAutofillBatchSize,
+            reconfigure,
+          } = instantiateTemplate('tpl-reconfiguration', (e) => controls.appendChild(e));
+
+          nodes.forEach((n) => {
+            const { name, checkbox } = instantiateTemplate('tpl-node', (e) => nodesEl.appendChild(e));
+
+            name.textContent = n.name;
+            checkbox.checked = currentConfiguration.nodes.indexOf(n.id) >= 0;
+            checkbox.dataset.id = n.id;
+          });
+
+          plusNode();
+
+          function plusNode() {
+            const plus = instantiateTemplate('tpl-node', (e) => nodesEl.appendChild(e));
+
+            const { node, name, checkbox } = plus;
+            name.textContent = '+';
+            checkbox.addEventListener('change', () => {
+              if (checkbox.checked) {
+                plusNode();
+              } else {
+                node.remove();
+              }
+            });
+          }
+
+          newConcurrency.valueAsNumber = currentConfiguration.concurrency;
+          newHeartbeatInterval.valueAsNumber = currentConfiguration.heartbeatIntervalMs;
+          newLeaderHeartbeatInterval.valueAsNumber = currentConfiguration.leaderHeartbeatIntervalMs;
+          newEnsureLeadershipInterval.valueAsNumber = currentConfiguration.ensureLeadershipIntervalMs;
+          newAutofillDelay.valueAsNumber = currentConfiguration.autofillDelayMs;
+          newAutofillBatchSize.valueAsNumber = currentConfiguration.autofillBatchSize;
+
+          newHeartbeatInterval.bindOutput(renderZeroAs('disabled').else(renderQuantity('ms')));
+          newLeaderHeartbeatInterval.bindOutput(renderZeroAs('disabled').else(renderQuantity('ms')));
+          newEnsureLeadershipInterval.bindOutput(renderZeroAs('disabled').else(renderQuantity('ms')));
+          newAutofillDelay.bindOutput(renderZeroAs('disabled').else(renderQuantity('ms')));
+
+          reconfigure.bindDisabled(() => !node.handle);
+
+          reconfigure.addEventListener('click', () => {
+            const selectedNodes = Array.from(nodesEl.querySelectorAll('input:checked'));
+            const existingNodes = selectedNodes.map((n) => n.dataset.id).filter((id) => !!id);
+            const targetCluster = existingNodes.slice();
+
+            for (let i = 0; i < selectedNodes.length - existingNodes.length; ++i) {
+              targetCluster.push(addNode(cluster.addNode()).id);
+            }
+
+            node.handle.reconfigure({
+              nodes: targetCluster.reduce((ns, n) => ns.push(nodesById[n].identity), new Nodes()),
+              concurrency: newConcurrency.valueAsNumber || 1,
+              heartbeatIntervalMs: newHeartbeatInterval.valueAsNumber || null,
+              leaderHeartbeatIntervalMs: newLeaderHeartbeatInterval.valueAsNumber || null,
+              ensureLeadershipIntervalMs: newEnsureLeadershipInterval.valueAsNumber || null,
+              autofillDelayMs: newAutofillDelay.valueAsNumber || null,
+              autofillBatchSize: newAutofillBatchSize.valueAsNumber || 1,
+            });
+          });
+        }
+
+        function routeToNodeLinks(nodeId) {
+          const node = nodes.find((n) => n.id == nodeId);
+
+          destroyControl();
+          setupNodeControlNavigation(node);
+
+          const { links: linksEl } = instantiateTemplate('tpl-links', (e) => controls.appendChild(e));
+
+          const otherNodes = nodes.filter((n) => n !== node);
+          instantiateLink(
+            '*',
+            otherNodes.map((n) => n.id),
+          );
+          otherNodes.forEach((n) => instantiateLink(n.name, [n.id]));
+
+          function instantiateLink(otherName, to) {
+            const { fromNode, there, back, toNode } = instantiateTemplate('tpl-link', (e) => linksEl.appendChild(e));
+
+            fromNode.dataset.name = node.name;
+            toNode.dataset.name = otherName;
+
+            instantiateLinkControls(there.element, [node.id], to);
+            instantiateLinkControls(back.element, to, [node.id]);
+          }
+
+          function instantiateLinkControls(el, from, to) {
+            const ls = from.flatMap((f) => to.flatMap((t) => links[f][t]));
+            const packetLossAvg = ls.map((l) => l.packetLoss).reduce((a, b) => a + b, 0) / ls.length;
+            const delayMeanAvg = ls.map((l) => l.delay.mean).reduce((a, b) => a + b, 0) / ls.length;
+            const delayStdDevAvg = ls.map((l) => l.delay.stdDev).reduce((a, b) => a + b, 0) / ls.length;
+
+            const { packetLoss, delayMean, delayStdDev } = instantiateTemplate('tpl-link-controls', (e) =>
+              el.appendChild(e),
+            );
+
+            [packetLoss, delayMean, delayStdDev].forEach((e) => {
+              const els = [e.element].concat(e.labels).concat(e.outputs);
+              els.forEach((el) => el.classList.add(`from-${from.join('+')}`, `to-${to.join('+')}`));
+            });
+
+            packetLoss.valueAsNumber = packetLossAvg;
+            packetLoss.bindOutput(renderPercentage);
+
+            packetLoss.addEventListener('change', (e) => {
+              const v = e.target.valueAsNumber;
+
+              ls.forEach((l) => {
+                l.packetLoss = v;
+                cluster.network.setPacketLoss(l.from, l.to, v);
+              });
+            });
+
+            delayMean.valueAsNumber = delayMeanAvg;
+            delayMean.bindOutput(renderQuantity('ms'));
+            delayMean.addEventListener(
+              'change',
+              updateDelay((l, v) => (l.delay.mean = v)),
+            );
+
+            delayStdDev.valueAsNumber = delayStdDevAvg;
+            delayStdDev.bindOutput(renderQuantity('ms'));
+            delayStdDev.addEventListener(
+              'change',
+              updateDelay((l, v) => (l.delay.stdDev = v)),
+            );
+
+            function updateDelay(updateLink) {
+              return (e) => {
+                const v = e.target.valueAsNumber;
+
+                ls.forEach((l) => {
+                  updateLink(l, v);
+
+                  cluster.network.setE2eDelay(l.from, l.to, l.delay.mean, l.delay.stdDev);
+                });
+              };
+            }
+          }
+        }
+
+        function destroyControl() {
+          controls.textContent = '';
+        }
+
+        function setupNodeControlNavigation(node) {
+          const controlNav = controls.appendChild(
+            createElement('nav', {
+              classes: ['control__navigation'],
+            }),
+          );
+
+          controlNav.appendChild(
+            createElement('h2', {
+              classes: ['control__heading'],
+              text: `Node ${node.name}`,
+            }),
+          );
+
+          controlNav.appendChild(
+            createElement('a', {
+              classes: ['control__navigation-item'],
+              props: { href: `#/node-${node.id}/status` },
+              text: 'Status',
+            }),
+          );
+
+          controlNav.appendChild(
+            createElement('a', {
+              classes: ['control__navigation-item'],
+              props: { href: `#/node-${node.id}/dummy-appends` },
+              text: 'Dummy Appends',
+            }),
+          );
+
+          controlNav.appendChild(
+            createElement('a', {
+              classes: ['control__navigation-item'],
+              props: { href: `#/node-${node.id}/reconfigure` },
+              text: 'Reconfigure',
+            }),
+          );
+
+          controlNav.appendChild(
+            createElement('a', {
+              classes: ['control__navigation-item'],
+              props: { href: `#/node-${node.id}/links` },
+              text: 'Links',
+            }),
+          );
+        }
+
+        function updateGraphLayout() {
+          doUpdateGraphLayout = true;
+
+          updateRounds();
+        }
+
+        function animatePacket(packet) {
+          newPackets.push(packet);
+
+          animationReq = animationReq || requestAnimationFrame(animate);
+        }
+
+        function updateRounds() {
+          doUpdateRounds = true;
+
+          animationReq = animationReq || requestAnimationFrame(animate);
+        }
+
+        const originalUpdateBindings = updateBindings;
+        updateBindings = () => {
+          doUpdateBindings = true;
+
+          animationReq = animationReq || requestAnimationFrame(animate);
+        };
+
+        function animate() {
+          animationReq = null;
+
+          while (appendedPackets.length) {
+            const { packet, dropped } = appendedPackets.pop();
+
+            packet.classList.add('visualization__packet--in-transmission');
+            packet.classList.toggle('visualization__packet--dropping', dropped);
+          }
+
+          if (newPackets.length) {
+            links.forEach((ls, from) => {
+              ls.forEach((l, to) => {
+                const relativeUsage = l.packets / totalPackets;
+                const normalizedUsage = Math.min(1, relativeUsage * (nodes.length - 1));
+                l.element.style.setProperty('--usage', normalizedUsage);
+              });
+            });
+
+            animationReq = animationReq || requestAnimationFrame(animate);
+          }
+
+          while (newPackets.length) {
+            // arbitrary limit
+            if (inFlightPackets.length >= 200) {
+              newPackets.length = 0;
+              break;
+            }
+
+            const { from, to, response, delay, dropped } = newPackets.pop();
+
+            const link = links[from][to];
+
+            const packet = link.element.appendChild(
+              createElement('div', {
+                classes: ['visualization__packet', `visualization__packet--${response}`],
+                styles: { 'transition-duration': `${delay}ms` },
+              }),
+            );
+            appendedPackets.push({ packet, dropped });
+            inFlightPackets += 1;
+
+            setTimeout(() => {
+              packet.remove();
+              inFlightPackets -= 1;
+            }, delay);
+          }
+
+          if (doUpdateRounds) {
+            doUpdateRounds = false;
+
+            const roundCount = maxRound - minRound + currentConcurrency + 2;
+            const requiredSpace = roundCount * ROUND_WIDTH;
+            const availableSpace = visualization.offsetWidth;
+
+            const minRoundLeft = (Math.max(0, availableSpace - requiredSpace) / 2) | 0;
+
+            timeline.style.setProperty('--translateX', `${minRoundLeft - minRound * ROUND_WIDTH}px`);
+
+            const scale = Math.min(1, availableSpace / requiredSpace);
+            timeline.style.setProperty('--scale', scale);
+
+            for (const n of visualization.querySelectorAll('.timeline__node')) {
+              const id = n.dataset.id;
+              const node = nodesById[id];
+              const round = node.round;
+              n.style.setProperty('--round', round);
+
+              // TODO use text bounding rects
+              const below = nodes.filter((n) => n.id > id && Math.abs(round - n.round) === 0).length;
+
+              const height = below + 2;
+              n.style.setProperty('--height', `${height}.5em`);
+            }
+
+            currentRound.style.setProperty('--round', maxRound);
+            concurrencyWindow.style.setProperty('--left', `${(maxRound + 1) * ROUND_WIDTH}.5px`);
+          }
+
+          if (doUpdateGraphLayout) {
+            const n = nodes.length;
+
+            visualization.style.setProperty('--node-count', n);
+
+            links.forEach((fls, from) => {
+              fls.forEach(({ to, element }) => {
+                const a = (2 * Math.PI) / n;
+                const da = ((n + to - from) % n) * a;
+                const h = 100 * Math.sin(da / 2);
+
+                element.style.setProperty('--h', `${h}%`);
+                element.style.setProperty('--rot', `${(da - Math.PI) / 2}rad`);
+              });
+            });
+          }
+
+          if (doUpdateBindings) {
+            doUpdateBindings = false;
+
+            originalUpdateBindings();
+          }
+        }
+      }
+
+      function createElement(tagName, opts = {}) {
+        const element = document.createElement(tagName);
+
+        Object.keys(opts.props || {}).forEach((p) => {
+          element[p] = opts.props[p];
+        });
+
+        Object.keys(opts.data || {}).forEach((d) => {
+          element.dataset[d] = opts.data[d];
+        });
+
+        (opts.classes || []).forEach((c) => element.classList.add(c));
+
+        Object.keys(opts.cssProps || {}).forEach((p) => {
+          element.style.setProperty(`--${p}`, opts.cssProps[p]);
+        });
+
+        Object.keys(opts.listeners || {}).forEach((l) => {
+          element.addEventListener(l, opts.listeners[l]);
+        });
+
+        Object.keys(opts.styles || {}).forEach((p) => {
+          element.style.setProperty(`${p}`, opts.styles[p]);
+        });
+
+        if ('text' in opts) {
+          element.textContent = opts.text;
+        }
+
+        return element;
+      }
+
+      let bindings = [];
+
+      function instantiateTemplate(id, insertion) {
+        const template = document.getElementById(id);
+
+        const clone = template.content.cloneNode(true);
+
+        const identified = {};
+
+        clone.querySelectorAll('[id]').forEach((e) => {
+          const jsId = e.id.replace(/-[a-z]/g, (m) => m.substring(1).toUpperCase());
+          const id = e.id;
+          e.id = 'id' + Math.random().toString().substring(2);
+
+          const labels = Array.from(clone.querySelectorAll(`label[for=${id}]`));
+          const outputs = Array.from(clone.querySelectorAll(`output[for~=${id}]`));
+
+          labels.concat(outputs).forEach((o) => o.setAttribute('for', e.id));
+
+          const wrapper = {
+            element: e,
+            label: labels[0],
+            labels,
+            output: outputs[0],
+            outputs,
+
+            addEventListener(event, handler) {
+              e.addEventListener(event, function () {
+                handler.apply(this, arguments);
+
+                updateBindings();
+              });
+            },
+
+            bindDisabled(condition) {
+              pushBinding(e, (e) => (e.disabled = condition()));
+            },
+
+            bindOutput(selector, renderer) {
+              if (typeof selector === 'function') {
+                renderer = selector;
+                selector = '*';
+              }
+
+              const matches = outputs.filter((o) => o.matches(selector));
+              if (matches.length) {
+                updateOutput();
+                e.addEventListener('change', updateOutput);
+
+                function updateOutput() {
+                  const v = e.valueAsNumber;
+                  const t = renderer(v, e);
+
+                  matches.forEach((o) => (o.textContent = t));
+                }
+              }
+            },
+
+            bindTextContent(renderer) {
+              pushBinding(e, (e) => (e.textContent = renderer()));
+            },
+          };
+
+          const gettable = { checked: true, dataset: true, textContent: true, valueAsNumber: true };
+          const settable = { checked: true, textContent: true, valueAsNumber: true };
+
+          Object.keys(Object.assign({}, gettable, settable)).forEach((p) => {
+            Object.defineProperty(wrapper, p, {
+              get: !gettable[p]
+                ? undefined
+                : function () {
+                    return e[p];
+                  },
+              set: !settable[p]
+                ? undefined
+                : function (v) {
+                    e[p] = v;
+                  },
+            });
+          });
+
+          ['appendChild', 'querySelectorAll', 'remove'].forEach((m) => {
+            Object.defineProperty(wrapper, m, {
+              get: () => e[m].bind(e),
+            });
+          });
+
+          identified[jsId] = wrapper;
+        });
+
+        insertion(clone);
+
+        return identified;
+      }
+
+      function pushBinding(element, binding) {
+        binding(element);
+
+        bindings.push(() => {
+          if (!element.ownerDocument.documentElement.contains(element)) {
+            return false;
+          } else {
+            binding(element);
+            return true;
+          }
+        });
+      }
+
+      function updateBindings() {
+        bindings = bindings.filter((b) => b());
+      }
+
+      function renderPercentage(v) {
+        return `${(100 * v).toLocaleString()} %`;
+      }
+
+      function renderQuantity(unit) {
+        return (v) => `${v.toLocaleString()}${unit}`;
+      }
+
+      function renderZeroAs(str) {
+        return {
+          else(renderer) {
+            return (v) => (v === 0 ? str : renderer(v));
+          },
+        };
+      }
+    })();
+  </script>
+</html>

@@ -2,6 +2,7 @@
 members = [
 	"examples/chat",
 	"examples/playground",
+	"examples/playground-wasm",
 	"paxakos",
 	"tests",
 ]
