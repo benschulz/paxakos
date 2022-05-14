@@ -19,7 +19,7 @@
 //! [docs.rs-badge]: https://docs.rs/paxakos/badge.svg
 //! [docs.rs-url]: https://docs.rs/paxakos
 //! [gpl-badge]: https://img.shields.io/badge/license-GPLv3-blue.svg
-//! [gpl-url]: LICENSE
+//! [gpl-url]: https://github.com/benschulz/paxakos/blob/master/LICENSE
 //!
 //! # Usage
 //!

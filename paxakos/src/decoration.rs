@@ -5,15 +5,18 @@ use crate::node::NodeImpl;
 
 /// A decoration around a `Node`.
 ///
-/// Use [`decorated_with`][crate::NodeBuilder::decorated_with] to wrap a
-/// decoration around a node.
+/// Use [`decorated_with`][decorated_with] to wrap a decoration around a node.
+///
+/// [decorated_with]: crate::node::builder::ExtensibleNodeBuilder::decorated_with
 pub trait Decoration
 where
     Self: NodeImpl,
 {
     /// Arguments this decoration requires.
     ///
-    /// See [`NodeBuilder::decorated_with`][crate::NodeBuilder::decorated_with].
+    /// See [`decorated_with`][decorated_with].
+    ///
+    /// [decorated_with]: crate::node::builder::ExtensibleNodeBuilder::decorated_with
     type Arguments: 'static;
 
     /// Type of the decorated node.
