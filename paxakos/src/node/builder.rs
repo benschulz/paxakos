@@ -93,19 +93,40 @@ pub struct NodeBuilderWithNodeIdAndCommunicator<I: Invocation, C: Communicator> 
     communicator: C,
 }
 
-// yeah, this needs a better name
-pub enum Stateyness<I: Invocation> {
+/// Defines how to start a node w/r/t its state.
+pub enum Starter<I: Invocation> {
+    /// Start without a snapshot.
+    ///
+    /// Calling [`with(Starter::None)`][with] is equivalent to calling
+    /// [`without_state()`][without_state].
+    ///
+    /// [with]: NodeBuilderWithNodeIdAndCommunicator::with
+    /// [without_state]: NodeBuilderWithNodeIdAndCommunicator::without_state
     None,
+    /// Resume from the given snapshot.
+    ///
+    /// Calling [`with(Starter::Resume(…))`][with] is equivalent to calling
+    /// [`resuming_from(…)`][resuming_from].
+    ///
+    /// [with]: NodeBuilderWithNodeIdAndCommunicator::with
+    /// [resuming_from]: NodeBuilderWithNodeIdAndCommunicator::resuming_from
     Resume(SnapshotFor<I>),
+    /// Recover from the given snapshot.
+    ///
+    /// Calling [`with(Starter::Recover(…))`][with] is equivalent to calling
+    /// [`recovering_with(…)`][recovering_with].
+    ///
+    /// [with]: NodeBuilderWithNodeIdAndCommunicator::with
+    /// [recovering_with]: NodeBuilderWithNodeIdAndCommunicator::recovering_with
     Recover(SnapshotFor<I>),
 }
 
-impl<I: Invocation> Into<SnapshotFor<I>> for Stateyness<I> {
-    fn into(self) -> SnapshotFor<I> {
-        match self {
-            Stateyness::None => Snapshot::stale_without_state(),
-            Stateyness::Resume(s) => s,
-            Stateyness::Recover(s) => s.into_stale(),
+impl<I: Invocation> From<Starter<I>> for SnapshotFor<I> {
+    fn from(val: Starter<I>) -> Self {
+        match val {
+            Starter::None => Snapshot::stale_without_state(),
+            Starter::Resume(s) => s,
+            Starter::Recover(s) => s.into_stale(),
         }
     }
 }
@@ -124,11 +145,12 @@ where
         Abstain = AbstainOf<I>,
     >,
 {
+    ///
     pub fn with(
         self,
-        stateyness: Stateyness<I>,
+        starter: Starter<I>,
     ) -> NodeBuilder<Core<I, C>, impl Finisher<Node = Core<I, C>>> {
-        self.with_snapshot(stateyness.into())
+        self.with_snapshot(starter.into())
     }
 
     /// Starts the node without any state and in passive mode.
