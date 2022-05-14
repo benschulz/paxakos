@@ -25,6 +25,8 @@ pub type ContextOf<I> = state::ContextOf<StateOf<I>>;
 pub type CoordNumOf<I> = <I as Invocation>::CoordNum;
 /// Shorthand to extract state's `Event` type out of `I`.
 pub type EffectOf<I> = state::EffectOf<StateOf<I>>;
+/// Shorthand to extract `Ejection` type out of `I`.
+pub type EjectionOf<I> = <I as Invocation>::Ejection;
 /// Shorthand to extract state's `Frozen` type out of `I`.
 pub type FrozenStateOf<I> = state::FrozenOf<StateOf<I>>;
 /// Shorthand to extract state's `LogEntry` type out of `I`.
@@ -83,6 +85,9 @@ pub trait Invocation: Sized + 'static {
     type Nay: std::fmt::Debug + Send + Sync + 'static;
     /// Additional data sent along with abstentions.
     type Abstain: std::fmt::Debug + Send + Sync + 'static;
+
+    /// Reason the node's state may be ejected.
+    type Ejection: std::fmt::Debug + Send + Sync + 'static;
 
     /// Communication error type.
     type CommunicationError: std::fmt::Debug + Send + Sync + 'static;

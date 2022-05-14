@@ -306,6 +306,13 @@ impl<I: Invocation> StateKeeperHandle<I> {
         )
     }
 
+    pub fn eject(
+        &self,
+        reason: crate::invocation::EjectionOf<I>,
+    ) -> impl Future<Output = Result<bool, ShutDown>> {
+        dispatch_state_keeper_req!(self, Eject, (reason))
+    }
+
     pub fn force_active(&self) -> impl Future<Output = Result<bool, ShutDown>> {
         dispatch_state_keeper_req!(self, ForceActive)
     }

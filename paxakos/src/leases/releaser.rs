@@ -260,6 +260,13 @@ where
                     }
                 }
 
+                crate::Event::Eject { .. } => {
+                    self.queue.clear();
+                    self.timeouts.clear();
+                    self.timer = None;
+                    self.appends.clear();
+                }
+
                 crate::Event::Apply { effect: result, .. } => {
                     if let Some(lease) = result.as_lease_taken() {
                         self.queue_lease(lease.id(), lease.timeout());
@@ -403,6 +410,13 @@ where
         log_entry_id: crate::node::LogEntryIdOf<Self>,
     ) -> LocalBoxFuture<'static, Result<crate::node::CommitFor<Self>, crate::error::ShutDown>> {
         self.decorated.await_commit_of(log_entry_id)
+    }
+
+    fn eject(
+        &self,
+        reason: crate::node::EjectionOf<Self>,
+    ) -> LocalBoxFuture<'static, Result<bool, crate::error::ShutDown>> {
+        self.decorated.eject(reason)
     }
 }
 

@@ -22,6 +22,8 @@ impl Invocation for CalcInvocation {
     type Nay = Infallible;
     type Abstain = Infallible;
 
+    type Ejection = Infallible;
+
     type CommunicationError = DirectCommunicatorError;
 }
 

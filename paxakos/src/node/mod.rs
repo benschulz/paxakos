@@ -55,6 +55,8 @@ pub type ContextOf<N> = invocation::ContextOf<InvocationOf<N>>;
 pub type CoordNumOf<N> = invocation::CoordNumOf<InvocationOf<N>>;
 /// Shorthand to extract invocation's `Event` type out of `N`.
 pub type EffectOf<N> = invocation::EffectOf<InvocationOf<N>>;
+/// Shorthand to extract invocation's `Ejection` type out of `N`.
+pub type EjectionOf<N> = invocation::EjectionOf<InvocationOf<N>>;
 /// Shorthand to extract frozen state type out of `N`.
 pub type FrozenStateOf<N> = invocation::FrozenStateOf<InvocationOf<N>>;
 /// Shorthand to extract `Invocation` type out of `N`.
@@ -221,6 +223,12 @@ pub trait NodeImpl: Node {
         &self,
         log_entry_id: LogEntryIdOf<Self>,
     ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, ShutDown>>;
+
+    /// Eject the node's state.
+    ///
+    /// Returns `true` if state was ejected, `false` if the node didn't have
+    /// state to begin with.
+    fn eject(&self, reason: EjectionOf<Self>) -> LocalBoxFuture<'static, Result<bool, ShutDown>>;
 }
 
 /// Future returned by [`Node::next_event`].

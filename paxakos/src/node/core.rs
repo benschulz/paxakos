@@ -274,6 +274,13 @@ where
         }
         .boxed_local()
     }
+
+    fn eject(
+        &self,
+        reason: crate::node::EjectionOf<Self>,
+    ) -> LocalBoxFuture<'static, Result<bool, crate::error::ShutDown>> {
+        self.state_keeper.eject(reason).boxed_local()
+    }
 }
 
 impl<I, C> Core<I, C>

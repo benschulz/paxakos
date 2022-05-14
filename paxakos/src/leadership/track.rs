@@ -404,6 +404,13 @@ where
     ) -> LocalBoxFuture<'static, Result<crate::node::CommitFor<Self>, crate::error::ShutDown>> {
         self.decorated.await_commit_of(log_entry_id)
     }
+
+    fn eject(
+        &self,
+        reason: crate::node::EjectionOf<Self>,
+    ) -> LocalBoxFuture<'static, Result<bool, crate::error::ShutDown>> {
+        self.decorated.eject(reason)
+    }
 }
 
 impl<D, I> LeadershipAwareNode<(I,)> for D

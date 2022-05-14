@@ -2,6 +2,7 @@
 
 use std::cell::Cell;
 use std::collections::HashSet;
+use std::convert::Infallible;
 use std::rc::Rc;
 
 use futures::channel::oneshot;
@@ -660,6 +661,8 @@ impl Invocation for PlaygroundInvocation {
     type Yea = instant::Duration;
     type Nay = ();
     type Abstain = instant::Duration;
+
+    type Ejection = Infallible;
 
     type CommunicationError = DirectCommunicatorError;
 }

@@ -12,6 +12,7 @@ use crate::error::InstallSnapshotError;
 use crate::error::PrepareError;
 use crate::error::ReadStaleError;
 use crate::invocation::CoordNumOf;
+use crate::invocation::EjectionOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryIdOf;
 use crate::invocation::LogEntryOf;
@@ -95,6 +96,8 @@ pub enum Request<I: Invocation> {
         coord_num: CoordNumOf<I>,
     },
 
+    Eject(EjectionOf<I>),
+
     ForceActive,
 
     Shutdown,
@@ -141,6 +144,8 @@ pub enum Response<I: Invocation> {
     CommitEntryById(Result<(), CommitError<I>>),
 
     AssumeLeadership(Result<(), Infallible>),
+
+    Eject(Result<bool, Infallible>),
 
     ForceActive(Result<bool, Infallible>),
 

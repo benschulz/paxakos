@@ -4,12 +4,14 @@ use std::sync::Arc;
 
 use crate::invocation::CoordNumOf;
 use crate::invocation::EffectOf;
+use crate::invocation::EjectionOf;
 use crate::invocation::FrozenStateOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryOf;
 use crate::invocation::NodeOf;
 use crate::invocation::RoundNumOf;
 use crate::invocation::SnapshotFor;
+use crate::invocation::StateOf;
 use crate::node::NodeStatus;
 use crate::RoundNum;
 
@@ -94,6 +96,14 @@ pub enum Event<I: Invocation> {
         /// Time the directive was (locally) registered.
         timestamp: instant::Instant,
     },
+
+    /// The node ejected its state.
+    Eject {
+        /// The reason for the ejection.
+        reason: EjectionOf<I>,
+        /// The ejected state.
+        state: StateOf<I>,
+    },
 }
 
 impl<I: Invocation> std::fmt::Debug for Event<I> {
@@ -154,6 +164,11 @@ impl<I: Invocation> std::fmt::Debug for Event<I> {
                 .field("round_num", round_num)
                 .field("coord_num", coord_num)
                 .field("timestamp", timestamp)
+                .finish(),
+            Event::Eject { reason, state } => f
+                .debug_struct("Event::Eject")
+                .field("reason", reason)
+                .field("state", state)
                 .finish(),
         }
     }

@@ -759,6 +759,16 @@ where
                 Response::AssumeLeadership(Ok(()))
             }
 
+            Request::Eject(reason) => {
+                let success = self.state.is_some();
+
+                if let Some(state) = self.state.take() {
+                    self.emit(Event::Eject { reason, state });
+                }
+
+                Response::Eject(Ok(success))
+            }
+
             Request::ForceActive => Response::ForceActive({
                 if let Participation::Passive { .. } = self.participation {
                     info!("Node forced into active participation mode.");
@@ -857,11 +867,15 @@ where
 
         let event = event.into();
 
-        match self.event_emitter.try_send(event) {
-            Ok(_) => {}
-            Err(err) => {
-                self.queued_events.push_back(err.into_inner());
+        if self.queued_events.is_empty() {
+            match self.event_emitter.try_send(event) {
+                Ok(_) => {}
+                Err(err) => {
+                    self.queued_events.push_back(err.into_inner());
+                }
             }
+        } else {
+            self.queued_events.push_back(event);
         }
     }
 

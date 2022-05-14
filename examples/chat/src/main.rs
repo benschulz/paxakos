@@ -127,6 +127,8 @@ impl Invocation for ChatInvocation {
     type Nay = Infallible;
     type Abstain = Infallible;
 
+    type Ejection = Infallible;
+
     type CommunicationError = DirectCommunicatorError;
 }
 
