@@ -1,5 +1,5 @@
 [package]
-name = "playground-wasm"
+name = "playground"
 version = "0.0.0"
 authors = ["Ben Schulz <benshu@benshu.de>"]
 edition = "2021"

@@ -1,7 +1,7 @@
 [workspace]
 members = [
 	"examples/chat",
-	"examples/playground-wasm",
+	"examples/playground",
 	"paxakos",
 	"tests",
 ]
