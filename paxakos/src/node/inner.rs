@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;
-use std::convert::TryFrom;
 use std::future::Future;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
@@ -275,19 +274,8 @@ where
     ) -> Result<CoordNumOf<I>, AppendError<I>> {
         assert!(own_node_idx < cluster_size);
 
-        let cluster_size = CoordNumOf::<I>::try_from(cluster_size).unwrap_or_else(|_| {
-            panic!(
-                "Cannot convert cluster size `{}` into a coordination number.",
-                cluster_size
-            )
-        });
-
-        let own_node_ix = CoordNumOf::<I>::try_from(own_node_idx).unwrap_or_else(|_| {
-            panic!(
-                "Cannot convert `{}` into a coordination number.",
-                own_node_idx
-            )
-        });
+        let cluster_size = crate::util::from_usize(cluster_size, "cluster size");
+        let own_node_ix = crate::util::from_usize(own_node_idx, "node index");
 
         let greatest_observed_coord_num = self.state_keeper.greatest_observed_coord_num().await?;
         let lowest_possible = std::cmp::max(greatest_observed_coord_num, One::one());

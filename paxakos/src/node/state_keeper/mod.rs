@@ -8,7 +8,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
@@ -622,9 +621,9 @@ where
                         if round_num <= self.state_round {
                             Err(ClusterError::Converged(round_num))
                         } else {
+                            // unwrap must succeed because `!(round_num <= self.state_round)`
                             let offset = crate::util::usize_delta(round_num, self.state_round);
-                            let offset = std::num::NonZeroUsize::new(offset)
-                                .expect("Zero was ruled out via equality check");
+                            let offset = std::num::NonZeroUsize::new(offset).unwrap();
 
                             let bound = crate::state::concurrency_of(state);
 
@@ -872,22 +871,13 @@ where
                 && round_num
                     <= self.state_round + into_round_num(crate::state::concurrency_of(state))
             {
-                // TODO lots of duplication with NodeInner::determine_coord_num
+                // unwrap must succeed because `round_num > self.state_round`
                 let round_offset = crate::util::usize_delta(round_num, self.state_round);
-                let round_offset = std::num::NonZeroUsize::new(round_offset)
-                    .expect("Zero was ruled out via equality check");
+                let round_offset = std::num::NonZeroUsize::new(round_offset).unwrap();
 
                 let cluster = state.cluster_at(round_offset);
-                let cluster_size = CoordNumOf::<I>::try_from(cluster.len()).unwrap_or_else(|_| {
-                    panic!(
-                        "Cannot convert cluster size `{}` into a coordination number.",
-                        cluster.len()
-                    )
-                });
-                let leader_ix = std::convert::TryInto::<usize>::try_into(coord_num % cluster_size)
-                    .unwrap_or_else(|_| {
-                        panic!("Out of usize range: {}", coord_num % cluster_size);
-                    });
+                let cluster_size = crate::util::from_usize(cluster.len(), "cluster size");
+                let leader_ix = crate::util::usize_remainder(coord_num, cluster_size);
 
                 let leader = cluster.into_iter().nth(leader_ix).unwrap();
 

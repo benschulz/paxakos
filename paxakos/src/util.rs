@@ -17,6 +17,19 @@ pub fn try_usize_delta<N: Number>(minuend: N, subtrahend: N) -> Option<usize> {
     std::convert::TryInto::<usize>::try_into(minuend - subtrahend).ok()
 }
 
+pub fn usize_remainder<N: Number>(dividend: N, divisor: N) -> usize {
+    try_usize_remainder(dividend, divisor)
+        .unwrap_or_else(|| panic!("Out of usize range: {}", dividend % divisor))
+}
+
+pub fn try_usize_remainder<N: Number>(dividend: N, divisor: N) -> Option<usize> {
+    std::convert::TryInto::<usize>::try_into(dividend % divisor).ok()
+}
+
+pub fn from_usize<N: Number>(n: usize, quantity: &str) -> N {
+    N::try_from(n).unwrap_or_else(|_| panic!("{} out of range", quantity))
+}
+
 #[pin_project]
 pub struct Race<A, B, T>
 where
