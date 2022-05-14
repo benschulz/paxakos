@@ -12,8 +12,8 @@ use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::error::ShutDownOr;
 use crate::node::AppendResultFor;
+use crate::node::DelegatingNodeImpl;
 use crate::node::EventFor;
-use crate::node::ImplAppendResultFor;
 use crate::node::InvocationOf;
 use crate::node::NodeIdOf;
 use crate::node::NodeImpl;
@@ -299,35 +299,14 @@ where
     }
 }
 
-impl<N, C> NodeImpl for EnsureLeadership<N, C>
+impl<N, C> DelegatingNodeImpl for EnsureLeadership<N, C>
 where
     N: NodeImpl + 'static,
     C: Config<Node = N>,
 {
-    fn append_impl<A, P, R>(
-        &self,
-        applicable: A,
-        args: P,
-    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
-    where
-        A: ApplicableTo<StateOf<Self>> + 'static,
-        P: Into<AppendArgs<Self::Invocation, R>>,
-        R: RetryPolicy<Invocation = Self::Invocation>,
-    {
-        self.decorated.append_impl(applicable, args)
-    }
+    type Delegate = N;
 
-    fn await_commit_of(
-        &self,
-        log_entry_id: crate::node::LogEntryIdOf<Self>,
-    ) -> LocalBoxFuture<'static, Result<crate::node::CommitFor<Self>, crate::error::ShutDown>> {
-        self.decorated.await_commit_of(log_entry_id)
-    }
-
-    fn eject(
-        &self,
-        reason: crate::node::EjectionOf<Self>,
-    ) -> LocalBoxFuture<'static, Result<bool, crate::error::ShutDown>> {
-        self.decorated.eject(reason)
+    fn delegate(&self) -> &Self::Delegate {
+        &self.decorated
     }
 }

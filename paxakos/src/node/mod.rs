@@ -231,6 +231,41 @@ pub trait NodeImpl: Node {
     fn eject(&self, reason: EjectionOf<Self>) -> LocalBoxFuture<'static, Result<bool, ShutDown>>;
 }
 
+/// Convenient way to implement `NodeImpl` by delegating all calls.
+pub trait DelegatingNodeImpl: Node {
+    /// Type of node that's delegated to.
+    type Delegate: NodeImpl<Invocation = Self::Invocation>;
+
+    /// Returns a reference to the node that's delegated to.
+    fn delegate(&self) -> &Self::Delegate;
+}
+
+impl<D: DelegatingNodeImpl> NodeImpl for D {
+    fn append_impl<A, P, R>(
+        &self,
+        applicable: A,
+        args: P,
+    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    where
+        A: ApplicableTo<StateOf<Self>> + 'static,
+        P: Into<AppendArgs<Self::Invocation, R>>,
+        R: RetryPolicy<Invocation = Self::Invocation>,
+    {
+        self.delegate().append_impl(applicable, args)
+    }
+
+    fn await_commit_of(
+        &self,
+        log_entry_id: LogEntryIdOf<Self>,
+    ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, ShutDown>> {
+        self.delegate().await_commit_of(log_entry_id)
+    }
+
+    fn eject(&self, reason: EjectionOf<Self>) -> LocalBoxFuture<'static, Result<bool, ShutDown>> {
+        self.delegate().eject(reason)
+    }
+}
+
 /// Future returned by [`Node::next_event`].
 pub struct NextEvent<'a, N: ?Sized>(&'a mut N);
 
