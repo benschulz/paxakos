@@ -18,6 +18,7 @@ use futures::future::BoxFuture;
 use futures::future::LocalBoxFuture;
 
 use crate::append::AppendArgs;
+use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::error::Disoriented;
@@ -229,6 +230,16 @@ pub trait NodeImpl: Node {
     /// Returns `true` if state was ejected, `false` if the node didn't have
     /// state to begin with.
     fn eject(&self, reason: EjectionOf<Self>) -> LocalBoxFuture<'static, Result<bool, ShutDown>>;
+
+    /// Polls the given nodes for the log entry to apply to the given round.
+    ///
+    /// Returns whether a log entry could be polled or not.
+    // TODO have a dedicated error type
+    fn poll(
+        &self,
+        round_num: RoundNumOf<Self>,
+        additional_nodes: Vec<NodeOf<Self>>,
+    ) -> LocalBoxFuture<'static, Result<bool, AppendError<InvocationOf<Self>>>>;
 }
 
 /// Convenient way to implement `NodeImpl` by delegating all calls.
@@ -263,6 +274,14 @@ impl<D: DelegatingNodeImpl> NodeImpl for D {
 
     fn eject(&self, reason: EjectionOf<Self>) -> LocalBoxFuture<'static, Result<bool, ShutDown>> {
         self.delegate().eject(reason)
+    }
+
+    fn poll(
+        &self,
+        round_num: RoundNumOf<Self>,
+        additional_nodes: Vec<NodeOf<Self>>,
+    ) -> LocalBoxFuture<'static, Result<bool, AppendError<InvocationOf<Self>>>> {
+        self.delegate().poll(round_num, additional_nodes)
     }
 }
 

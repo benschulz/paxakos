@@ -575,6 +575,14 @@ where
     ) -> LocalBoxFuture<'static, Result<bool, crate::error::ShutDown>> {
         self.decorated.eject(reason)
     }
+
+    fn poll(
+        &self,
+        round_num: RoundNumOf<Self>,
+        additional_nodes: Vec<crate::node::NodeOf<Self>>,
+    ) -> LocalBoxFuture<'static, Result<bool, AppendError<InvocationOf<Self>>>> {
+        self.decorated.poll(round_num, additional_nodes)
+    }
 }
 
 type BoxedRetryPolicy<I> = Box<

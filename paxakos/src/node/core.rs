@@ -8,6 +8,7 @@ use futures::TryFutureExt;
 use num_traits::One;
 
 use crate::append::AppendArgs;
+use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::communicator::AbstainOf;
@@ -42,6 +43,7 @@ use super::state_keeper::StateKeeperKit;
 use super::AppendResultFor;
 use super::EventFor;
 use super::ImplAppendResultFor;
+use super::InvocationOf;
 use super::Node;
 use super::NodeHandle;
 use super::NodeImpl;
@@ -280,6 +282,16 @@ where
         reason: crate::node::EjectionOf<Self>,
     ) -> LocalBoxFuture<'static, Result<bool, crate::error::ShutDown>> {
         self.state_keeper.eject(reason).boxed_local()
+    }
+
+    fn poll(
+        &self,
+        round_num: super::RoundNumOf<Self>,
+        additional_nodes: Vec<super::NodeOf<Self>>,
+    ) -> LocalBoxFuture<'static, Result<bool, AppendError<InvocationOf<Self>>>> {
+        Rc::clone(&self.inner)
+            .poll(round_num, additional_nodes)
+            .boxed_local()
     }
 }
 

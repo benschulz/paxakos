@@ -790,4 +790,69 @@ where
             .commit_entry(round_num, coord_num, log_entry)
             .await?)
     }
+
+    pub async fn poll(
+        self: Rc<Self>,
+        round_num: RoundNumOf<I>,
+        additional_nodes: Vec<NodeOf<I>>,
+    ) -> Result<bool, AppendError<I>> {
+        let mut cluster = self.state_keeper.cluster_for(round_num).await?;
+        cluster.extend(additional_nodes);
+
+        let mut pending_responses = self
+            .communicator
+            .borrow_mut()
+            .send_prepare(&cluster, round_num, Zero::zero())
+            .into_iter()
+            .map(|(node, fut)| fut.map(move |x| (node, x)))
+            .into_iter()
+            .collect::<FuturesUnordered<_>>();
+
+        let mut converged = false;
+        let mut abstentions = Vec::new();
+        let mut communication_errors = Vec::new();
+
+        while let Some((_node, response)) = pending_responses.next().await {
+            match response {
+                Ok(Vote::Given(_)) => {
+                    // coord_num was 0, no votes expected
+                    unreachable!()
+                }
+
+                Ok(Vote::Conflicted(rejection)) => {
+                    self.state_keeper
+                        .observe_coord_num(rejection.coord_num())
+                        .await?;
+
+                    if let Conflict::Converged { log_entry, .. } = &rejection {
+                        converged = true;
+
+                        if let Some((coord_num, entry)) = log_entry {
+                            self.state_keeper
+                                .commit_entry(round_num, *coord_num, Arc::clone(entry))
+                                .await?;
+
+                            return Ok(true);
+                        }
+                    }
+                }
+
+                Ok(Vote::Abstained(abstention)) => abstentions.push(abstention),
+
+                Err(err) => communication_errors.push(err),
+            }
+        }
+
+        if converged {
+            Err(AppendError::Converged { caught_up: false })
+        } else if !communication_errors.is_empty() && !abstentions.is_empty() {
+            Err(AppendError::NoQuorum {
+                abstentions,
+                communication_errors,
+                rejections: Vec::new(),
+            })
+        } else {
+            Ok(false)
+        }
+    }
 }
