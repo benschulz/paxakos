@@ -22,32 +22,14 @@ pub struct Snapshot<S: State, R: RoundNum, C: CoordNum>(VersionedSnapshot<S, R, 
 impl<S: State, R: RoundNum, C: CoordNum> Clone for Snapshot<S, R, C> {
     fn clone(&self) -> Self {
         Snapshot(match &self.0 {
-            VersionedSnapshot::V1(v1) => VersionedSnapshot::V3(SnapshotV3 {
-                round: v1.round,
-                state: Some(Arc::new(v1.state.freeze())),
-                greatest_observed_round_num: v1.greatest_observed_round_num,
-                greatest_observed_coord_num: v1.greatest_observed_coord_num,
-                participation: v1.participation.clone(),
-                promises: v1.promises.clone(),
-                accepted_entries: v1.accepted_entries.clone(),
-            }),
-            VersionedSnapshot::V2(v2) => VersionedSnapshot::V3(SnapshotV3 {
-                round: v2.round,
-                state: v2.state.as_deref().map(|s| Arc::new(s.freeze())),
-                greatest_observed_round_num: v2.greatest_observed_round_num,
-                greatest_observed_coord_num: v2.greatest_observed_coord_num,
-                participation: v2.participation.clone(),
-                promises: v2.promises.clone(),
-                accepted_entries: v2.accepted_entries.clone(),
-            }),
-            VersionedSnapshot::V3(v3) => VersionedSnapshot::V3(SnapshotV3 {
-                round: v3.round,
-                state: v3.state.as_ref().map(Arc::clone),
-                greatest_observed_round_num: v3.greatest_observed_round_num,
-                greatest_observed_coord_num: v3.greatest_observed_coord_num,
-                participation: v3.participation.clone(),
-                promises: v3.promises.clone(),
-                accepted_entries: v3.accepted_entries.clone(),
+            VersionedSnapshot::V1(s) => VersionedSnapshot::V1(SnapshotV1 {
+                round: s.round,
+                state: s.state.as_ref().map(Arc::clone),
+                greatest_observed_round_num: s.greatest_observed_round_num,
+                greatest_observed_coord_num: s.greatest_observed_coord_num,
+                participation: s.participation.clone(),
+                promises: s.promises.clone(),
+                accepted_entries: s.accepted_entries.clone(),
             }),
         })
     }
@@ -60,38 +42,6 @@ impl<S: State, R: RoundNum, C: CoordNum> Clone for Snapshot<S, R, C> {
 ))]
 pub enum VersionedSnapshot<S: State, R: RoundNum, C: CoordNum> {
     V1(SnapshotV1<S, R, C>),
-    V2(SnapshotV2<S, R, C>),
-    V3(SnapshotV3<S, R, C>),
-}
-
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-#[serde(bound(
-    serialize = "S: serde::Serialize",
-    deserialize = "S: serde::Deserialize<'de>"
-))]
-pub struct SnapshotV1<S: State, R: RoundNum, C: CoordNum> {
-    round: R,
-    state: Arc<S>,
-    greatest_observed_round_num: Option<R>,
-    greatest_observed_coord_num: C,
-    participation: Participation<R, C>,
-    promises: BTreeMap<R, C>,
-    accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
-}
-
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-#[serde(bound(
-    serialize = "S: serde::Serialize",
-    deserialize = "S: serde::Deserialize<'de>"
-))]
-pub struct SnapshotV2<S: State, R: RoundNum, C: CoordNum> {
-    round: R,
-    state: Option<Arc<S>>,
-    greatest_observed_round_num: Option<R>,
-    greatest_observed_coord_num: C,
-    participation: Participation<R, C>,
-    promises: BTreeMap<R, C>,
-    accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -99,7 +49,7 @@ pub struct SnapshotV2<S: State, R: RoundNum, C: CoordNum> {
     serialize = "S::Frozen: serde::Serialize",
     deserialize = "S::Frozen: serde::Deserialize<'de>"
 ))]
-pub struct SnapshotV3<S: State, R: RoundNum, C: CoordNum> {
+pub struct SnapshotV1<S: State, R: RoundNum, C: CoordNum> {
     round: R,
     state: Option<Arc<S::Frozen>>,
     greatest_observed_round_num: Option<R>,
@@ -156,7 +106,7 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
         promises: BTreeMap<R, C>,
         accepted_entries: BTreeMap<R, (C, Arc<LogEntryOf<S>>)>,
     ) -> Self {
-        Self(VersionedSnapshot::V3(SnapshotV3 {
+        Self(VersionedSnapshot::V1(SnapshotV1 {
             round,
             state,
             greatest_observed_round_num,
@@ -212,29 +162,9 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
 
     fn with_participation(self, participation: Participation<R, C>) -> Self {
         match self.0 {
-            VersionedSnapshot::V1(v1) => Self(VersionedSnapshot::V3(SnapshotV3 {
-                round: v1.round,
-                state: Some(Arc::new(v1.state.freeze())),
-                greatest_observed_round_num: v1.greatest_observed_round_num,
-                greatest_observed_coord_num: v1.greatest_observed_coord_num,
-                participation,
-                promises: v1.promises,
-                accepted_entries: v1.accepted_entries,
-            })),
-            VersionedSnapshot::V2(v2) => Self(VersionedSnapshot::V3(SnapshotV3 {
-                round: v2.round,
-                state: v2.state.as_deref().map(|s| Arc::new(s.freeze())),
-                greatest_observed_round_num: v2.greatest_observed_round_num,
-                greatest_observed_coord_num: v2.greatest_observed_coord_num,
-                participation,
-                promises: v2.promises,
-                accepted_entries: v2.accepted_entries,
-            })),
-            VersionedSnapshot::V3(v3) => Self(VersionedSnapshot::V3(SnapshotV3 {
-                participation,
-
-                ..v3
-            })),
+            VersionedSnapshot::V1(s) => {
+                Self(VersionedSnapshot::V1(SnapshotV1 { participation, ..s }))
+            }
         }
     }
 
@@ -242,41 +172,19 @@ impl<S: State, R: RoundNum, C: CoordNum> Snapshot<S, R, C> {
     pub fn round(&self) -> R {
         match &self.0 {
             VersionedSnapshot::V1(s) => s.round,
-            VersionedSnapshot::V2(s) => s.round,
-            VersionedSnapshot::V3(s) => s.round,
         }
     }
 
     /// The state the node was in when the snapshot was taken.
     pub fn state(&self) -> Option<Arc<S::Frozen>> {
         match &self.0 {
-            VersionedSnapshot::V1(s) => Some(Arc::new(s.state.freeze())),
-            VersionedSnapshot::V2(s) => s.state.as_ref().map(|s| Arc::new(s.freeze())),
-            VersionedSnapshot::V3(s) => s.state.as_ref().map(Arc::clone),
+            VersionedSnapshot::V1(s) => s.state.as_ref().map(Arc::clone),
         }
     }
 
     pub(crate) fn deconstruct(self) -> DeconstructedSnapshot<S, R, C> {
         match self.0 {
             VersionedSnapshot::V1(s) => DeconstructedSnapshot {
-                round: s.round,
-                state: Some(Arc::new(s.state.freeze())),
-                greatest_observed_round_num: s.greatest_observed_round_num,
-                greatest_observed_coord_num: s.greatest_observed_coord_num,
-                participation: s.participation,
-                promises: s.promises,
-                accepted_entries: s.accepted_entries,
-            },
-            VersionedSnapshot::V2(s) => DeconstructedSnapshot {
-                round: s.round,
-                state: s.state.map(|s| Arc::new(s.freeze())),
-                greatest_observed_round_num: s.greatest_observed_round_num,
-                greatest_observed_coord_num: s.greatest_observed_coord_num,
-                participation: s.participation,
-                promises: s.promises,
-                accepted_entries: s.accepted_entries,
-            },
-            VersionedSnapshot::V3(s) => DeconstructedSnapshot {
                 round: s.round,
                 state: s.state,
                 greatest_observed_round_num: s.greatest_observed_round_num,
