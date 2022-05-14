@@ -53,8 +53,10 @@ where
         StaticError = AppendError<InvocationOf<Self::Node>>,
     >;
 
-    // TODO needs GAT for `Item = &LeaseOf<Self::Node>`
-    type Leases: Iterator<Item = LeaseOf<Self::Node>>;
+    /// Type of currently active leases.
+    type Leases<'a>: Iterator<Item = &'a LeaseOf<Self::Node>>
+    where
+        Self: 'a;
 
     /// Initializes this configuration.
     #[allow(unused_variables)]
@@ -65,7 +67,7 @@ where
     fn update(&mut self, event: &EventFor<Self::Node>) {}
 
     /// Returns the active leases for `state`.
-    fn active_leases(&self, state: &FrozenStateOf<Self::Node>) -> Self::Leases;
+    fn active_leases(&self, state: &FrozenStateOf<Self::Node>) -> Self::Leases<'_>;
 
     /// Prepares to release the lease with the given id.
     fn release(&self, lease_id: LeaseIdOf<Self::Node>) -> Self::Applicable;
@@ -153,11 +155,27 @@ where
     C: Config<Node = N>,
 {
     fn queue_lease(&mut self, lease_id: LeaseIdOf<N>, timeout: instant::Instant) {
-        let timeout_id = self.next_timeout_id;
-        self.next_timeout_id += 1;
+        Self::queue_lease_split(
+            &mut self.next_timeout_id,
+            &mut self.timeouts,
+            &mut self.queue,
+            lease_id,
+            timeout,
+        )
+    }
 
-        self.timeouts.insert(lease_id, timeout_id);
-        self.queue.push(QueuedLease {
+    fn queue_lease_split(
+        next_timeout_id: &mut usize,
+        timeouts: &mut HashMap<LeaseIdOf<N>, usize>,
+        queue: &mut BinaryHeap<QueuedLease<LeaseIdOf<N>>>,
+        lease_id: LeaseIdOf<N>,
+        timeout: instant::Instant,
+    ) {
+        let timeout_id = *next_timeout_id;
+        *next_timeout_id += 1;
+
+        timeouts.insert(lease_id, timeout_id);
+        queue.push(QueuedLease {
             lease_id,
             timeout_id,
             timeout,
@@ -232,7 +250,13 @@ where
                     state: Some(state), ..
                 } => {
                     for lease in self.config.active_leases(&*state) {
-                        self.queue_lease(lease.id(), lease.timeout());
+                        Self::queue_lease_split(
+                            &mut self.next_timeout_id,
+                            &mut self.timeouts,
+                            &mut self.queue,
+                            lease.id(),
+                            lease.timeout(),
+                        );
                     }
                 }
 
