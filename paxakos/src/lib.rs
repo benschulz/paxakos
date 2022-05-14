@@ -3,6 +3,11 @@
 //! to consistently modify shared state across their network, even in the
 //! presence of failures.
 //!
+//! <details>
+//! <summary>Check out the <a href="https://benschulz.github.io/paxakos/playground/?#">playground example</a>.</summary>
+//! <iframe src="https://benschulz.github.io/paxakos/playground/?#" style="width: 100%; height: 800px;"></iframe>
+//! </details>
+//!
 //! [wikipedia]: https://en.wikipedia.org/wiki/Paxos_(computer_science)
 //!
 //! [![crates.io][crates.io-badge]][crates.io-url]
