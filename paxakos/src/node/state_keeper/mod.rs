@@ -913,6 +913,7 @@ where
     }
 
     // TODO this doesn't do anything and probably never will, consider removal
+    //      also consider renaming prepare_snapshot to take_snapshot
     fn affirm_snapshot(&mut self, _snapshot: SnapshotFor<I>) -> Result<(), AffirmSnapshotError> {
         Ok(())
     }
