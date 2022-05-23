@@ -220,6 +220,11 @@
 //! The `Delegate` decoration allows automatic delegation of appends, ordinarily
 //! to the leader node.
 //!
+//! ## Automatic Catch-Up (experimental, `catch-up` flag)
+//!
+//! When a node is started or just installed a snapshot it is likely lagging.
+//! The `CatchUp` decoration will poll other nodes until the node is caught up.
+//!
 //! ## Leases
 //!
 //! A cluster will often have shared resources which must be locked before they
@@ -414,6 +419,8 @@ pub mod applicable;
 #[cfg(feature = "autofill")]
 pub mod autofill;
 pub mod buffer;
+#[cfg(feature = "catch-up")]
+pub mod catch_up;
 pub mod cluster;
 pub mod communicator;
 pub mod decoration;

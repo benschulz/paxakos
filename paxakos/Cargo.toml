@@ -13,6 +13,7 @@ categories = [ "network-programming" ]
 
 [features]
 autofill = []
+catch-up = []
 default = []
 delegation = []
 ensure-leadership = []
