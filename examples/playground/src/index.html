@@ -141,7 +141,7 @@
 
       .node {
         display: flex;
-        background: grey;
+        background-color: grey;
         justify-content: center;
         align-items: center;
         color: #000;
@@ -150,11 +150,25 @@
       }
 
       .node--active {
-        background: deepskyblue;
+        background-color: deepskyblue;
+      }
+
+      .node--disoriented {
+        background-image: linear-gradient(
+          135deg,
+          #a3a3a3 20%,
+          transparent 20%,
+          transparent 50%,
+          #a3a3a3 50%,
+          #a3a3a3 70%,
+          transparent 70%,
+          transparent 100%
+        );
+        background-size: 20px 20px;
       }
 
       .node--terminated {
-        background: rgb(153, 69, 69);
+        background-color: rgb(153, 69, 69);
       }
 
       .node[data-leader]::after {
@@ -939,6 +953,9 @@
           statusChanged(nodeId, newStatus) {
             const node = nodesById[nodeId];
             node.status = newStatus;
+
+            node.element.classList.toggle('node--disoriented', newStatus === 'Disoriented');
+            node.element.classList.toggle('node--terminated', newStatus === 'Shut Down' || newStatus === 'Crashed');
 
             updateBindings();
           },

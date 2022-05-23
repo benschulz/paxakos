@@ -393,7 +393,7 @@ impl Cluster {
     pub fn start_node_internal(
         &mut self,
         id: &NodeIdentity,
-        stateyness: Starter<PlaygroundInvocation>,
+        starter: Starter<PlaygroundInvocation>,
     ) -> PlaygroundNode {
         let kit = NodeKit::new();
         let handle = kit.handle();
@@ -410,7 +410,7 @@ impl Cluster {
             let (handler, mut node) = PlaygroundInvocation::node_builder()
                 .for_node(node_info.id())
                 .communicating_via(communicator)
-                .with(stateyness)
+                .with(starter)
                 .using(kit)
                 .driven_by(WasmExecutor)
                 .track_leadership()
@@ -421,7 +421,9 @@ impl Cluster {
                 .await
                 .unwrap();
 
-            communicators.register(node_info.id(), handler).await;
+            communicators.register(node.id(), handler).await;
+
+            callbacks.status_changed(node.id(), format!("{:?}", node.status()));
 
             let mut active = false;
             callbacks.participation_changed(node.id(), active);
@@ -453,9 +455,15 @@ impl Cluster {
                             inner: snapshot,
                         });
 
+                        callbacks.status_changed(node_id, "Shut Down".into());
+
                         break;
                     }
-                    futures::future::Either::Left((Ok(Msg::Crash) | Err(_), _)) => break,
+                    futures::future::Either::Left((Ok(Msg::Crash) | Err(_), _)) => {
+                        callbacks.status_changed(node.id(), "Crashed".into());
+
+                        break;
+                    }
                     futures::future::Either::Right((event, _)) => {
                         match &event {
                             paxakos::Event::Init {
