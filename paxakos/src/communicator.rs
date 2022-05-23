@@ -232,6 +232,13 @@ impl<I: Invocation> TryFrom<Result<invocation::YeaOf<I>, AcceptError<I>>>
         result
             .map(Acceptance::Given)
             .or_else(|err| err.try_into().map(Acceptance::Conflicted))
+            .or_else(|err| {
+                if let AcceptError::Rejected(nay) = err {
+                    Ok(Acceptance::Refused(nay))
+                } else {
+                    Err(err)
+                }
+            })
     }
 }
 
