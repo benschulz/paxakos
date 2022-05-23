@@ -1,7 +1,6 @@
 #![allow(clippy::unused_unit)]
 
 use std::cell::Cell;
-use std::collections::HashSet;
 use std::convert::Infallible;
 use std::rc::Rc;
 
@@ -20,6 +19,7 @@ use paxakos::leadership::ensure::EnsureLeadershipBuilderExt;
 use paxakos::leadership::track::LeadershipAwareNode;
 use paxakos::leadership::track::TrackLeadershipBuilderExt;
 use paxakos::node::Participation;
+use paxakos::node::RoundNumOf;
 use paxakos::node_builder::Starter;
 use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::DirectCommunicatorPayload;
@@ -27,7 +27,9 @@ use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::prototyping::RetryIndefinitely;
 use paxakos::retry::DoNotRetry;
-use paxakos::state;
+use paxakos::state::Frozen;
+use paxakos::verify;
+use paxakos::verify::VerifyBuilderExt;
 use paxakos::Invocation;
 use paxakos::LogEntry;
 use paxakos::Node;
@@ -128,11 +130,11 @@ impl<'a> From<&'a Reconfiguration> for Configuration {
     }
 }
 
-impl<'a> From<&'a PlaygroundState> for Configuration {
-    fn from(s: &'a PlaygroundState) -> Self {
+impl<'a> From<&'a FrozenPlaygroundState> for Configuration {
+    fn from(s: &'a FrozenPlaygroundState) -> Self {
         Self {
             nodes: s.target_cluster.clone(),
-            concurrency: state::concurrency_of(s).into(),
+            concurrency: s.cluster.concurrency_at_offset_one().into(),
             heartbeat_interval_ms: s.heartbeat_interval.map(as_u32_millis),
             leader_heartbeat_interval_ms: s.leader_heartbeat_interval.map(as_u32_millis),
             ensure_leadership_interval_ms: s.ensure_leadership_interval.map(as_u32_millis),
@@ -196,6 +198,9 @@ extern "C" {
 
     #[wasm_bindgen(method)]
     pub fn heartbeat(this: &Callbacks, node_id: usize);
+
+    #[wasm_bindgen(method, js_name = inconsistencyChanged)]
+    pub fn inconsistency_changed(this: &Callbacks, node_id: usize, new_inconsistency: Option<u32>);
 
     #[wasm_bindgen(method, js_name = newLeader)]
     pub fn new_leader(this: &Callbacks, node_id: usize, leader: Option<usize>);
@@ -383,10 +388,9 @@ impl Cluster {
     pub fn start_node(&mut self, id: &NodeIdentity) -> PlaygroundNode {
         self.start_node_internal(
             id,
-            Starter::Resume(paxakos::node::Snapshot::initial_with(PlaygroundState::new(
-                self.node_infos.clone(),
-                self.initial_concurrency,
-            ))),
+            Starter::Resume(paxakos::node::Snapshot::initial_with(
+                FrozenPlaygroundState::new(self.node_infos.clone(), self.initial_concurrency),
+            )),
         )
     }
 }
@@ -420,6 +424,8 @@ impl Cluster {
                 .fill_gaps(AutofillConfig::new(Rc::clone(&callbacks)))
                 .send_heartbeats(HeartbeatConfig::new(Rc::clone(&callbacks)))
                 .ensure_leadership(EnsureLeadershipConfig::new(Rc::clone(&callbacks)))
+                .verify_consistency(VerifyConfig::new())
+                .voting_with(verify::VerifyVoter::new())
                 .spawn()
                 .await
                 .unwrap();
@@ -484,6 +490,7 @@ impl Cluster {
                                     *round,
                                     Configuration::from(&**state),
                                 );
+                                callbacks.inconsistency_changed(node.id(), state.inconsistency);
                             }
 
                             paxakos::Event::StatusChange { new_status, .. } => {
@@ -670,6 +677,25 @@ impl PlaygroundNode {
                 .map(|_| ()),
         );
     }
+
+    #[wasm_bindgen(method, js_name = introduceInconsistency)]
+    pub fn introduce_inconsistency(&self) {
+        use rand::Rng;
+
+        let inconsistency = rand::thread_rng().gen();
+
+        let f = self.handle.read_stale(move |s| {
+            s.inconsistency.set(Some(inconsistency));
+        });
+        let callbacks = Rc::clone(&self.callbacks);
+        let node_id = self.id;
+
+        wasm_bindgen_futures::spawn_local(async move {
+            if f.await.is_ok() {
+                callbacks.inconsistency_changed(node_id, Some(inconsistency));
+            }
+        });
+    }
 }
 
 #[derive(Debug)]
@@ -681,11 +707,11 @@ impl Invocation for PlaygroundInvocation {
 
     type State = PlaygroundState;
 
-    type Yea = instant::Duration;
-    type Nay = ();
-    type Abstain = instant::Duration;
+    type Yea = verify::Consistent;
+    type Nay = verify::Nay;
+    type Abstain = Infallible;
 
-    type Ejection = Infallible;
+    type Ejection = verify::Inconsistent;
 
     type CommunicationError = DirectCommunicatorError;
 }
@@ -697,6 +723,7 @@ pub enum PlaygroundLogEntry {
     Heartbeat(Uuid),
     EnsureLeadership(Uuid),
     Fill(Uuid),
+    Verify(Uuid, Option<u32>),
 }
 
 impl PlaygroundLogEntry {
@@ -707,6 +734,7 @@ impl PlaygroundLogEntry {
             PlaygroundLogEntry::Reconfigure(..) => "reconfigure",
             PlaygroundLogEntry::Regular(_) => "regular",
             PlaygroundLogEntry::Fill(_) => "fill",
+            PlaygroundLogEntry::Verify(..) => "verify",
         }
     }
 }
@@ -720,8 +748,15 @@ impl LogEntry for PlaygroundLogEntry {
             | PlaygroundLogEntry::Regular(id)
             | PlaygroundLogEntry::Heartbeat(id)
             | PlaygroundLogEntry::EnsureLeadership(id)
-            | PlaygroundLogEntry::Fill(id) => id,
+            | PlaygroundLogEntry::Fill(id)
+            | PlaygroundLogEntry::Verify(id, _) => id,
         }
+    }
+}
+
+impl verify::LogEntry for PlaygroundLogEntry {
+    fn is_verification(&self) -> bool {
+        matches!(self, PlaygroundLogEntry::Verify(..))
     }
 }
 
@@ -738,9 +773,9 @@ pub struct Reconfiguration {
 
 #[derive(Clone, Debug)]
 pub struct PlaygroundState {
-    applied: HashSet<Uuid>,
-
     cluster: paxakos::cluster::Cluster<PrototypingNode>,
+
+    inconsistency: Cell<Option<u32>>,
 
     target_cluster: Vec<PrototypingNode>,
     heartbeat_interval: Option<instant::Duration>,
@@ -750,35 +785,15 @@ pub struct PlaygroundState {
     autofill_batch_size: usize,
 }
 
-impl PlaygroundState {
-    pub fn new(nodes: Vec<PrototypingNode>, concurrency: usize) -> Self {
-        Self {
-            applied: HashSet::new(),
-
-            cluster: paxakos::cluster::Cluster::new(
-                nodes.clone(),
-                std::num::NonZeroUsize::new(concurrency).unwrap(),
-            ),
-
-            target_cluster: nodes,
-            heartbeat_interval: Some(instant::Duration::from_secs(5)),
-            leader_heartbeat_interval: Some(instant::Duration::from_secs(3)),
-            ensure_leadership_interval: Some(instant::Duration::from_secs(11)),
-            autofill_delay: Some(instant::Duration::from_secs(1)),
-            autofill_batch_size: 10,
-        }
-    }
-}
-
 impl State for PlaygroundState {
-    type Frozen = Self;
+    type Frozen = FrozenPlaygroundState;
 
     type Context = ();
 
     type LogEntry = PlaygroundLogEntry;
-    type Outcome = usize;
+    type Outcome = ();
     type Effect = PlaygroundEffect;
-    type Error = Infallible;
+    type Error = verify::Inconsistent;
 
     type Node = PrototypingNode;
 
@@ -792,23 +807,28 @@ impl State for PlaygroundState {
             inner: log_entry,
         });
 
-        self.applied.insert(log_entry.id());
+        match log_entry {
+            PlaygroundLogEntry::Reconfigure(_, reconfiguration) => {
+                self.target_cluster = reconfiguration.new_nodes.clone();
+                self.heartbeat_interval = reconfiguration.new_heartbeat_interval;
+                self.leader_heartbeat_interval = reconfiguration.new_leader_heartbeat_interval;
+                self.ensure_leadership_interval = reconfiguration.new_ensure_leadership_interval;
+                self.autofill_delay = reconfiguration.new_autofill_delay;
+                self.autofill_batch_size = reconfiguration.new_autofill_batch_size;
 
-        if let PlaygroundLogEntry::Reconfigure(_, reconfiguration) = log_entry {
-            self.target_cluster = reconfiguration.new_nodes.clone();
-            self.heartbeat_interval = reconfiguration.new_heartbeat_interval;
-            self.leader_heartbeat_interval = reconfiguration.new_leader_heartbeat_interval;
-            self.ensure_leadership_interval = reconfiguration.new_ensure_leadership_interval;
-            self.autofill_delay = reconfiguration.new_autofill_delay;
-            self.autofill_batch_size = reconfiguration.new_autofill_batch_size;
+                return Ok(((), PlaygroundEffect::Reconfigured(reconfiguration.clone())));
+            }
 
-            Ok((
-                self.applied.len(),
-                PlaygroundEffect::Reconfigured(reconfiguration.clone()),
-            ))
-        } else {
-            Ok((self.applied.len(), PlaygroundEffect::None))
+            PlaygroundLogEntry::Verify(_, inconsistency) => {
+                if self.inconsistency.get() != *inconsistency {
+                    return Err(verify::Inconsistent);
+                }
+            }
+
+            _ => {}
         }
+
+        Ok(((), PlaygroundEffect::None))
     }
 
     fn concurrency(this: Option<&Self>) -> Option<std::num::NonZeroUsize> {
@@ -822,7 +842,84 @@ impl State for PlaygroundState {
     }
 
     fn freeze(&self) -> Self::Frozen {
-        self.clone()
+        FrozenPlaygroundState {
+            cluster: self.cluster.clone(),
+
+            inconsistency: self.inconsistency.get(),
+
+            target_cluster: self.target_cluster.clone(),
+            heartbeat_interval: self.heartbeat_interval,
+            leader_heartbeat_interval: self.leader_heartbeat_interval,
+            ensure_leadership_interval: self.ensure_leadership_interval,
+            autofill_delay: self.autofill_delay,
+            autofill_batch_size: self.autofill_batch_size,
+        }
+    }
+}
+
+impl verify::State for PlaygroundState {
+    type Applicable = PlaygroundLogEntry;
+
+    fn prepare_verification(&self) -> Self::Applicable {
+        PlaygroundLogEntry::Verify(Uuid::new_v4(), self.inconsistency.get())
+    }
+
+    fn is_consistent_with(&self, log_entry: &Self::LogEntry) -> Option<bool> {
+        match log_entry {
+            PlaygroundLogEntry::Verify(_, i) => Some(self.inconsistency.get() == *i),
+            _ => Some(true),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FrozenPlaygroundState {
+    cluster: paxakos::cluster::Cluster<PrototypingNode>,
+
+    inconsistency: Option<u32>,
+
+    target_cluster: Vec<PrototypingNode>,
+    heartbeat_interval: Option<instant::Duration>,
+    leader_heartbeat_interval: Option<instant::Duration>,
+    ensure_leadership_interval: Option<instant::Duration>,
+    autofill_delay: Option<instant::Duration>,
+    autofill_batch_size: usize,
+}
+
+impl FrozenPlaygroundState {
+    pub fn new(nodes: Vec<PrototypingNode>, concurrency: usize) -> Self {
+        Self {
+            cluster: paxakos::cluster::Cluster::new(
+                nodes.clone(),
+                std::num::NonZeroUsize::new(concurrency).unwrap(),
+            ),
+
+            inconsistency: None,
+
+            target_cluster: nodes,
+            heartbeat_interval: Some(instant::Duration::from_secs(5)),
+            leader_heartbeat_interval: Some(instant::Duration::from_secs(3)),
+            ensure_leadership_interval: Some(instant::Duration::from_secs(11)),
+            autofill_delay: Some(instant::Duration::from_secs(1)),
+            autofill_batch_size: 10,
+        }
+    }
+}
+
+impl Frozen<PlaygroundState> for FrozenPlaygroundState {
+    fn thaw(&self) -> PlaygroundState {
+        PlaygroundState {
+            cluster: self.cluster.clone(),
+
+            inconsistency: Cell::new(self.inconsistency),
+
+            target_cluster: self.target_cluster.clone(),
+            heartbeat_interval: self.heartbeat_interval,
+            leader_heartbeat_interval: self.leader_heartbeat_interval,
+            ensure_leadership_interval: self.ensure_leadership_interval,
+            autofill_delay: self.autofill_delay,
+            autofill_batch_size: self.autofill_batch_size,
+        }
     }
 }
 
@@ -1088,6 +1185,64 @@ impl<N: Node<Invocation = PlaygroundInvocation>> leadership::ensure::Config
         self.callbacks.ensure_leadership(self.node_id);
 
         PlaygroundLogEntry::EnsureLeadership(Uuid::new_v4())
+    }
+
+    fn retry_policy(&self) -> Self::RetryPolicy {
+        DoNotRetry::new()
+    }
+}
+
+struct VerifyConfig<N> {
+    node_id: usize,
+
+    interval: Option<instant::Duration>,
+
+    _p: std::marker::PhantomData<N>,
+}
+
+impl<N> VerifyConfig<N> {
+    fn new() -> Self {
+        Self {
+            node_id: usize::MAX,
+
+            interval: None,
+
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<N: Node<Invocation = PlaygroundInvocation>> verify::Config for VerifyConfig<N> {
+    type Node = N;
+    type Applicable = PlaygroundLogEntry;
+    type RetryPolicy = DoNotRetry<PlaygroundInvocation>;
+
+    fn init(&mut self, node: &Self::Node) {
+        self.node_id = node.id();
+    }
+
+    fn update(&mut self, event: &paxakos::node::EventFor<Self::Node>) {
+        if let paxakos::Event::Init {
+            state: Some(state), ..
+        }
+        | paxakos::Event::Install {
+            state: Some(state), ..
+        } = event
+        {
+            self.interval = state.ensure_leadership_interval;
+        }
+
+        if let paxakos::Event::Apply {
+            effect: PlaygroundEffect::Reconfigured(reconfiguration),
+            ..
+        } = event
+        {
+            self.interval = reconfiguration.new_ensure_leadership_interval;
+        }
+    }
+
+    fn leader_round_interval(&self) -> Option<RoundNumOf<Self::Node>> {
+        Some(10)
     }
 
     fn retry_policy(&self) -> Self::RetryPolicy {
