@@ -958,7 +958,7 @@ where
     }
 
     fn install_snapshot(&mut self, snapshot: SnapshotFor<I>) -> Result<(), InstallSnapshotError> {
-        if self.state_round > snapshot.round() {
+        if self.state.is_some() && self.state_round > snapshot.round() {
             return Err(InstallSnapshotError::Outdated);
         }
 
@@ -976,6 +976,9 @@ where
         self.greatest_observed_round_num = greatest_observed_round_num;
         self.greatest_observed_coord_num = greatest_observed_coord_num;
         self.accepted_entries = accepted_entries;
+
+        self.concurrency_bound = Zero::zero();
+        self.available_round_nums.clear();
 
         self.emit(Event::Install {
             round: state_round,
