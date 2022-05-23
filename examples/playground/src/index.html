@@ -631,6 +631,7 @@
     <template id="tpl-snapshot">
       <li>
         Round <span id="round"></span>, taken by node <span id="node"></span>
+        <button id="install">Install</button>
         <button id="recover">Recover</button>
         <button id="resume" disabled>Resume</button>
       </li>
@@ -1174,6 +1175,7 @@
           const {
             round,
             node: nodeEl,
+            install,
             recover,
             resume,
           } = instantiateTemplate('tpl-snapshot', (e) => snapshotsEl.insertBefore(e, snapshotsEl.children[index]));
@@ -1181,18 +1183,20 @@
           nodeEl.textContent = nodesById[snapshot.nodeId].name;
           round.textContent = snapshot.round;
 
+          install.bindDisabled(() => !node.handle || (node.status !== 'Disoriented' && node.round > snapshot.round));
           recover.bindDisabled(() => !!node.handle);
           if (node.id === snapshot.nodeId && node.round == snapshot.round) {
             resume.bindDisabled(() => !!node.handle || !snapshot.resumable);
           }
 
+          install.addEventListener('click', () => {
+            node.handle.installSnapshot(snapshot);
+          });
           recover.addEventListener('click', () => {
             node.handle = cluster.recoverNode(node.identity, snapshot);
-            updateBindings();
           });
           resume.addEventListener('click', () => {
             node.handle = cluster.resumeNode(node.identity, snapshot);
-            updateBindings();
           });
         }
 

@@ -627,6 +627,15 @@ impl PlaygroundNode {
         })
     }
 
+    #[wasm_bindgen(method, js_name = installSnapshot)]
+    pub fn install_snapshot(&self, snapshot: &Snapshot) {
+        wasm_bindgen_futures::spawn_local(
+            self.handle
+                .install_snapshot(snapshot.inner.clone())
+                .map(|_| ()),
+        )
+    }
+
     #[wasm_bindgen(method, js_name = queueAppends)]
     pub fn queue_appends(&self, min_round: u32, max_round: u32, num: u32) {
         for _ in 0..num {
