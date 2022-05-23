@@ -225,6 +225,12 @@
 //! When a node is started or just installed a snapshot it is likely lagging.
 //! The `CatchUp` decoration will poll other nodes until the node is caught up.
 //!
+//! ## Verification of Consistency (experimental, `verify` flag)
+//!
+//! The `Verify` decoration will periodically check that all nodes are
+//! consistent with each other. Nodes that have become inconsistent with the
+//! majority eject their state to reduce the chance of propagation.
+//!
 //! ## Leases
 //!
 //! A cluster will often have shared resources which must be locked before they
@@ -444,6 +450,8 @@ pub mod state;
 #[cfg(feature = "tracer")]
 pub mod tracer;
 mod util;
+#[cfg(feature = "verify")]
+pub mod verify;
 pub mod voting;
 
 use std::convert::TryFrom;

@@ -25,6 +25,7 @@ prototyping = [ "rand", "rand_distr", "tracer" ]
 releaser = [ "leases" ]
 tracer = []
 track-leadership = []
+verify = [ "track-leadership" ]
 wasm-bindgen = [ "futures-timer/wasm-bindgen", "instant/wasm-bindgen", "wasm-bindgen-futures" ]
 
 [dependencies]
