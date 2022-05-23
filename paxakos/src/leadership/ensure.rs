@@ -26,7 +26,6 @@ use crate::node::StaticAppendResultFor;
 use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::RetryPolicy;
 use crate::Node;
-use crate::RoundNum;
 
 /// Ensure leadership configuration.
 pub trait Config {
@@ -103,27 +102,6 @@ where
     timer: Option<futures_timer::Delay>,
 
     appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, ()>>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct QueuedGap<R: RoundNum> {
-    round: R,
-    due_time: instant::Instant,
-}
-
-impl<R: RoundNum> Ord for QueuedGap<R> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.due_time
-            .cmp(&other.due_time)
-            .then_with(|| self.round.cmp(&other.round))
-            .reverse()
-    }
-}
-
-impl<R: RoundNum> PartialOrd for QueuedGap<R> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
 }
 
 impl<N, C> EnsureLeadership<N, C>
