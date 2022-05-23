@@ -145,7 +145,7 @@ where
         Abstain = AbstainOf<I>,
     >,
 {
-    ///
+    /// Starts the node as specified by the given starter.
     pub fn with(
         self,
         starter: Starter<I>,
