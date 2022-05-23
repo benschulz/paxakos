@@ -12,7 +12,7 @@ console_error_panic_hook = "0.1"
 futures = "0.3"
 instant = { version = "0.1", features = [ "wasm-bindgen" ] }
 js-sys = "0.3"
-paxakos = { path = "../../paxakos", features = [ "autofill", "ensure-leadership", "heartbeats", "prototyping", "track-leadership", "wasm-bindgen" ] }
+paxakos = { path = "../../paxakos", features = [ "autofill", "catch-up", "ensure-leadership", "heartbeats", "prototyping", "track-leadership", "wasm-bindgen" ] }
 rand_distr = "0.4"
 serde = "1"
 uuid = { version = "1", features = [ "js", "serde", "v4" ] }

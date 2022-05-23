@@ -11,6 +11,8 @@ use futures::StreamExt;
 use paxakos::append::AppendArgs;
 use paxakos::autofill;
 use paxakos::autofill::AutofillBuilderExt;
+use paxakos::catch_up;
+use paxakos::catch_up::CatchUpBuilderExt;
 use paxakos::executor::WasmExecutor;
 use paxakos::heartbeats::HeartbeatsBuilderExt;
 use paxakos::leadership;
@@ -413,6 +415,7 @@ impl Cluster {
                 .with(starter)
                 .using(kit)
                 .driven_by(WasmExecutor)
+                .catch_up(catch_up::StaticConfig::default())
                 .track_leadership()
                 .fill_gaps(AutofillConfig::new(Rc::clone(&callbacks)))
                 .send_heartbeats(HeartbeatConfig::new(Rc::clone(&callbacks)))
