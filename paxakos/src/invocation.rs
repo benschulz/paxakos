@@ -87,7 +87,7 @@ pub trait Invocation: Sized + 'static {
     type Abstain: std::fmt::Debug + Send + Sync + 'static;
 
     /// Reason the node's state may be ejected.
-    type Ejection: std::fmt::Debug + Send + Sync + 'static;
+    type Ejection: From<state::ErrorOf<Self::State>> + std::fmt::Debug + Send + Sync + 'static;
 
     /// Communication error type.
     type CommunicationError: std::fmt::Debug + Send + Sync + 'static;

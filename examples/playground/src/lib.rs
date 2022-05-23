@@ -755,6 +755,7 @@ impl State for PlaygroundState {
     type LogEntry = PlaygroundLogEntry;
     type Outcome = usize;
     type Effect = PlaygroundEffect;
+    type Error = Infallible;
 
     type Node = PrototypingNode;
 
@@ -762,7 +763,7 @@ impl State for PlaygroundState {
         &mut self,
         log_entry: &Self::LogEntry,
         _context: &mut (),
-    ) -> (Self::Outcome, Self::Effect) {
+    ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
         self.cluster.apply(&PlaygroundClusterLogEntry {
             previous_target_cluster: &self.target_cluster,
             inner: log_entry,
@@ -778,12 +779,12 @@ impl State for PlaygroundState {
             self.autofill_delay = reconfiguration.new_autofill_delay;
             self.autofill_batch_size = reconfiguration.new_autofill_batch_size;
 
-            (
+            Ok((
                 self.applied.len(),
                 PlaygroundEffect::Reconfigured(reconfiguration.clone()),
-            )
+            ))
         } else {
-            (self.applied.len(), PlaygroundEffect::None)
+            Ok((self.applied.len(), PlaygroundEffect::None))
         }
     }
 

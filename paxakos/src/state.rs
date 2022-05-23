@@ -8,6 +8,9 @@ use crate::NodeInfo;
 /// Type alias to extract a state's [`Context`][State::Context] type.
 pub type ContextOf<S> = <S as State>::Context;
 
+/// Type alias to extract a state's [`Error`][State::Error] type.
+pub type ErrorOf<S> = <S as State>::Error;
+
 /// Type alias to extract a state's [`Frozen`][State::Frozen] type.
 pub type FrozenOf<S> = <S as State>::Frozen;
 
@@ -57,6 +60,9 @@ pub trait State: 'static + Debug + Send + Sized + Sync {
     /// [Apply]: crate::event::Event::Apply
     type Effect: 'static + Send + Debug;
 
+    /// Type of error that may occur when applying a log entry.
+    type Error: Send + Sync + 'static;
+
     /// Node descriptor type, see [`NodeInfo`].
     type Node: NodeInfo;
 
@@ -74,7 +80,7 @@ pub trait State: 'static + Debug + Send + Sized + Sync {
         &mut self,
         log_entry: &Self::LogEntry,
         context: &mut Self::Context,
-    ) -> (Self::Outcome, Self::Effect);
+    ) -> Result<(Self::Outcome, Self::Effect), Self::Error>;
 
     /// Applies the given log entry to this state object.
     ///
@@ -88,8 +94,9 @@ pub trait State: 'static + Debug + Send + Sized + Sync {
         &mut self,
         log_entry: &Self::LogEntry,
         context: &mut Self::Context,
-    ) -> Self::Effect {
-        self.apply(log_entry, context).1
+    ) -> Result<Self::Effect, Self::Error> {
+        self.apply(log_entry, context)
+            .map(|(_outcome, effect)| effect)
     }
 
     /// Returns the current level of concurrency.

@@ -167,6 +167,7 @@ impl State for ChatState {
     type LogEntry = ChatMessage;
     type Outcome = ();
     type Effect = ();
+    type Error = Infallible;
 
     type Node = PrototypingNode;
 
@@ -174,7 +175,7 @@ impl State for ChatState {
         &mut self,
         log_entry: &Self::LogEntry,
         _context: &mut (),
-    ) -> (Self::Outcome, Self::Effect) {
+    ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
         let own_node_id = format!("{:X}", self.node_id + 10);
 
         println!(
@@ -182,7 +183,7 @@ impl State for ChatState {
             own_node_id, log_entry.sender, log_entry.message
         );
 
-        ((), ())
+        Ok(((), ()))
     }
 
     fn cluster_at(&self, _round_offset: std::num::NonZeroUsize) -> Vec<Self::Node> {

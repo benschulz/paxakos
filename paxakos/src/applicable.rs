@@ -26,6 +26,7 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 /// achieved as follows.
 ///
 /// ```
+/// # use std::convert::Infallible;
 /// # use std::sync::Arc;
 /// #
 /// # #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -61,13 +62,15 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 /// #
 /// #     type Effect = ();
 /// #
+/// #     type Error = Infallible;
+/// #
 /// #     type Node = ();
 /// #
 /// #     fn apply(
 /// #         &mut self,
 /// #         _log_entry: &Self::LogEntry,
 /// #         _context: &mut Self::Context,
-/// #     ) -> (Self::Outcome, Self::Effect) {
+/// #     ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
 /// #         unimplemented!()
 /// #     }
 /// #

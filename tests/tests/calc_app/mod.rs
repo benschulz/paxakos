@@ -99,13 +99,15 @@ impl State for CalcState {
     type Outcome = f64;
     type Effect = (f64, blake3::Hash);
 
+    type Error = Infallible;
+
     type Node = PrototypingNode;
 
     fn apply(
         &mut self,
         log_entry: &Self::LogEntry,
         _context: &mut (),
-    ) -> (Self::Outcome, Self::Effect) {
+    ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
         let bytes = bincode::serialize(log_entry).unwrap();
         self.hasher.update(&bytes);
 
@@ -126,7 +128,7 @@ impl State for CalcState {
             }
         }
 
-        (self.value, (self.value, self.hasher.finalize()))
+        Ok((self.value, (self.value, self.hasher.finalize())))
     }
 
     fn concurrency(this: Option<&Self>) -> Option<std::num::NonZeroUsize> {

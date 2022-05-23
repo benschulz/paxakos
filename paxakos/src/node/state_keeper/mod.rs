@@ -39,6 +39,7 @@ use crate::executor::Executor;
 use crate::invocation::AbstainOf;
 use crate::invocation::ContextOf;
 use crate::invocation::CoordNumOf;
+use crate::invocation::EjectionOf;
 use crate::invocation::FrozenStateOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryIdOf;
@@ -1322,18 +1323,15 @@ where
             None => return,
         };
 
-        let (round, state) = self.apply_commits_to(state);
-
-        self.state_round = round;
-        self.state = Some(state);
+        (self.state_round, self.state) = self.apply_commits_to(state);
     }
 
-    fn apply_commits_to(&mut self, mut state: StateOf<I>) -> (RoundNumOf<I>, StateOf<I>) {
+    fn apply_commits_to(&mut self, mut state: StateOf<I>) -> (RoundNumOf<I>, Option<StateOf<I>>) {
         if !self
             .pending_commits
             .contains_key(&(self.state_round + One::one()))
         {
-            return (self.state_round, state);
+            return (self.state_round, Some(state));
         }
 
         let mut round = self.state_round;
@@ -1345,19 +1343,32 @@ where
 
             let awaiters = self.awaiters.remove(&entry.id()).unwrap_or_default();
 
-            let event = if awaiters.is_empty() {
+            let result = if awaiters.is_empty() {
                 state.apply_unobserved(&*entry, &mut self.context)
             } else {
-                let (outcome, event) = state.apply(&*entry, &mut self.context);
+                state
+                    .apply(&*entry, &mut self.context)
+                    .map(|(outcome, effect)| {
+                        awaiters.into_iter().for_each(|a| {
+                            // avoid clone if possible
+                            if !a.is_canceled() {
+                                let _ = a.send((round, outcome.clone()));
+                            }
+                        });
 
-                awaiters.into_iter().for_each(|a| {
-                    // avoid clone if possible
-                    if !a.is_canceled() {
-                        let _ = a.send((round, outcome.clone()));
-                    }
-                });
+                        effect
+                    })
+            };
 
-                event
+            let effect = match result {
+                Ok(effect) => effect,
+                Err(err) => {
+                    let reason = EjectionOf::<I>::from(err);
+
+                    self.emit(Event::Eject { reason, state });
+
+                    return (round, None);
+                }
             };
 
             self.applied_entry_buffer
@@ -1367,7 +1378,7 @@ where
             self.emit(Event::Apply {
                 round,
                 log_entry: entry,
-                effect: event,
+                effect,
                 new_concurrency,
             });
         }
@@ -1378,7 +1389,7 @@ where
             self.emit_gaps(round);
         }
 
-        (round, state)
+        (round, Some(state))
     }
 
     fn clean_up_after_applies(&mut self) {

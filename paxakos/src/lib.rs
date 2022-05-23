@@ -35,6 +35,7 @@
 //!
 //! ```
 //! use std::collections::HashSet;
+//! use std::convert::Infallible;
 //!
 //! use paxakos::{LogEntry, State};
 //! use uuid::Uuid;
@@ -76,6 +77,7 @@
 //!     type LogEntry = CalcOp;
 //!     type Outcome = f64;
 //!     type Effect = f64;
+//!     type Error = Infallible;
 //!
 //! #   type Node = ();
 //! #   
@@ -87,7 +89,7 @@
 //!         &mut self,
 //!         log_entry: &Self::LogEntry,
 //!         _context: &mut (),
-//!     ) -> (Self::Outcome, Self::Effect) {
+//!     ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
 //!         if self.applied.insert(log_entry.id()) {
 //!             match log_entry {
 //!                 CalcOp::Add(v, _) => {
@@ -105,7 +107,7 @@
 //!             }
 //!         }
 //!
-//!         (self.value, self.value)
+//!         Ok((self.value, self.value))
 //!     }
 //!
 //!     fn freeze(&self) -> Self::Frozen {
