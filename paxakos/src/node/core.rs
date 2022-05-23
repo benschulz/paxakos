@@ -132,10 +132,6 @@ where
             self.status = new_status;
         }
 
-        if let std::task::Poll::Ready(Event::Install { .. }) = result {
-            self.participation = Participation::Passive;
-        }
-
         if let std::task::Poll::Ready(Event::Activate(r)) = result {
             self.participation = Participation::PartiallyActive(r);
         }
