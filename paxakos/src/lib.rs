@@ -394,11 +394,14 @@
 //!  - Tests
 //!  - Adding comments and documentation
 //!  - Rounding off existing decorations
-//!  - Additional decorations, e.g.,
-//!    - for consistency checks
+//!  - Implement decoration for read delegation
+//!  - Find way to detect and react to when a node was left behind
 //!  - Update playground
-//!    - add master-lease decoration
-//!    - add delegate decoration
+//!    - Allow configuration of `CatchUp` and `Verify`
+//!    - Visualize `CatchUp`
+//!    - Add node action animation for `Verify`
+//!    - Add master-lease decoration
+//!    - Add delegate decoration
 //!
 //! [Communicator]: crate::communicator::Communicator
 //! [LogEntry]: crate::log::LogEntry

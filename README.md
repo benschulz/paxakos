@@ -32,6 +32,7 @@ the examples to get a fuller picture.
 
 ```rust
 use std::collections::HashSet;
+use std::convert::Infallible;
 
 use paxakos::{LogEntry, State};
 use uuid::Uuid;
@@ -70,15 +71,14 @@ impl State for CalcState {
 
     type LogEntry = CalcOp;
     type Outcome = f64;
-    type Event = f64;
+    type Effect = f64;
+    type Error = Infallible;
 
-#
-#
     fn apply(
         &mut self,
         log_entry: &Self::LogEntry,
         _context: &mut (),
-    ) -> (Self::Outcome, Self::Event) {
+    ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
         if self.applied.insert(log_entry.id()) {
             match log_entry {
                 CalcOp::Add(v, _) => {
@@ -96,7 +96,11 @@ impl State for CalcState {
             }
         }
 
-        (self.value, self.value)
+        Ok((self.value, self.value))
+    }
+
+    fn freeze(&self) -> Self::Frozen {
+        self.clone()
     }
 }
 ```
@@ -199,6 +203,22 @@ cluster.
 Similar to heartbeats, the ensure leadership decoration will append a log
 entry after none has been for a certain amount of time. However the goal of
 this decoration is to ensure there is a leader.
+
+### Automatic Delegation (experimental, `delegation` flag)
+
+The `Delegate` decoration allows automatic delegation of appends, ordinarily
+to the leader node.
+
+### Automatic Catch-Up (experimental, `catch-up` flag)
+
+When a node is started or just installed a snapshot it is likely lagging.
+The `CatchUp` decoration will poll other nodes until the node is caught up.
+
+### Verification of Consistency (experimental, `verify` flag)
+
+The `Verify` decoration will periodically check that all nodes are
+consistent with each other. Nodes that have become inconsistent with the
+majority eject their state to reduce the chance of propagation.
 
 ### Leases
 
@@ -363,10 +383,14 @@ no particular order).
  - Tests
  - Adding comments and documentation
  - Rounding off existing decorations
- - Additional decorations, e.g.,
-   - for consistency checks
-   - for delegation to the current leader
- - Serialization
+ - Implement decoration for read delegation
+ - Find way to detect and react to when a node was left behind
+ - Update playground
+   - Allow configuration of `CatchUp` and `Verify`
+   - Visualize `CatchUp`
+   - Add node action animation for `Verify`
+   - Add master-lease decoration
+   - Add delegate decoration
 
 [Communicator]: crate::communicator::Communicator
 [LogEntry]: crate::log::LogEntry
