@@ -182,12 +182,7 @@ impl<I: Invocation> From<AcceptError<I>> for AppendError<I> {
                 caught_up: log_entry.is_some(),
             },
             AcceptError::Passive => AppendError::Passive,
-            AcceptError::Rejected(reason) => AppendError::NoQuorum {
-                abstentions: Vec::new(),
-                communication_errors: Vec::new(),
-                discards: Vec::new(),
-                rejections: vec![reason],
-            },
+            AcceptError::Rejected(reason) => AppendError::Unacceptable(reason),
             AcceptError::ShutDown => AppendError::ShutDown,
         }
     }

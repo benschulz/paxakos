@@ -162,6 +162,10 @@ pub enum AppendError<I: Invocation> {
     /// Node is shut down.
     #[error("node is shut down")]
     ShutDown,
+
+    /// The entry was unaccepable to this node.
+    #[error("entry is unacceptable")]
+    Unacceptable(NayOf<I>),
 }
 
 // TODO any way to implement this genericly as `impl From<ShutDownOr<E>> for E`?
@@ -202,6 +206,10 @@ impl<I: Invocation> std::fmt::Debug for AppendError<I> {
             AppendError::Passive => f.debug_tuple("AppendError::Passive").finish(),
             AppendError::Railroaded => f.debug_tuple("AppendError::Railroaded").finish(),
             AppendError::ShutDown => f.debug_tuple("AppendError::ShutDown").finish(),
+            AppendError::Unacceptable(reason) => f
+                .debug_tuple("AppendError::Unacceptable")
+                .field(reason)
+                .finish(),
         }
     }
 }
