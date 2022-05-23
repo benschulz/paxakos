@@ -18,10 +18,10 @@ use futures::future::BoxFuture;
 use futures::future::LocalBoxFuture;
 
 use crate::append::AppendArgs;
-use crate::append::AppendError;
 use crate::applicable::ApplicableTo;
 use crate::buffer::Buffer;
 use crate::error::Disoriented;
+use crate::error::PollError;
 use crate::error::ShutDown;
 use crate::error::ShutDownOr;
 use crate::invocation;
@@ -239,7 +239,7 @@ pub trait NodeImpl: Node {
         &self,
         round_num: RoundNumOf<Self>,
         additional_nodes: Vec<NodeOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<bool, AppendError<InvocationOf<Self>>>>;
+    ) -> LocalBoxFuture<'static, Result<bool, PollError<Self::Invocation>>>;
 }
 
 /// Convenient way to implement `NodeImpl` by delegating all calls.
@@ -280,7 +280,7 @@ impl<D: DelegatingNodeImpl> NodeImpl for D {
         &self,
         round_num: RoundNumOf<Self>,
         additional_nodes: Vec<NodeOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<bool, AppendError<InvocationOf<Self>>>> {
+    ) -> LocalBoxFuture<'static, Result<bool, PollError<Self::Invocation>>> {
         self.delegate().poll(round_num, additional_nodes)
     }
 }

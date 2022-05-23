@@ -5,6 +5,7 @@ use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
 use crate::error::CommitError;
 use crate::error::InstallSnapshotError;
+use crate::error::PollError;
 use crate::error::PrepareError;
 use crate::error::ReadStaleError;
 use crate::invocation::Invocation;
@@ -22,6 +23,12 @@ impl ShutDown {
 impl<I: Invocation> From<ShutDown> for AppendError<I> {
     fn from(_: ShutDown) -> Self {
         AppendError::ShutDown
+    }
+}
+
+impl<I: Invocation> From<ShutDown> for PollError<I> {
+    fn from(_: ShutDown) -> Self {
+        PollError::ShutDown
     }
 }
 
@@ -113,6 +120,16 @@ impl<I: Invocation> From<ClusterError<RoundNumOf<I>>> for AppendError<I> {
             ClusterError::Disoriented => AppendError::Disoriented,
             ClusterError::Converged(_) => AppendError::Converged { caught_up: true },
             ClusterError::ShutDown => AppendError::ShutDown,
+        }
+    }
+}
+
+impl<I: Invocation> From<ClusterError<RoundNumOf<I>>> for PollError<I> {
+    fn from(e: ClusterError<RoundNumOf<I>>) -> Self {
+        match e {
+            ClusterError::Disoriented => PollError::Disoriented,
+            ClusterError::Converged(_) => PollError::LocallyConverged,
+            ClusterError::ShutDown => PollError::ShutDown,
         }
     }
 }

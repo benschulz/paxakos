@@ -7,6 +7,7 @@ use thiserror::Error;
 
 use crate::append::AppendError;
 use crate::invocation::AbstainOf;
+use crate::invocation::CommunicationErrorOf;
 use crate::invocation::CoordNumOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryIdOf;
@@ -228,6 +229,16 @@ impl<I: Invocation> From<CommitError<I>> for AppendError<I> {
     }
 }
 
+impl<I: Invocation> From<CommitError<I>> for PollError<I> {
+    fn from(e: CommitError<I>) -> Self {
+        match e {
+            CommitError::Disoriented => PollError::Disoriented,
+            CommitError::InvalidEntryId(_) => unreachable!(),
+            CommitError::ShutDown => PollError::ShutDown,
+        }
+    }
+}
+
 /// Node doesn't have state.
 #[derive(Clone, Copy, Debug, Error)]
 #[error("node is disoriented")]
@@ -283,5 +294,62 @@ impl<E> ShutDownOr<E> {
 impl<E> From<E> for ShutDownOr<E> {
     fn from(e: E) -> Self {
         ShutDownOr::Other(e)
+    }
+}
+
+/// Reason a poll failed.
+#[derive(Error)]
+#[non_exhaustive]
+pub enum PollError<I: Invocation> {
+    /// A decoration failed the poll.
+    #[error("a node decoration raised an error")]
+    Decoration(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+
+    /// Node does not currently know the shared state.
+    #[error("node is disoriented")]
+    Disoriented,
+
+    /// Node already knows the log entry for the given round.
+    #[error("round has converged locally")]
+    LocallyConverged,
+
+    /// While the round has converged, none of the nodes was still retaining the
+    /// log entry.
+    #[error("log entry is no longer retained")]
+    NotRetained,
+
+    /// Node is shut down.
+    #[error("node is shut down")]
+    ShutDown,
+
+    /// Other nodes either did not respond or abstained.
+    #[error("received no useful responses")]
+    UselessResponses {
+        /// All abstentions received.
+        abstentions: Vec<AbstainOf<I>>,
+        /// All encountered errors.
+        communication_errors: Vec<CommunicationErrorOf<I>>,
+    },
+}
+
+impl<I: Invocation> std::fmt::Debug for PollError<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PollError::Decoration(err) => {
+                f.debug_tuple("PollError::Decoration").field(err).finish()
+            }
+            PollError::Disoriented => f.debug_tuple("PollError::Disoriented").finish(),
+            PollError::LocallyConverged => f.debug_tuple("PollError::LocallyConverged").finish(),
+            PollError::NotRetained => f.debug_tuple("PollError::NotRetained").finish(),
+            PollError::ShutDown => f.debug_tuple("PollError::ShutDown").finish(),
+            PollError::UselessResponses {
+                abstentions,
+                communication_errors,
+            } => f
+                .debug_struct("PollError::UselessResponses")
+                .field("abstentions", abstentions)
+                .field("communication_errors", communication_errors)
+                .finish(),
+        }
     }
 }

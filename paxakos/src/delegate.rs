@@ -17,6 +17,7 @@ use crate::append::Importance;
 use crate::applicable::ApplicableTo;
 use crate::decoration::Decoration;
 use crate::error::Disoriented;
+use crate::error::PollError;
 use crate::error::ShutDown;
 use crate::error::ShutDownOr;
 use crate::invocation;
@@ -580,7 +581,7 @@ where
         &self,
         round_num: RoundNumOf<Self>,
         additional_nodes: Vec<crate::node::NodeOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<bool, AppendError<InvocationOf<Self>>>> {
+    ) -> LocalBoxFuture<'static, Result<bool, PollError<Self::Invocation>>> {
         self.decorated.poll(round_num, additional_nodes)
     }
 }

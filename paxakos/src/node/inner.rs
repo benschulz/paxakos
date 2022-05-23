@@ -25,6 +25,7 @@ use crate::communicator::Acceptance;
 use crate::communicator::Communicator;
 use crate::communicator::ErrorOf;
 use crate::communicator::Vote;
+use crate::error::PollError;
 use crate::error::ShutDown;
 use crate::error::ShutDownOr;
 use crate::invocation::AbstainOf;
@@ -850,7 +851,7 @@ where
         self: Rc<Self>,
         round_num: RoundNumOf<I>,
         additional_nodes: Vec<NodeOf<I>>,
-    ) -> Result<bool, AppendError<I>> {
+    ) -> Result<bool, PollError<I>> {
         let mut cluster = self.state_keeper.cluster_for(round_num).await?;
         cluster.extend(additional_nodes);
 
@@ -899,13 +900,11 @@ where
         }
 
         if converged {
-            Err(AppendError::Converged { caught_up: false })
+            Err(PollError::NotRetained)
         } else if !communication_errors.is_empty() && !abstentions.is_empty() {
-            Err(AppendError::NoQuorum {
+            Err(PollError::UselessResponses {
                 abstentions,
                 communication_errors,
-                discards: Vec::new(),
-                rejections: Vec::new(),
             })
         } else {
             Ok(false)
