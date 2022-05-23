@@ -218,11 +218,15 @@ extern "C" {
     pub fn participation_changed(this: &Callbacks, node_id: usize, active: bool);
 
     #[wasm_bindgen(method)]
-    pub fn reconfigured(this: &Callbacks, round: u32, new_configuration: Configuration);
+    pub fn reconfigured(
+        this: &Callbacks,
+        node_id: usize,
+        round: u32,
+        new_configuration: Configuration,
+    );
 
     #[wasm_bindgen(method, js_name = statusChanged)]
     pub fn status_changed(this: &Callbacks, node_id: usize, new_status: String);
-
 }
 
 #[wasm_bindgen]
@@ -464,7 +468,11 @@ impl Cluster {
                                 state: Some(state),
                                 ..
                             } => {
-                                callbacks.reconfigured(*round, Configuration::from(&**state));
+                                callbacks.reconfigured(
+                                    node.id(),
+                                    *round,
+                                    Configuration::from(&**state),
+                                );
                             }
 
                             paxakos::Event::StatusChange { new_status, .. } => {
@@ -491,7 +499,11 @@ impl Cluster {
                                 );
 
                                 if let PlaygroundLogEntry::Reconfigure(_, r) = &**log_entry {
-                                    callbacks.reconfigured(*round, Configuration::from(r));
+                                    callbacks.reconfigured(
+                                        node.id(),
+                                        *round,
+                                        Configuration::from(r),
+                                    );
                                 }
                             }
 

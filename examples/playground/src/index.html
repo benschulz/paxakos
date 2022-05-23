@@ -923,10 +923,17 @@
             node.element.classList.toggle('node--active', active);
           },
 
-          reconfigured(round, newConfiguration) {
+          reconfigured(nodeId, round, newConfiguration) {
+            const node = nodesById[nodeId];
+
+            node.round = round;
+
             if (!currentConfiguration || round === maxRound) {
               currentConfiguration = newConfiguration;
             }
+
+            updateRounds();
+            updateBindings();
           },
 
           statusChanged(nodeId, newStatus) {
