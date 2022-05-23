@@ -35,7 +35,7 @@ pub type OutcomeOf<S> = <S as State>::Outcome;
 pub type EffectOf<S> = <S as State>::Effect;
 
 /// Distributed state to which log entries are applied.
-pub trait State: 'static + Debug + Send + Sized + Sync {
+pub trait State: 'static + Debug + Send + Sized {
     /// Frozen representation of this state type.
     type Frozen: Frozen<Self> + Send + Sync + Debug;
 
@@ -51,7 +51,7 @@ pub trait State: 'static + Debug + Send + Sized + Sync {
     /// Result of applying a log entry to the state.
     ///
     /// This result is what those actively appending to the log receive.
-    type Outcome: 'static + Clone + Debug + Send + Sync + Unpin;
+    type Outcome: 'static + Clone + Debug + Send + Unpin;
 
     /// Result of applying a log entry to the state.
     ///
