@@ -891,16 +891,20 @@
           },
 
           packet(from, to, delay, dropped, response) {
-            ++links[from][to].packets;
-            ++totalPackets;
+            const link = links[from][to];
 
-            animatePacket({
-              from,
-              to,
-              delay,
-              dropped,
-              response,
-            });
+            if (link) {
+              ++link.packets;
+              ++totalPackets;
+
+              animatePacket({
+                from,
+                to,
+                delay,
+                dropped,
+                response,
+              });
+            }
           },
 
           packetLossUpdated(from, to, packetLoss) {
