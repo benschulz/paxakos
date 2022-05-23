@@ -16,6 +16,7 @@ use crate::invocation::EjectionOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryIdOf;
 use crate::invocation::LogEntryOf;
+use crate::invocation::NayOf;
 use crate::invocation::NodeOf;
 use crate::invocation::OutcomeOf;
 use crate::invocation::PromiseFor;
@@ -27,6 +28,7 @@ use crate::RoundNum;
 
 use super::error::AcquireRoundNumError;
 use super::error::ClusterError;
+use super::error::ShutDown;
 use super::RoundNumReservation;
 
 #[derive(Debug)]
@@ -67,6 +69,11 @@ pub enum Request<I: Invocation> {
     PrepareEntry {
         round_num: RoundNumOf<I>,
         coord_num: CoordNumOf<I>,
+    },
+
+    TestAcceptabilityOfEntries {
+        coord_num: CoordNumOf<I>,
+        entries: Vec<(RoundNumOf<I>, Arc<LogEntryOf<I>>)>,
     },
 
     AcceptEntry {
@@ -135,6 +142,8 @@ pub enum Response<I: Invocation> {
     GreatestObservedCoordNum(Result<CoordNumOf<I>, Infallible>),
 
     PrepareEntry(Result<PromiseFor<I>, PrepareError<I>>),
+
+    TestAcceptabilityOfEntries(Result<Option<NayOf<I>>, ShutDown>),
 
     AcceptEntry(Result<YeaOf<I>, AcceptError<I>>),
     AcceptEntries(Result<(), AcceptError<I>>),

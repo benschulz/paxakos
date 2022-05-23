@@ -115,6 +115,7 @@ impl<I: Invocation> From<PrepareError<I>> for AppendError<I> {
             PrepareError::Abstained(reason) => AppendError::NoQuorum {
                 abstentions: vec![reason],
                 communication_errors: Vec::new(),
+                discards: Vec::new(),
                 rejections: Vec::new(),
             },
             PrepareError::Supplanted(_) => AppendError::Lost,
@@ -184,6 +185,7 @@ impl<I: Invocation> From<AcceptError<I>> for AppendError<I> {
             AcceptError::Rejected(reason) => AppendError::NoQuorum {
                 abstentions: Vec::new(),
                 communication_errors: Vec::new(),
+                discards: Vec::new(),
                 rejections: vec![reason],
             },
             AcceptError::ShutDown => AppendError::ShutDown,

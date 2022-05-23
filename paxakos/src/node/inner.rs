@@ -25,6 +25,7 @@ use crate::communicator::Acceptance;
 use crate::communicator::Communicator;
 use crate::communicator::ErrorOf;
 use crate::communicator::Vote;
+use crate::error::ShutDown;
 use crate::error::ShutDownOr;
 use crate::invocation::AbstainOf;
 use crate::invocation::AcceptanceFor;
@@ -407,11 +408,12 @@ where
             .borrow_mut()
             .send_prepare(other_nodes, round_num, coord_num)
             .into_iter()
-            .map(|(_node, fut)| fut.map(|x| x));
+            .map(|(_node, fut)| fut);
 
         let promise_or_rejection = self
             .await_promise_quorum_or_first_conflict(
                 round_num,
+                coord_num,
                 quorum_prime,
                 pending_responses,
                 own_promise,
@@ -480,17 +482,63 @@ where
     async fn await_promise_quorum_or_first_conflict(
         &self,
         round_num: RoundNumOf<I>,
+        coord_num: CoordNumOf<I>,
         quorum: usize,
         pending_responses: impl IntoIterator<
             Item = impl Future<Output = Result<VoteFor<I>, ErrorOf<C>>>,
         >,
         own_promise: PromiseFor<I>,
     ) -> Result<Vote<RoundNumOf<I>, CoordNumOf<I>, LogEntryOf<I>, Infallible>, AppendError<I>> {
+        #[derive(Debug)]
+        enum VoteExt<I: Invocation> {
+            Given(Promise<RoundNumOf<I>, CoordNumOf<I>, LogEntryOf<I>>),
+            Conflicted(Conflict<CoordNumOf<I>, LogEntryOf<I>>),
+            Abstained(AbstainOf<I>),
+            Discarded(NayOf<I>),
+        }
+
         if quorum == 0 {
             return Ok(Vote::Given(own_promise));
         }
 
-        let mut pending_responses: FuturesUnordered<_> = pending_responses.into_iter().collect();
+        let mut pending_responses: FuturesUnordered<_> = pending_responses
+            .into_iter()
+            .map(|f| {
+                f.then(|r| async {
+                    match r {
+                        Ok(Vote::Given(promise)) => {
+                            if !promise.0.is_empty() {
+                                match self
+                                    .state_keeper
+                                    .test_acceptability_of_entries(
+                                        coord_num,
+                                        promise
+                                            .0
+                                            .iter()
+                                            .map(|c| (c.round_num, Arc::clone(&c.log_entry)))
+                                            .collect(),
+                                    )
+                                    .await
+                                {
+                                    Ok(None) => { /* fall-through */ }
+                                    Ok(Some(discard)) => {
+                                        return Ok(VoteExt::<I>::Discarded(discard))
+                                    }
+                                    Err(ShutDown) => { /* will implicitly be handled later */ }
+                                }
+                            }
+
+                            let _gocn = self.state_keeper.greatest_observed_coord_num().await;
+
+                            Ok(VoteExt::Given(promise))
+                        }
+                        Ok(Vote::Abstained(abstention)) => Ok(VoteExt::Abstained(abstention)),
+                        Ok(Vote::Conflicted(conflict)) => Ok(VoteExt::Conflicted(conflict)),
+                        Err(err) => Err(err),
+                    }
+                })
+            })
+            .collect();
 
         assert!(quorum <= pending_responses.len());
 
@@ -499,6 +547,7 @@ where
         let mut max_promise = own_promise;
 
         let mut abstentions = Vec::new();
+        let mut discards = Vec::new();
         let mut communication_errors = Vec::new();
 
         while let Some(response) = pending_responses.next().await {
@@ -511,17 +560,22 @@ where
                     if promises + pending_len < quorum {
                         return Err(AppendError::NoQuorum {
                             abstentions,
+                            discards,
                             communication_errors,
                             rejections: Vec::new(),
                         });
                     }
                 }
 
-                Ok(Vote::Abstained(abstention)) => {
+                Ok(VoteExt::Abstained(abstention)) => {
                     abstentions.push(abstention);
                 }
 
-                Ok(Vote::Conflicted(rejection)) => {
+                Ok(VoteExt::Discarded(discard)) => {
+                    discards.push(discard);
+                }
+
+                Ok(VoteExt::Conflicted(rejection)) => {
                     self.state_keeper
                         .observe_coord_num(rejection.coord_num())
                         .await?;
@@ -539,7 +593,7 @@ where
                     return Ok(Vote::Conflicted(rejection));
                 }
 
-                Ok(Vote::Given(promise)) => {
+                Ok(VoteExt::Given(promise)) => {
                     let current_max_promise = std::mem::replace(&mut max_promise, Promise::empty());
                     let new_max_promise = current_max_promise.merge_with(promise);
 
@@ -677,6 +731,7 @@ where
                         return Err(AppendError::NoQuorum {
                             abstentions: Vec::new(),
                             communication_errors,
+                            discards: Vec::new(),
                             rejections,
                         });
                     }
@@ -849,6 +904,7 @@ where
             Err(AppendError::NoQuorum {
                 abstentions,
                 communication_errors,
+                discards: Vec::new(),
                 rejections: Vec::new(),
             })
         } else {

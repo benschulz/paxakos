@@ -21,6 +21,7 @@ use crate::invocation::CoordNumOf;
 use crate::invocation::Invocation;
 use crate::invocation::LogEntryIdOf;
 use crate::invocation::LogEntryOf;
+use crate::invocation::NayOf;
 use crate::invocation::NodeOf;
 use crate::invocation::OutcomeOf;
 use crate::invocation::PromiseFor;
@@ -239,6 +240,14 @@ impl<I: Invocation> StateKeeperHandle<I> {
     ) -> impl Future<Output = Result<YeaOf<I>, AcceptError<I>>> {
         let entry = entry.into();
         dispatch_state_keeper_req!(self, AcceptEntry, { round_num, coord_num, entry })
+    }
+
+    pub fn test_acceptability_of_entries(
+        &self,
+        coord_num: CoordNumOf<I>,
+        entries: Vec<(RoundNumOf<I>, Arc<LogEntryOf<I>>)>,
+    ) -> impl Future<Output = Result<Option<NayOf<I>>, ShutDown>> {
+        dispatch_state_keeper_req!(self, TestAcceptabilityOfEntries, { coord_num, entries })
     }
 
     pub fn accept_entries(

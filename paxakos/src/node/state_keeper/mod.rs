@@ -97,9 +97,10 @@ macro_rules! assert_unreachable {
     }};
 }
 
-enum AcceptPolicy<I: Invocation> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AcceptPolicy {
     Irrejectable,
-    Rejectable(Option<NodeOf<I>>),
+    Rejectable,
 }
 
 type SpawnResult<I> = (NodeStatus, super::Participation<RoundNumOf<I>>);
@@ -661,6 +662,28 @@ where
                 Response::PrepareEntry(result)
             }
 
+            Request::TestAcceptabilityOfEntries { coord_num, entries } => {
+                let leader = self.deduce_node(entries[0].0, coord_num);
+
+                let nay = entries
+                    .into_iter()
+                    .filter_map(|(r, e)| {
+                        match self.voter.contemplate_proposal(
+                            r,
+                            coord_num,
+                            &*e,
+                            leader.as_ref(),
+                            self.state.as_ref(),
+                        ) {
+                            voting::Decision::Nay(rejection) => Some(rejection),
+                            _ => None,
+                        }
+                    })
+                    .next();
+
+                Response::TestAcceptabilityOfEntries(Ok(nay))
+            }
+
             Request::AcceptEntry {
                 round_num,
                 coord_num,
@@ -698,7 +721,8 @@ where
                     assert_eq!(leader.id(), self.node_id);
                 }
 
-                let result = self.accept_entries(coord_num, entries, AcceptPolicy::Irrejectable);
+                let result =
+                    self.accept_entries(coord_num, entries, leader, AcceptPolicy::Irrejectable);
 
                 if let Some(round_num) = round_num {
                     if result.is_ok() {
@@ -1136,7 +1160,8 @@ where
                 self.accept_entries(
                     coord_num,
                     vec![(round_num, entry)],
-                    AcceptPolicy::Rejectable(self.deduce_node(round_num, coord_num)),
+                    self.deduce_node(round_num, coord_num),
+                    AcceptPolicy::Rejectable,
                 )
                 .map(|ys| {
                     assert!(ys.len() == 1);
@@ -1151,7 +1176,8 @@ where
         &mut self,
         coord_num: CoordNumOf<I>,
         entries: Vec<(RoundNumOf<I>, Arc<LogEntryOf<I>>)>,
-        policy: AcceptPolicy<I>,
+        leader: Option<NodeOf<I>>,
+        policy: AcceptPolicy,
     ) -> Result<SmallVec<[YeaOf<I>; 1]>, AcceptError<I>> {
         let first_round = entries[0].0;
 
@@ -1189,21 +1215,21 @@ where
         let mut yeas = SmallVec::new();
 
         for (round_num, log_entry) in acceptable_entries {
-            if let AcceptPolicy::Rejectable(leader) = &policy {
-                match self.voter.contemplate_proposal(
-                    round_num,
-                    coord_num,
-                    &*log_entry,
-                    leader.as_ref(),
-                    self.state.as_ref(),
-                ) {
-                    voting::Decision::Abstain(never) => assert_unreachable!(never),
-                    voting::Decision::Nay(rejection) => {
-                        return Err(AcceptError::Rejected(rejection))
-                    }
-                    voting::Decision::Yea(yea) => {
-                        yeas.push(yea);
-                    }
+            match self.voter.contemplate_proposal(
+                round_num,
+                coord_num,
+                &*log_entry,
+                leader.as_ref(),
+                self.state.as_ref(),
+            ) {
+                voting::Decision::Abstain(never) => assert_unreachable!(never),
+                voting::Decision::Nay(rejection) => {
+                    assert_eq!(policy, AcceptPolicy::Rejectable);
+
+                    return Err(AcceptError::Rejected(rejection));
+                }
+                voting::Decision::Yea(yea) => {
+                    yeas.push(yea);
                 }
             }
 

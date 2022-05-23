@@ -145,6 +145,8 @@ pub enum AppendError<I: Invocation> {
         abstentions: Vec<AbstainOf<I>>,
         /// All encountered errors.
         communication_errors: Vec<CommunicationErrorOf<I>>,
+        /// All discards due to unacceptable conditions.
+        discards: Vec<NayOf<I>>,
         /// All rejections received.
         rejections: Vec<NayOf<I>>,
     },
@@ -188,11 +190,13 @@ impl<I: Invocation> std::fmt::Debug for AppendError<I> {
             AppendError::NoQuorum {
                 abstentions,
                 communication_errors,
+                discards,
                 rejections,
             } => f
                 .debug_struct("AppendError::NoQuorum")
                 .field("abstentions", abstentions)
                 .field("communication_errors", communication_errors)
+                .field("discards", discards)
                 .field("rejections", rejections)
                 .finish(),
             AppendError::Passive => f.debug_tuple("AppendError::Passive").finish(),
