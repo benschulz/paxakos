@@ -333,15 +333,21 @@ where
 
             match event {
                 crate::Event::Init {
-                    status: new_status, ..
+                    status: NodeStatus::Disoriented,
+                    ..
                 }
-                | crate::Event::StatusChange { new_status, .. }
-                    if *new_status != NodeStatus::Disoriented =>
-                {
+                | crate::Event::StatusChange {
+                    new_status: NodeStatus::Disoriented,
+                    ..
+                } => {
+                    self.timer = None;
+                }
+
+                crate::Event::Init { .. } | crate::Event::StatusChange { .. } => {
                     self.update_due_time();
                 }
 
-                crate::Event::Install { .. } | crate::Event::Apply { .. } => {
+                crate::Event::Install { state: Some(_), .. } | crate::Event::Apply { .. } => {
                     self.update_due_time();
                 }
 
