@@ -122,6 +122,10 @@ pub enum AppendError<I: Invocation> {
         caught_up: bool,
     },
 
+    /// A decoration failed the append.
+    #[error("a node decoration raised an error")]
+    Decoration(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+
     /// Node does not currently know the shared state.
     #[error("node is disoriented")]
     Disoriented,
@@ -144,10 +148,6 @@ pub enum AppendError<I: Invocation> {
         /// All rejections received.
         rejections: Vec<NayOf<I>>,
     },
-
-    /// Catch-all, this may be refined over time.
-    #[error("a node decoration raised an error")]
-    Decoration(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 
     /// Node is in passive mode.
     #[error("node is passive")]
@@ -179,6 +179,9 @@ impl<I: Invocation> std::fmt::Debug for AppendError<I> {
                 .debug_struct("AppendError::Converged")
                 .field("caught_up", caught_up)
                 .finish(),
+            AppendError::Decoration(err) => {
+                f.debug_tuple("AppendError::Decoration").field(err).finish()
+            }
             AppendError::Disoriented => f.debug_tuple("AppendError::Disoriented").finish(),
             AppendError::Exiled => f.debug_tuple("AppendError::Exiled").finish(),
             AppendError::Lost => f.debug_tuple("AppendError::Lost").finish(),
@@ -192,9 +195,6 @@ impl<I: Invocation> std::fmt::Debug for AppendError<I> {
                 .field("communication_errors", communication_errors)
                 .field("rejections", rejections)
                 .finish(),
-            AppendError::Decoration(err) => {
-                f.debug_tuple("AppendError::Decoration").field(err).finish()
-            }
             AppendError::Passive => f.debug_tuple("AppendError::Passive").finish(),
             AppendError::Railroaded => f.debug_tuple("AppendError::Railroaded").finish(),
             AppendError::ShutDown => f.debug_tuple("AppendError::ShutDown").finish(),
