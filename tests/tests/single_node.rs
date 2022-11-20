@@ -21,7 +21,8 @@ use calc_app::CalcState;
 fn single_append() {
     let node = setup_node();
 
-    let result = futures::executor::block_on(node.append(CalcOp::Add(42.0, Uuid::new_v4()), ()));
+    let result =
+        futures::executor::block_on(node.append_static(CalcOp::Add(42.0, Uuid::new_v4()), ()));
     let result = result.unwrap();
     let result = futures::executor::block_on(result).unwrap();
     assert!((42.0 - result).abs() < f64::EPSILON);
@@ -34,12 +35,14 @@ fn single_append() {
 fn multiple_serial_append() {
     let node = setup_node();
 
-    let result = futures::executor::block_on(node.append(CalcOp::Add(42.0, Uuid::new_v4()), ()));
+    let result =
+        futures::executor::block_on(node.append_static(CalcOp::Add(42.0, Uuid::new_v4()), ()));
     let result = result.unwrap();
     let result = futures::executor::block_on(result).unwrap();
     assert!((42.0 - result).abs() < f64::EPSILON);
 
-    let result = futures::executor::block_on(node.append(CalcOp::Mul(3.0, Uuid::new_v4()), ()));
+    let result =
+        futures::executor::block_on(node.append_static(CalcOp::Mul(3.0, Uuid::new_v4()), ()));
     let result = result.unwrap();
     let result = futures::executor::block_on(result).unwrap();
     assert!((126.0 - result).abs() < f64::EPSILON);

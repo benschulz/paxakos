@@ -17,7 +17,6 @@ use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::error::ShutDownOr;
 use crate::leadership::track::MaybeLeadershipAwareNode;
-use crate::node::AppendResultFor;
 use crate::node::DelegatingNodeImpl;
 use crate::node::EjectionOf;
 use crate::node::EventFor;
@@ -483,19 +482,6 @@ where
         T: Send + 'static,
     {
         self.decorated.read_stale_scoped_infallibly(f)
-    }
-
-    fn append<A, P, R>(
-        &self,
-        applicable: A,
-        args: P,
-    ) -> futures::future::LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
-    where
-        A: ApplicableTo<StateOf<Self>> + 'static,
-        P: Into<AppendArgs<Self::Invocation, R>>,
-        R: RetryPolicy<Invocation = Self::Invocation>,
-    {
-        self.decorated.append(applicable, args)
     }
 
     fn append_static<A, P, R>(

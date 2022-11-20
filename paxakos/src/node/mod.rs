@@ -87,9 +87,6 @@ pub type YeaOf<N> = invocation::YeaOf<InvocationOf<N>>;
 /// Invokes `Acceptance` type constructor so as to be compatible with `N`.
 pub type AcceptanceFor<N> = invocation::AcceptanceFor<InvocationOf<N>>;
 /// Invokes `Result` type constructor so as to be compatible with `N`'s
-/// `append(…) method`.
-pub type AppendResultFor<N, A, R> = Result<CommitFor<N, A>, <R as RetryPolicy>::Error>;
-/// Invokes `Result` type constructor so as to be compatible with `N`'s
 /// `append_static(…) method`.
 pub type StaticAppendResultFor<N, A, R> = Result<CommitFor<N, A>, <R as RetryPolicy>::StaticError>;
 /// Invokes `Result` type constructor so as to be compatible with `N`'s
@@ -206,17 +203,6 @@ pub trait Node: Sized {
     where
         F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'read,
         T: Send + 'static;
-
-    /// Appends `applicable` to the shared log.
-    fn append<A, P, R>(
-        &self,
-        applicable: A,
-        args: P,
-    ) -> LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
-    where
-        A: ApplicableTo<StateOf<Self>> + 'static,
-        P: Into<AppendArgs<Self::Invocation, R>>,
-        R: RetryPolicy<Invocation = Self::Invocation>;
 
     /// Appends `applicable` to the shared log.
     fn append_static<A, P, R>(

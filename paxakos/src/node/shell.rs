@@ -19,7 +19,6 @@ use crate::NodeStatus;
 use super::handle::BoxedRetryPolicy;
 use super::handle::NodeHandleRequest;
 use super::handle::NodeHandleResponse;
-use super::AppendResultFor;
 use super::ImplAppendResultFor;
 use super::InvocationOf;
 use super::LogEntryOf;
@@ -166,19 +165,6 @@ where
         T: Send + 'static,
     {
         self.wrapped.read_stale_scoped_infallibly(f)
-    }
-
-    fn append<A, P, R>(
-        &self,
-        applicable: A,
-        args: P,
-    ) -> futures::future::LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
-    where
-        A: ApplicableTo<StateOf<Self>> + 'static,
-        P: Into<AppendArgs<Self::Invocation, R>>,
-        R: RetryPolicy<Invocation = Self::Invocation>,
-    {
-        self.wrapped.append(applicable, args)
     }
 
     fn append_static<A, P, R>(

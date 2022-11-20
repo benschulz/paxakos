@@ -40,7 +40,6 @@ use super::state_keeper::ProofOfLife;
 use super::state_keeper::StateKeeper;
 use super::state_keeper::StateKeeperHandle;
 use super::state_keeper::StateKeeperKit;
-use super::AppendResultFor;
 use super::EventFor;
 use super::ImplAppendResultFor;
 use super::Node;
@@ -170,21 +169,6 @@ where
         snapshot: SnapshotFor<Self>,
     ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
         self.state_keeper.install_snapshot(snapshot).boxed_local()
-    }
-
-    fn append<A, P, R>(
-        &self,
-        applicable: A,
-        args: P,
-    ) -> LocalBoxFuture<'_, AppendResultFor<Self, A, R>>
-    where
-        A: ApplicableTo<StateOf<Self::Invocation>> + 'static,
-        P: Into<AppendArgs<Self::Invocation, R>>,
-        R: RetryPolicy<Invocation = Self::Invocation>,
-    {
-        self.append_impl(applicable, args)
-            .map_err(|e| e.expect_other())
-            .boxed_local()
     }
 
     fn append_static<A, P, R>(
