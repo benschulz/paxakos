@@ -158,7 +158,7 @@ fn spawn_node(
     consistency_checker: &mut StabilityChecker<CalcInvocation>,
     target_reached_sender: oneshot::Sender<()>,
     mut done_receiver: oneshot::Receiver<()>,
-) -> std::thread::JoinHandle<blake3::Hash> {
+) -> std::thread::JoinHandle<calc_app::Hash> {
     let tracer = consistency_checker.tracer(node_info.id());
 
     std::thread::spawn(move || {

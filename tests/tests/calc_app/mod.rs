@@ -8,6 +8,7 @@ use paxakos::prototyping::DirectCommunicatorError;
 use paxakos::prototyping::PrototypingNode;
 use paxakos::LogEntry;
 use paxakos::State;
+use sha3::Digest;
 use uuid::Uuid;
 
 pub struct CalcInvocation;
@@ -65,23 +66,31 @@ pub struct CalcState {
     value: f64,
     concurrency: std::num::NonZeroUsize,
     nodes: Vec<PrototypingNode>,
-    hasher: blake3::Hasher,
+    hasher: sha3::Sha3_256,
+    checksum: Hash,
 }
 
+pub type Hash = sha3::digest::generic_array::GenericArray<
+    u8,
+    <sha3::Sha3_256 as sha3::digest::OutputSizeUser>::OutputSize,
+>;
+
 impl CalcState {
+    #[allow(dead_code)]
     pub fn new(nodes: Vec<PrototypingNode>, concurrency: usize) -> Self {
         Self {
             applied: HashSet::new(),
             value: 0f64,
             concurrency: std::num::NonZeroUsize::new(concurrency).unwrap(),
             nodes,
-            hasher: blake3::Hasher::new(),
+            hasher: sha3::Sha3_256::new(),
+            checksum: Hash::default(),
         }
     }
 
     #[allow(dead_code)]
-    pub fn checksum(&self) -> blake3::Hash {
-        self.hasher.finalize()
+    pub fn checksum(&self) -> Hash {
+        self.checksum
     }
 
     #[allow(dead_code)]
@@ -97,7 +106,7 @@ impl State for CalcState {
 
     type LogEntry = CalcOp;
     type Outcome = f64;
-    type Effect = (f64, blake3::Hash);
+    type Effect = (f64, Hash);
 
     type Error = Infallible;
 
@@ -128,7 +137,10 @@ impl State for CalcState {
             }
         }
 
-        Ok((self.value, (self.value, self.hasher.finalize())))
+        self.checksum = std::mem::replace(&mut self.hasher, sha3::Sha3_256::new()).finalize();
+        self.hasher.update(self.checksum);
+
+        Ok((self.value, (self.value, self.checksum)))
     }
 
     fn concurrency(this: Option<&Self>) -> Option<std::num::NonZeroUsize> {
