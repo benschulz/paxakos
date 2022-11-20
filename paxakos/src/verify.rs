@@ -549,6 +549,8 @@ pub enum Nay {
 #[derive(Default)]
 pub struct VerifyVoter<S, R, C>(std::marker::PhantomData<(S, R, C)>);
 
+unsafe impl<S, R, C> Send for VerifyVoter<S, R, C> {}
+
 impl<S, R, C> VerifyVoter<S, R, C> {
     pub fn new() -> Self {
         Self(std::marker::PhantomData)

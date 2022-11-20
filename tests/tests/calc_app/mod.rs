@@ -106,7 +106,7 @@ impl State for CalcState {
     fn apply(
         &mut self,
         log_entry: &Self::LogEntry,
-        _context: &mut (),
+        _context: &mut Self::Context,
     ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
         let bytes = bincode::serialize(log_entry).unwrap();
         self.hasher.update(&bytes);
@@ -139,7 +139,7 @@ impl State for CalcState {
         self.nodes.clone()
     }
 
-    fn freeze(&self) -> Self::Frozen {
+    fn freeze(&self, _context: &mut Self::Context) -> Self::Frozen {
         self.clone()
     }
 }

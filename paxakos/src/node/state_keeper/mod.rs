@@ -326,7 +326,7 @@ where
         receiver: mpsc::Receiver<RequestAndResponseSender<I>>,
         event_emitter: mpsc::Sender<ShutdownEvent<I>>,
     ) {
-        let context = spawn_args.context;
+        let mut context = spawn_args.context;
         let node_id = spawn_args.node_id;
         let voter = spawn_args.voter;
         let snapshot = spawn_args.snapshot;
@@ -356,7 +356,7 @@ where
         let (rel_send, rel_recv) = mpsc::unbounded();
 
         let frozen_state = state;
-        let state = frozen_state.as_deref().map(|s| s.thaw());
+        let state = frozen_state.as_deref().map(|s| s.thaw(&mut context));
 
         let state_keeper = StateKeeper {
             context,
@@ -967,7 +967,9 @@ where
     fn prepare_snapshot(&mut self) -> SnapshotFor<I> {
         Snapshot::new(
             self.state_round,
-            self.state.as_ref().map(|s| Arc::new(s.freeze())),
+            self.state
+                .as_ref()
+                .map(|s| Arc::new(s.freeze(&mut self.context))),
             self.greatest_observed_round_num,
             self.greatest_observed_coord_num,
             self.participation.clone(),
@@ -997,7 +999,7 @@ where
         } = snapshot.deconstruct();
 
         self.state_round = state_round;
-        self.state = state.as_deref().map(|s| s.thaw());
+        self.state = state.as_deref().map(|s| s.thaw(&mut self.context));
         self.greatest_observed_round_num = greatest_observed_round_num;
         self.greatest_observed_coord_num = greatest_observed_coord_num;
         self.accepted_entries = accepted_entries;

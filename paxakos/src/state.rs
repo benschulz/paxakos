@@ -35,7 +35,7 @@ pub type OutcomeOf<S> = <S as State>::Outcome;
 pub type EffectOf<S> = <S as State>::Effect;
 
 /// Distributed state to which log entries are applied.
-pub trait State: 'static + Debug + Send + Sized {
+pub trait State: 'static + Debug + Sized {
     /// Frozen representation of this state type.
     type Frozen: Frozen<Self> + Send + Sync + Debug;
 
@@ -46,7 +46,7 @@ pub trait State: 'static + Debug + Send + Sized {
     ///
     /// The execution context commonly provides access to a working directory or
     /// other state that is node and instance specific.
-    type Context: Debug + Send;
+    type Context;
 
     /// Result of applying a log entry to the state.
     ///
@@ -127,17 +127,17 @@ pub trait State: 'static + Debug + Send + Sized {
     fn cluster_at(&self, round_offset: std::num::NonZeroUsize) -> Vec<Self::Node>;
 
     /// Creates a frozen copy of this state object to create a snapshot with.
-    fn freeze(&self) -> Self::Frozen;
+    fn freeze(&self, context: &mut Self::Context) -> Self::Frozen;
 }
 
 /// A frozen value that may be thawed.
-pub trait Frozen<S> {
+pub trait Frozen<S: State> {
     /// Thaws this value.
-    fn thaw(&self) -> S;
+    fn thaw(&self, context: &mut S::Context) -> S;
 }
 
-impl<S: Clone> Frozen<S> for S {
-    fn thaw(&self) -> S {
+impl<S: State + Clone> Frozen<S> for S {
+    fn thaw(&self, _context: &mut S::Context) -> S {
         self.clone()
     }
 }

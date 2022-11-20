@@ -174,7 +174,7 @@ impl State for ChatState {
     fn apply(
         &mut self,
         log_entry: &Self::LogEntry,
-        _context: &mut (),
+        _context: &mut Self::Context,
     ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
         let own_node_id = format!("{:X}", self.node_id + 10);
 
@@ -190,7 +190,7 @@ impl State for ChatState {
         self.nodes.clone()
     }
 
-    fn freeze(&self) -> Self::Frozen {
+    fn freeze(&self, _context: &mut Self::Context) -> Self::Frozen {
         self.clone()
     }
 }

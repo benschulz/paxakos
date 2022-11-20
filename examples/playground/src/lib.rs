@@ -234,6 +234,9 @@ extern "C" {
 
     #[wasm_bindgen(method, js_name = statusChanged)]
     pub fn status_changed(this: &Callbacks, node_id: usize, new_status: String);
+
+    #[wasm_bindgen(method)]
+    pub fn verify(this: &Callbacks, node_id: usize);
 }
 
 #[wasm_bindgen]
@@ -425,7 +428,7 @@ impl Cluster {
                 .ensure_leadership(EnsureLeadershipConfig::new(Rc::clone(&callbacks)))
                 .verify_consistency(VerifyConfig::new())
                 .voting_with(verify::VerifyVoter::new())
-                .in_context(())
+                .in_context((node_info.id(), Rc::clone(&callbacks)))
                 .spawn_using(WasmExecutor)
                 .await
                 .unwrap();
@@ -780,8 +783,11 @@ pub struct Reconfiguration {
     new_autofill_batch_size: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PlaygroundState {
+    node_id: usize,
+    callbacks: Rc<Callbacks>,
+
     cluster: paxakos::cluster::Cluster<PrototypingNode>,
 
     inconsistency: Cell<Option<u32>>,
@@ -794,10 +800,28 @@ pub struct PlaygroundState {
     autofill_batch_size: usize,
 }
 
+impl std::fmt::Debug for PlaygroundState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlaygroundState")
+            .field("cluster", &self.cluster)
+            .field("inconsistency", &self.inconsistency)
+            .field("target_cluster", &self.target_cluster)
+            .field("heartbeat_interval", &self.heartbeat_interval)
+            .field("leader_heartbeat_interval", &self.leader_heartbeat_interval)
+            .field(
+                "ensure_leadership_interval",
+                &self.ensure_leadership_interval,
+            )
+            .field("autofill_delay", &self.autofill_delay)
+            .field("autofill_batch_size", &self.autofill_batch_size)
+            .finish()
+    }
+}
+
 impl State for PlaygroundState {
     type Frozen = FrozenPlaygroundState;
 
-    type Context = ();
+    type Context = (usize, Rc<Callbacks>);
 
     type LogEntry = PlaygroundLogEntry;
     type Outcome = ();
@@ -809,7 +833,7 @@ impl State for PlaygroundState {
     fn apply(
         &mut self,
         log_entry: &Self::LogEntry,
-        _context: &mut (),
+        _context: &mut Self::Context,
     ) -> Result<(Self::Outcome, Self::Effect), Self::Error> {
         self.cluster.apply(&PlaygroundClusterLogEntry {
             previous_target_cluster: &self.target_cluster,
@@ -850,7 +874,7 @@ impl State for PlaygroundState {
             .expect("offset out of concurrency range")
     }
 
-    fn freeze(&self) -> Self::Frozen {
+    fn freeze(&self, _context: &mut Self::Context) -> Self::Frozen {
         FrozenPlaygroundState {
             cluster: self.cluster.clone(),
 
@@ -870,6 +894,8 @@ impl verify::State for PlaygroundState {
     type Applicable = PlaygroundLogEntry;
 
     fn prepare_verification(&self) -> Self::Applicable {
+        self.callbacks.verify(self.node_id);
+
         PlaygroundLogEntry::Verify(Uuid::new_v4(), self.inconsistency.get())
     }
 
@@ -916,8 +942,11 @@ impl FrozenPlaygroundState {
 }
 
 impl Frozen<PlaygroundState> for FrozenPlaygroundState {
-    fn thaw(&self) -> PlaygroundState {
+    fn thaw(&self, context: &mut (usize, Rc<Callbacks>)) -> PlaygroundState {
         PlaygroundState {
+            node_id: context.0,
+            callbacks: Rc::clone(&context.1),
+
             cluster: self.cluster.clone(),
 
             inconsistency: Cell::new(self.inconsistency),

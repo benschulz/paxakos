@@ -299,6 +299,10 @@
         content: '👑';
       }
 
+      .node__action--verify::after {
+        content: '☑️';
+      }
+
       .timeline {
         transition: 0.5s;
         position: relative;
@@ -979,6 +983,10 @@
             node.element.classList.toggle('node--terminated', newStatus === 'Shut Down' || newStatus === 'Crashed');
 
             updateBindings();
+          },
+
+          verify(nodeId) {
+            showNodeAction(nodeId, 'verify');
           },
         });
 

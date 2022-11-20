@@ -99,7 +99,7 @@ impl State for CalcState {
         Ok((self.value, self.value))
     }
 
-    fn freeze(&self) -> Self::Frozen {
+    fn freeze(&self, _context: &mut Self::Context) -> Self::Frozen {
         self.clone()
     }
 }
@@ -388,7 +388,6 @@ no particular order).
  - Update playground
    - Allow configuration of `CatchUp` and `Verify`
    - Visualize `CatchUp`
-   - Add node action animation for `Verify`
    - Add master-lease decoration
    - Add delegate decoration
 

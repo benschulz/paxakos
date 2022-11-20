@@ -78,7 +78,7 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 /// #         unimplemented!()
 /// #     }
 /// #
-/// #     fn freeze(&self) -> Self::Frozen {
+/// #     fn freeze(&self, _context: &mut Self::Context) -> Self::Frozen {
 /// #         unimplemented!()
 /// #     }
 /// # }

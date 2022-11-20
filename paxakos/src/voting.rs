@@ -99,6 +99,8 @@ pub enum Decision<Y, N, A> {
 #[derive(Default)]
 pub struct IndiscriminateVoter<S, R, C, A, Y, N>(std::marker::PhantomData<(S, R, C, A, Y, N)>);
 
+unsafe impl<S, R, C, A, Y, N> Send for IndiscriminateVoter<S, R, C, A, Y, N> {}
+
 impl<S, R, C, A, Y, N> IndiscriminateVoter<S, R, C, A, Y, N> {
     /// Constructs a new `IndiscriminateVoter`.
     pub fn new() -> Self {
