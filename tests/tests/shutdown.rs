@@ -25,7 +25,7 @@ fn clean_shutdown() {
             .for_node(node_info.id())
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 1))
-            .spawn_in(()),
+            .spawn(),
     )
     .unwrap();
 

@@ -418,7 +418,6 @@ impl Cluster {
                 .communicating_via(communicator)
                 .with(starter)
                 .using(kit)
-                .driven_by(WasmExecutor)
                 .catch_up(catch_up::StaticConfig::default())
                 .track_leadership()
                 .fill_gaps(AutofillConfig::new(Rc::clone(&callbacks)))
@@ -426,7 +425,8 @@ impl Cluster {
                 .ensure_leadership(EnsureLeadershipConfig::new(Rc::clone(&callbacks)))
                 .verify_consistency(VerifyConfig::new())
                 .voting_with(verify::VerifyVoter::new())
-                .spawn()
+                .in_context(())
+                .spawn_using(WasmExecutor)
                 .await
                 .unwrap();
 

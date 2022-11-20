@@ -175,7 +175,7 @@ fn spawn_node(
                 .send_heartbeats(HeartbeatConfig::new())
                 .track_leadership()
                 .ensure_leadership(EnsureLeadershipConfig::new())
-                .spawn_in(()),
+                .spawn(),
         )
         .unwrap();
 

@@ -89,7 +89,7 @@ fn spawn_node(
                 .for_node(node_info.id())
                 .communicating_via(communicators.create_communicator_for(node_info.id()))
                 .with_initial_state(ChatState::new(node_info.id(), all_nodes))
-                .spawn_in(()),
+                .spawn(),
         )
         .unwrap();
 

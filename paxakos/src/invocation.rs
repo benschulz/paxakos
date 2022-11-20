@@ -70,7 +70,7 @@ pub type VoteFor<I> = Vote<RoundNumOf<I>, CoordNumOf<I>, LogEntryOf<I>, AbstainO
 /// implementation of a fairly complex algorithm, Paxakos would require rather a
 /// lot of individual type parameters. Therefore Paxakos foregoes the idiomatic
 /// approach and accepts a single `Invocation` argument in most places.
-pub trait Invocation: Sized + 'static {
+pub trait Invocation: Send + Sized + 'static {
     /// Round number type.
     type RoundNum: RoundNum;
     /// Coordination number type.

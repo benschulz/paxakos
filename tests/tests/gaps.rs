@@ -90,7 +90,7 @@ fn auto_fill_gaps() {
                 10,
                 Duration::from_millis(10),
             ))
-            .spawn_in(()),
+            .spawn(),
     )
     .unwrap();
 
@@ -123,7 +123,7 @@ fn setup_node() -> (RequestHandler<CalcInvocation>, CalcNode) {
             .for_node(node_info.id())
             .communicating_via(communicators.create_communicator_for(node_info.id()))
             .with_initial_state(CalcState::new(vec![node_info], 1))
-            .spawn_in(()),
+            .spawn(),
     )
     .unwrap();
 

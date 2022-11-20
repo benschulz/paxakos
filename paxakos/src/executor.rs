@@ -2,27 +2,39 @@
 
 use futures::FutureExt;
 
+use crate::invocation::ContextOf;
+use crate::invocation::StateOf;
+use crate::Invocation;
+
 /// Shorthand to extract `Error` type out of `E`.
-pub type ErrorOf<E> = <E as Executor>::Error;
+pub type ErrorOf<E, I, V, B> = <E as Executor<I, V, B>>::Error;
 
 /// The executor used to run the code which applies log entries to the `State`.
-pub trait Executor: 'static {
+pub trait Executor<I: Invocation, V, B>: 'static {
     /// Type of error yielded when a task cannot be executed.
     type Error;
 
     /// Executes the given task.
-    fn execute<F: std::future::Future<Output = ()> + Send + 'static>(
+    fn execute<F: std::future::Future<Output = ()> + 'static>(
         self,
-        task: F,
+        task: crate::node::Task<I, V, B, F>,
     ) -> Result<(), Self::Error>;
 }
 
-impl<S: futures::task::Spawn + 'static> Executor for S {
+impl<I, V, B, E> Executor<I, V, B> for E
+where
+    I: Invocation + Send + 'static,
+    StateOf<I>: Send,
+    ContextOf<I>: Send,
+    V: Send + 'static,
+    B: Send + 'static,
+    E: futures::task::Spawn + 'static,
+{
     type Error = futures::task::SpawnError;
 
-    fn execute<F: std::future::Future<Output = ()> + Send + 'static>(
+    fn execute<F: std::future::Future<Output = ()> + 'static>(
         self,
-        task: F,
+        task: crate::node::Task<I, V, B, F>,
     ) -> Result<(), Self::Error> {
         self.spawn_obj(futures::task::FutureObj::from(task.boxed()))
     }
@@ -37,12 +49,19 @@ impl Default for StdThread {
     }
 }
 
-impl Executor for StdThread {
+impl<I, V, B> Executor<I, V, B> for StdThread
+where
+    I: Invocation + Send + 'static,
+    StateOf<I>: Send,
+    ContextOf<I>: Send,
+    V: Send + 'static,
+    B: Send + 'static,
+{
     type Error = std::io::Error;
 
-    fn execute<F: std::future::Future<Output = ()> + Send + 'static>(
+    fn execute<F: std::future::Future<Output = ()> + 'static>(
         self,
-        task: F,
+        task: crate::node::Task<I, V, B, F>,
     ) -> Result<(), Self::Error> {
         let thread_buidler = std::thread::Builder::new();
 
@@ -59,12 +78,17 @@ impl Executor for StdThread {
 pub struct WasmExecutor;
 
 #[cfg(feature = "wasm-bindgen-futures")]
-impl Executor for WasmExecutor {
+impl<I, V, B> Executor<I, V, B> for WasmExecutor
+where
+    I: Invocation + 'static,
+    V: 'static,
+    B: 'static,
+{
     type Error = ();
 
-    fn execute<F: std::future::Future<Output = ()> + Send + 'static>(
+    fn execute<F: std::future::Future<Output = ()> + 'static>(
         self,
-        task: F,
+        task: crate::node::Task<I, V, B, F>,
     ) -> Result<(), Self::Error> {
         wasm_bindgen_futures::spawn_local(task);
 

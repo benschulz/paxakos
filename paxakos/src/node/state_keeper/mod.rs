@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fmt::Debug;
+use std::future::Future;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
@@ -282,9 +283,10 @@ where
     >,
     B: Buffer<RoundNum = RoundNumOf<I>, CoordNum = CoordNumOf<I>, Entry = LogEntryOf<I>>,
 {
-    pub(crate) async fn spawn<E: Executor>(
+    pub(crate) async fn spawn<E: Executor<I, V, B>>(
+        executor: E,
         kit: StateKeeperKit<I>,
-        args: SpawnArgs<I, V, B, E>,
+        args: SpawnArgs<I, V, B>,
     ) -> Result<
         (
             NodeStatus,
@@ -292,7 +294,7 @@ where
             EventStream<I>,
             ProofOfLife,
         ),
-        executor::ErrorOf<E>,
+        executor::ErrorOf<E, I, V, B>,
     > {
         let (evt_send, evt_recv) = mpsc::channel(32);
 
@@ -300,7 +302,12 @@ where
 
         let (send, recv) = oneshot::channel();
 
-        Self::start_and_run_new(args, send, kit.receiver, evt_send)?;
+        executor.execute(Task::<I, V, B, _>::from(Self::start_and_run_new(
+            args,
+            send,
+            kit.receiver,
+            evt_send,
+        )))?;
 
         let (initial_status, initial_participation) =
             recv.await.expect("StateKeeper failed to start");
@@ -313,86 +320,87 @@ where
         ))
     }
 
-    fn start_and_run_new<E: Executor>(
-        spawn_args: SpawnArgs<I, V, B, E>,
+    async fn start_and_run_new(
+        spawn_args: SpawnArgs<I, V, B>,
         start_result_sender: oneshot::Sender<SpawnResult<I>>,
         receiver: mpsc::Receiver<RequestAndResponseSender<I>>,
         event_emitter: mpsc::Sender<ShutdownEvent<I>>,
-    ) -> Result<(), executor::ErrorOf<E>> {
-        spawn_args.executor.execute(async move {
-            let context = spawn_args.context;
-            let node_id = spawn_args.node_id;
-            let voter = spawn_args.voter;
-            let snapshot = spawn_args.snapshot;
-            let applied_entry_buffer = spawn_args.buffer;
+    ) {
+        let context = spawn_args.context;
+        let node_id = spawn_args.node_id;
+        let voter = spawn_args.voter;
+        let snapshot = spawn_args.snapshot;
+        let applied_entry_buffer = spawn_args.buffer;
+        #[cfg(feature = "tracer")]
+        let tracer = spawn_args.tracer;
+
+        // assume we're lagging
+        let initial_status = snapshot
+            .state()
+            .map(|_| NodeStatus::Lagging)
+            .unwrap_or(NodeStatus::Disoriented);
+
+        let Init {
+            state_round,
+            state,
+            greatest_observed_round_num,
+            greatest_observed_coord_num,
+            participation,
+            promises,
+            accepted_entries,
+        } = Init::from(snapshot.deconstruct());
+
+        let _ =
+            start_result_sender.send((initial_status, super::Participation::from(&participation)));
+
+        let (rel_send, rel_recv) = mpsc::unbounded();
+
+        let frozen_state = state;
+        let state = frozen_state.as_deref().map(|s| s.thaw());
+
+        let state_keeper = StateKeeper {
+            context,
+
+            node_id,
+            voter,
+
+            receiver,
+
+            release_sender: rel_send,
+            release_receiver: rel_recv,
+
+            promises,
+            accepted_entries,
+            leadership: (Zero::zero(), Zero::zero()),
+
+            state_round,
+            state,
+
+            concurrency_bound: Zero::zero(),
+            round_num_requests: VecDeque::new(),
+            available_round_nums: BTreeSet::new(),
+            acquired_round_nums: HashSet::new(),
+
+            greatest_observed_round_num,
+            greatest_observed_coord_num,
+
+            pending_commits: BTreeMap::new(),
+            awaiters: HashMap::new(),
+
+            participation,
+            status: initial_status,
+
+            queued_events: VecDeque::new(),
+            event_emitter,
+            warn_counter: 0,
+
+            applied_entry_buffer,
+
             #[cfg(feature = "tracer")]
-            let tracer = spawn_args.tracer;
+            tracer,
+        };
 
-            // assume we're lagging
-            let initial_status = snapshot
-                .state()
-                .map(|_| NodeStatus::Lagging)
-                .unwrap_or(NodeStatus::Disoriented);
-
-            let Init {
-                state_round,
-                state,
-                greatest_observed_round_num,
-                greatest_observed_coord_num,
-                participation,
-                promises,
-                accepted_entries,
-            } = Init::from(snapshot.deconstruct());
-
-            let _ = start_result_sender
-                .send((initial_status, super::Participation::from(&participation)));
-
-            let (rel_send, rel_recv) = mpsc::unbounded();
-
-            let state_keeper = StateKeeper {
-                context,
-
-                node_id,
-                voter,
-
-                receiver,
-
-                release_sender: rel_send,
-                release_receiver: rel_recv,
-
-                promises,
-                accepted_entries,
-                leadership: (Zero::zero(), Zero::zero()),
-
-                state_round,
-                state: state.as_deref().map(|s| s.thaw()),
-
-                concurrency_bound: Zero::zero(),
-                round_num_requests: VecDeque::new(),
-                available_round_nums: BTreeSet::new(),
-                acquired_round_nums: HashSet::new(),
-
-                greatest_observed_round_num,
-                greatest_observed_coord_num,
-
-                pending_commits: BTreeMap::new(),
-                awaiters: HashMap::new(),
-
-                participation,
-                status: initial_status,
-
-                queued_events: VecDeque::new(),
-                event_emitter,
-                warn_counter: 0,
-
-                applied_entry_buffer,
-
-                #[cfg(feature = "tracer")]
-                tracer,
-            };
-
-            state_keeper.init_and_run(state).await;
-        })
+        state_keeper.init_and_run(frozen_state).await;
     }
 
     async fn init_and_run(mut self, state: Option<Arc<FrozenStateOf<I>>>) {
@@ -1475,6 +1483,39 @@ where
             self.awaiters.remove(&k);
         }
     }
+
+    #[allow(dead_code)]
+    fn proof_unsafe_send_impl_is_sound(
+        spawn_args: SpawnArgs<I, V, B>,
+        start_result_sender: oneshot::Sender<SpawnResult<I>>,
+        receiver: mpsc::Receiver<RequestAndResponseSender<I>>,
+        event_emitter: mpsc::Sender<ShutdownEvent<I>>,
+    ) where
+        StateOf<I>: Send,
+        ContextOf<I>: Send,
+        V: Send,
+        B: Send,
+    {
+        fn assert_send<T: Send>(_t: T) {}
+
+        assert_send(StateKeeper::start_and_run_new(
+            spawn_args,
+            start_result_sender,
+            receiver,
+            event_emitter,
+        ));
+
+        // The only Future that Task is being invoked with is the one that is, given the
+        // bounds placed on this impl, proven by the compiler to be Send (see above).
+        unsafe impl<I: Invocation, V: Send, B: Send, F: Future<Output = ()>> Send for Task<I, V, B, F>
+        where
+            StateOf<I>: Send,
+            ContextOf<I>: Send,
+            V: Send,
+            B: Send,
+        {
+        }
+    }
 }
 
 fn into_round_num<R: RoundNum>(concurrency: std::num::NonZeroUsize) -> R {
@@ -1550,5 +1591,38 @@ impl<R: RoundNum> Drop for RoundNumReservation<R> {
         let _ = self
             .sender
             .unbounded_send(Release::RoundNum(self.round_num));
+    }
+}
+
+/// Task that drives a node.
+///
+/// The purpose of this type is to allow an [Executor][executor::Executor] to
+/// require that its `Task`s be `Send`.
+#[pin_project]
+pub struct Task<I: Invocation, V, B, F: Future<Output = ()>> {
+    #[pin]
+    f: F,
+    _p: std::marker::PhantomData<(I, V, B)>,
+}
+
+impl<I: Invocation, V, B, F: Future<Output = ()>> Task<I, V, B, F> {
+    fn from(f: F) -> Self {
+        Self {
+            f,
+            _p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<I: Invocation, V, B, F: Future<Output = ()>> Future for Task<I, V, B, F> {
+    type Output = ();
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        let this = self.project();
+
+        this.f.poll(cx)
     }
 }

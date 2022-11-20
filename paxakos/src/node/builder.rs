@@ -42,6 +42,10 @@ use super::NodeKit;
 use super::RequestHandlerFor;
 
 /// Result returned by [`NodeBuilder::spawn`] or [`NodeBuilder::spawn_in`].
+pub type ExecutorSpawnResult<N, E, V, B> =
+    SpawnResult<N, executor::ErrorOf<E, node::InvocationOf<N>, V, B>>;
+
+/// Result returned by [`NodeBuilder::spawn`] or [`NodeBuilder::spawn_in`].
 pub type SpawnResult<N, E> = std::result::Result<(RequestHandlerFor<N>, Shell<N>), SpawnError<E>>;
 
 /// Blank node builder.
@@ -273,7 +277,7 @@ where
             snapshot,
             voter: IndiscriminateVoter::new(),
             buffer: InMemoryBuffer::new(1024),
-            executor: executor::StdThread::default(),
+            context: (),
             finisher: CoreFinisher::new(),
 
             #[cfg(feature = "tracer")]
@@ -378,7 +382,7 @@ pub struct NodeBuilder<
     F: Finisher<Node = N>,
     V = IndiscriminateVoterFor<N>,
     B = InMemoryBuffer<node::RoundNumOf<N>, node::CoordNumOf<N>, node::LogEntryOf<N>>,
-    E: executor::Executor = executor::StdThread,
+    C = (),
 > {
     kit: NodeKit<InvocationOf<N>>,
     node_id: node::NodeIdOf<N>,
@@ -386,14 +390,14 @@ pub struct NodeBuilder<
     communicator: <F as Finisher>::Communicator,
     snapshot: node::SnapshotFor<N>,
     buffer: B,
-    executor: E,
+    context: C,
     finisher: F,
 
     #[cfg(feature = "tracer")]
     tracer: Option<Box<dyn Tracer<InvocationOf<N>>>>,
 }
 
-impl<N, F, V, B, E> NodeBuilder<N, F, V, B, E>
+impl<N, F, V, B, C> NodeBuilder<N, F, V, B, C>
 where
     N: NodeImpl + 'static,
     F: Finisher<Node = N>,
@@ -410,7 +414,6 @@ where
         CoordNum = node::CoordNumOf<N>,
         Entry = node::LogEntryOf<N>,
     >,
-    E: executor::Executor,
 {
     /// Sets the applied entry buffer.
     pub fn buffering_applied_entries_in<
@@ -422,7 +425,7 @@ where
     >(
         self,
         buffer: T,
-    ) -> NodeBuilder<N, F, V, T, E> {
+    ) -> NodeBuilder<N, F, V, T, C> {
         // https://github.com/rust-lang/rust/issues/86555
         NodeBuilder {
             kit: self.kit,
@@ -431,7 +434,7 @@ where
             communicator: self.communicator,
             snapshot: self.snapshot,
             buffer,
-            executor: self.executor,
+            context: self.context,
             finisher: self.finisher,
 
             #[cfg(feature = "tracer")]
@@ -439,8 +442,10 @@ where
         }
     }
 
-    /// Sets the executor to be used.
-    pub fn driven_by<T: executor::Executor>(self, executor: T) -> NodeBuilder<N, F, V, B, T> {
+    /// Sets the context the node will execute in.
+    ///
+    /// See [State::Context].
+    pub fn in_context<T>(self, context: T) -> NodeBuilder<N, F, V, B, T> {
         // https://github.com/rust-lang/rust/issues/86555
         NodeBuilder {
             kit: self.kit,
@@ -449,7 +454,7 @@ where
             communicator: self.communicator,
             snapshot: self.snapshot,
             buffer: self.buffer,
-            executor,
+            context,
             finisher: self.finisher,
 
             #[cfg(feature = "tracer")]
@@ -466,7 +471,7 @@ where
     }
 
     /// Sets the voting strategy to use.
-    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<N, F, T, B, E> {
+    pub fn voting_with<T>(self, voter: T) -> NodeBuilder<N, F, T, B, C> {
         // https://github.com/rust-lang/rust/issues/86555
         NodeBuilder {
             kit: self.kit,
@@ -475,7 +480,7 @@ where
             communicator: self.communicator,
             snapshot: self.snapshot,
             buffer: self.buffer,
-            executor: self.executor,
+            context: self.context,
             finisher: self.finisher,
 
             #[cfg(feature = "tracer")]
@@ -491,34 +496,39 @@ where
     }
 
     /// Spawns the node into context `()`.
-    pub fn spawn(self) -> LocalBoxFuture<'static, SpawnResult<N, executor::ErrorOf<E>>>
+    pub fn spawn(self) -> LocalBoxFuture<'static, SpawnResult<N, std::io::Error>>
     where
-        node::StateOf<N>: State<Context = ()>,
+        node::StateOf<N>: State<Context = C> + Send,
+        C: Send,
     {
-        self.spawn_in(())
+        self.spawn_using(executor::StdThread)
     }
 
     /// Spawns the node in the given context.
-    pub fn spawn_in(
+    pub fn spawn_using<E>(
         self,
-        context: node::ContextOf<N>,
-    ) -> LocalBoxFuture<'static, SpawnResult<N, executor::ErrorOf<E>>> {
+        executor: E,
+    ) -> LocalBoxFuture<'static, ExecutorSpawnResult<N, E, V, B>>
+    where
+        node::StateOf<N>: State<Context = C>,
+        E: executor::Executor<node::InvocationOf<N>, V, B>,
+    {
         let finisher = self.finisher;
 
         let receiver = self.kit.receiver;
 
         Core::spawn(
+            executor,
             self.kit.state_keeper,
             self.kit.sender,
             self.node_id,
             self.communicator,
             super::SpawnArgs {
-                context,
+                context: self.context,
                 node_id: self.node_id,
                 voter: self.voter,
                 snapshot: self.snapshot,
                 buffer: self.buffer,
-                executor: self.executor,
                 #[cfg(feature = "tracer")]
                 tracer: self.tracer,
             },
@@ -554,7 +564,7 @@ pub trait ExtensibleNodeBuilder {
         D: Decoration<Decorated = Self::Node, Invocation = InvocationOf<Self::Node>> + 'static;
 }
 
-impl<N, F, V, B, E> ExtensibleNodeBuilder for NodeBuilder<N, F, V, B, E>
+impl<N, F, V, B> ExtensibleNodeBuilder for NodeBuilder<N, F, V, B>
 where
     N: NodeImpl + 'static,
     F: Finisher<Node = N>,
@@ -571,11 +581,10 @@ where
         CoordNum = node::CoordNumOf<N>,
         Entry = node::LogEntryOf<N>,
     >,
-    E: executor::Executor,
 {
     type Node = N;
     type DecoratedBuilder<D: Decoration<Decorated = N> + 'static> =
-        NodeBuilder<D, impl Finisher<Node = D>, V, B, E>;
+        NodeBuilder<D, impl Finisher<Node = D>, V, B>;
 
     fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> Self::DecoratedBuilder<D>
     where
@@ -588,7 +597,7 @@ where
             snapshot: self.snapshot,
             voter: self.voter,
             buffer: self.buffer,
-            executor: self.executor,
+            context: self.context,
             finisher: DecorationFinisher::wrap(self.finisher, arguments),
 
             #[cfg(feature = "tracer")]

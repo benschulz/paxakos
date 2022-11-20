@@ -50,7 +50,7 @@ fn worst_case() {
                 DirectCommunicators::<CalcInvocation>::new().create_communicator_for(node_id),
             )
             .resuming_from(initial_snapshot)
-            .spawn_in(()),
+            .spawn(),
     )
     .unwrap();
 
@@ -95,7 +95,7 @@ fn worst_case() {
                 DirectCommunicators::<CalcInvocation>::new().create_communicator_for(node_id),
             )
             .recovering_with(snapshot)
-            .spawn_in(()),
+            .spawn(),
     )
     .unwrap();
 
@@ -278,7 +278,7 @@ fn setup_node(
                 .for_node(node_id)
                 .communicating_via(communicators.create_communicator_for(node_id))
                 .resuming_from(initial_snapshot)
-                .spawn_in(()),
+                .spawn(),
         )
         .unwrap()
     } else {
@@ -287,7 +287,7 @@ fn setup_node(
                 .for_node(node_id)
                 .communicating_via(communicators.create_communicator_for(node_id))
                 .recovering_with(initial_snapshot)
-                .spawn_in(()),
+                .spawn(),
         )
         .unwrap()
     };

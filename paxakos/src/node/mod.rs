@@ -42,6 +42,7 @@ pub use shell::Shell;
 pub use shutdown::DefaultShutdown;
 pub use shutdown::Shutdown;
 pub use snapshot::Snapshot;
+pub use state_keeper::Task;
 pub use status::NodeStatus;
 
 use state_keeper::StateKeeperKit;
@@ -344,7 +345,7 @@ pub trait Admin {
     fn force_active(&self) -> BoxFuture<'static, Result<bool, ShutDown>>;
 }
 
-pub(crate) struct SpawnArgs<I, V, B, T>
+pub(crate) struct SpawnArgs<I, V, B>
 where
     I: Invocation,
     B: Buffer<
@@ -352,14 +353,12 @@ where
         CoordNum = invocation::CoordNumOf<I>,
         Entry = invocation::LogEntryOf<I>,
     >,
-    T: crate::executor::Executor,
 {
     pub context: invocation::ContextOf<I>,
     pub node_id: invocation::NodeIdOf<I>,
     pub voter: V,
     pub snapshot: invocation::SnapshotFor<I>,
     pub buffer: B,
-    pub executor: T,
     #[cfg(feature = "tracer")]
     pub tracer: Option<Box<dyn Tracer<I>>>,
 }

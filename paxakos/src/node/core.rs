@@ -335,12 +335,13 @@ where
     >,
 {
     pub(crate) async fn spawn<V, B, E>(
+        executor: E,
         state_keeper_kit: StateKeeperKit<I>,
         handle_sender: mpsc::Sender<super::handle::RequestAndResponseSender<I>>,
         id: NodeIdOf<I>,
         communicator: C,
-        args: super::SpawnArgs<I, V, B, E>,
-    ) -> Result<(RequestHandler<I>, Core<I, C>), executor::ErrorOf<E>>
+        args: super::SpawnArgs<I, V, B>,
+    ) -> Result<(RequestHandler<I>, Core<I, C>), executor::ErrorOf<E, I, V, B>>
     where
         V: Voter<
             State = StateOf<I>,
@@ -351,12 +352,12 @@ where
             Nay = NayOf<C>,
         >,
         B: Buffer<RoundNum = RoundNumOf<C>, CoordNum = CoordNumOf<C>, Entry = LogEntryOf<I>>,
-        E: crate::executor::Executor,
+        E: crate::executor::Executor<I, V, B>,
     {
         let state_keeper = state_keeper_kit.handle();
 
         let (initial_status, initial_participation, events, proof_of_life) =
-            StateKeeper::spawn(state_keeper_kit, args).await?;
+            StateKeeper::spawn(executor, state_keeper_kit, args).await?;
 
         let req_handler = RequestHandler::new(state_keeper.clone());
         let commits = Commits::new();
