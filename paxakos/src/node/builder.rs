@@ -347,7 +347,8 @@ where
     }
 }
 
-struct DecorationFinisher<D: Decoration, I> {
+#[doc(hidden)]
+pub struct DecorationFinisher<D: Decoration, I> {
     arguments: <D as Decoration>::Arguments,
     inner: I,
 }
@@ -584,7 +585,7 @@ where
 {
     type Node = N;
     type DecoratedBuilder<D: Decoration<Decorated = N> + 'static> =
-        NodeBuilder<D, impl Finisher<Node = D>, V, B>;
+        NodeBuilder<D, DecorationFinisher<D, F>, V, B>;
 
     fn decorated_with<D>(self, arguments: <D as Decoration>::Arguments) -> Self::DecoratedBuilder<D>
     where
