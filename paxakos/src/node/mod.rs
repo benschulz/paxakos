@@ -179,6 +179,33 @@ pub trait Node: Sized {
         F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
         T: Send + 'static;
 
+    /// Reads the node's current state.
+    ///
+    /// As the name implies the state may be stale, i.e. other node's may have
+    /// advanced the shared state without this node being aware.
+    fn read_stale_infallibly<F, T>(&self, f: F) -> LocalBoxFuture<'_, T>
+    where
+        F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'static,
+        T: Send + 'static;
+
+    /// Reads the node's current state.
+    ///
+    /// As the name implies the state may be stale, i.e. other node's may have
+    /// advanced the shared state without this node being aware.
+    fn read_stale_scoped<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, Result<T, Disoriented>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'read,
+        T: Send + 'static;
+
+    /// Reads the node's current state.
+    ///
+    /// As the name implies the state may be stale, i.e. other node's may have
+    /// advanced the shared state without this node being aware.
+    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, T>
+    where
+        F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'read,
+        T: Send + 'static;
+
     /// Appends `applicable` to the shared log.
     fn append<A, P, R>(
         &self,

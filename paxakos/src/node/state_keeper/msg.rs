@@ -28,6 +28,7 @@ use crate::RoundNum;
 
 use super::error::AcquireRoundNumError;
 use super::error::ClusterError;
+use super::error::Obsolete;
 use super::error::ShutDown;
 use super::RoundNumReservation;
 
@@ -110,9 +111,10 @@ pub enum Request<I: Invocation> {
     Shutdown,
 }
 
-pub struct ReadStaleFunc<I: Invocation>(
-    pub Box<dyn FnOnce(&StateOf<I>) -> Box<dyn Any + Send> + Send>,
-);
+pub type DynReadFunc<'a, I> =
+    Box<dyn FnOnce(Result<&StateOf<I>, ReadStaleError>) -> Box<dyn Any + Send> + Send + 'a>;
+
+pub struct ReadStaleFunc<I: Invocation>(pub Arc<std::sync::Mutex<Option<DynReadFunc<'static, I>>>>);
 
 impl<I: Invocation> std::fmt::Debug for ReadStaleFunc<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -128,7 +130,7 @@ pub enum Response<I: Invocation> {
     AffirmSnapshot(Result<(), AffirmSnapshotError>),
     InstallSnapshot(Result<(), InstallSnapshotError>),
 
-    ReadStale(Result<Box<dyn Any + Send>, ReadStaleError>),
+    ReadStale(Result<Box<dyn Any + Send>, Obsolete>),
 
     AwaitCommitOf(Result<PendingCommit<I>, Infallible>),
 

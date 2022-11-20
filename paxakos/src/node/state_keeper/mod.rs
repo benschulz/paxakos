@@ -69,6 +69,8 @@ use crate::CoordNum;
 use crate::Promise;
 use crate::RoundNum;
 
+use self::error::Obsolete;
+
 use super::snapshot::DeconstructedSnapshot;
 use super::snapshot::Participation;
 use super::snapshot::Snapshot;
@@ -575,6 +577,16 @@ where
     }
 
     async fn shut_down(mut self) {
+        self.receiver.close();
+
+        while let Some((req, resp_sender)) = self.receiver.try_next().unwrap() {
+            if let Request::Shutdown = req {
+                let _ = resp_sender.send(Response::Shutdown(Ok(())));
+            } else {
+                self.handle_request_msg(req, resp_sender);
+            }
+        }
+
         let snapshot = self.prepare_snapshot();
         let mut emitter = self.event_emitter;
 
@@ -593,10 +605,15 @@ where
                 Response::InstallSnapshot(self.install_snapshot(snapshot))
             }
 
-            Request::ReadStale { f } => Response::ReadStale(match &self.state {
-                Some(s) => Ok(f.0(s)),
-                None => Err(ReadStaleError::Disoriented),
-            }),
+            Request::ReadStale { f } => {
+                let f = f.0.lock().expect("lock poisoned").take();
+
+                Response::ReadStale(match (f, &self.state) {
+                    (Some(f), Some(s)) => Ok(f(Ok(s))),
+                    (Some(f), None) => Ok(f(Err(ReadStaleError::Disoriented))),
+                    (None, _) => Err(Obsolete),
+                })
+            }
 
             Request::AwaitCommitOf { entry_id } => {
                 let (s, r) = oneshot::channel();

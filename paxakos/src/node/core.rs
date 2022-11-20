@@ -213,6 +213,36 @@ where
             .boxed_local()
     }
 
+    fn read_stale_infallibly<F, T>(&self, f: F) -> LocalBoxFuture<'_, T>
+    where
+        F: FnOnce(Option<&StateOf<Self::Invocation>>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.state_keeper
+            .read_stale_infallibly(&self.proof_of_life, |r| f(r.ok()))
+            .boxed_local()
+    }
+
+    fn read_stale_scoped<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, Result<T, Disoriented>>
+    where
+        F: FnOnce(&StateOf<Self::Invocation>) -> T + Send + 'read,
+        T: Send + 'static,
+    {
+        self.state_keeper
+            .read_stale_scoped(&self.proof_of_life, f)
+            .boxed_local()
+    }
+
+    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, T>
+    where
+        F: FnOnce(Option<&StateOf<Self::Invocation>>) -> T + Send + 'read,
+        T: Send + 'static,
+    {
+        self.state_keeper
+            .read_stale_scoped_infallibly(&self.proof_of_life, |r| f(r.ok()))
+            .boxed_local()
+    }
+
     fn shut_down(self) -> Self::Shutdown {
         let state_keeper = self.state_keeper;
         let proof_of_life = self.proof_of_life;

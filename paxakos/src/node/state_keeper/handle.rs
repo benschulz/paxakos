@@ -3,11 +3,13 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
+use std::task::Poll;
 
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::future::FutureExt;
 use futures::sink::SinkExt;
+use pin_project::pin_project;
 
 use crate::error::AcceptError;
 use crate::error::AffirmSnapshotError;
@@ -36,6 +38,7 @@ use crate::LogEntry;
 use super::error::AcquireRoundNumError;
 use super::error::ClusterError;
 use super::error::ShutDown;
+use super::msg::DynReadFunc;
 use super::msg::Request;
 use super::msg::Response;
 use super::ProofOfLife;
@@ -53,7 +56,7 @@ macro_rules! dispatch_state_keeper_req {
         async move {
             sender.send((req, s)).await.map_err(|_| ShutDown)?;
 
-            match r.await.map_err(|_| ShutDown)? {
+            match r.await.expect("request not handled: state keeper task panicked") {
                 Response::$name(r) => Ok(match r {
                     Ok(v) => v,
                     #[allow(unreachable_code)]
@@ -124,36 +127,216 @@ impl<I: Invocation> StateKeeperHandle<I> {
 
     pub fn read_stale<F, T>(
         &self,
-        _proof_of_life: &ProofOfLife,
+        proof_of_life: &ProofOfLife,
         f: F,
     ) -> impl Future<Output = Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<I>) -> T + Send + 'static,
         T: Send + 'static,
     {
-        self.try_read_stale(f).map(|r| {
-            r.map_err(|e| match e {
-                ReadStaleError::ShutDown => unreachable!("proof of life given"),
-                ReadStaleError::Disoriented => Disoriented,
-            })
+        self.read_stale_infallibly(proof_of_life, |r| r.map(f))
+    }
+
+    pub fn read_stale_infallibly<F, T>(
+        &self,
+        _proof_of_life: &ProofOfLife,
+        f: F,
+    ) -> impl Future<Output = T>
+    where
+        F: FnOnce(Result<&StateOf<I>, crate::error::Disoriented>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.try_read_stale_infallibly(|r| {
+            f(r.map_err(|err| match err {
+                ReadStaleError::Disoriented => crate::error::Disoriented,
+                ReadStaleError::ShutDown => {
+                    panic!("proof of life given: state keeper task panicked")
+                }
+            }))
         })
     }
 
-    pub fn try_read_stale<F, T>(&self, f: F) -> impl Future<Output = Result<T, ReadStaleError>>
+    pub fn try_read_stale<F, T>(
+        &self,
+        f: F,
+    ) -> impl Future<Output = Result<T, crate::error::ReadStaleError>>
     where
         F: FnOnce(&StateOf<I>) -> T + Send + 'static,
         T: Send + 'static,
     {
-        let boxed: Box<dyn FnOnce(&StateOf<I>) -> Box<dyn Any + Send> + Send> =
-            Box::new(|s| Box::new(f(s)) as Box<dyn Any + Send>);
+        self.try_read_stale_infallibly(|r| r.map(f))
+    }
 
-        let result = dispatch_state_keeper_req!(self, ReadStale, { f: ReadStaleFunc(boxed) });
+    pub fn try_read_stale_infallibly<F, T>(&self, f: F) -> impl Future<Output = T>
+    where
+        F: FnOnce(Result<&StateOf<I>, crate::error::ReadStaleError>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        let f: DynReadFunc<'static, I> = Box::new(|r| Box::new(f(r)) as Box<dyn Any + Send>);
+        let f = Arc::new(std::sync::Mutex::new(Some(f)));
+
+        let req = Request::ReadStale {
+            f: ReadStaleFunc(f),
+        };
+
+        let (s, r) = oneshot::channel();
+
+        let mut sender = self.sender.clone();
+
+        let result = async move {
+            TrySend::new(&mut sender, (req, s))
+                .await
+                .map_err(|(req, _)| Some(req))?;
+
+            match r
+                .await
+                .expect("request not handled: state keeper task panicked")
+            {
+                Response::ReadStale(r) => r.map_err(|_| None),
+                _ => unreachable!(),
+            }
+        };
 
         async move {
-            result
+            let t = result
                 .await
-                .map(|t| *t.downcast::<T>().expect("downcast failed"))
+                .map_err(|f| {
+                    let f = f.expect("this future was dropped");
+                    let f = match f {
+                        Request::ReadStale { f } => f.0,
+                        _ => unreachable!(),
+                    };
+                    let f = Arc::try_unwrap(f).ok().unwrap();
+                    let f = f.into_inner().unwrap().unwrap();
+
+                    f(Err(ReadStaleError::ShutDown))
+                })
+                .unwrap_or_else(|t| t);
+
+            *t.downcast::<T>().expect("downcast failed")
         }
+    }
+
+    pub fn read_stale_scoped<'read, F, T>(
+        &self,
+        proof_of_life: &ProofOfLife,
+        f: F,
+    ) -> impl Future<Output = Result<T, Disoriented>> + 'read
+    where
+        F: FnOnce(&StateOf<I>) -> T + Send + 'read,
+        T: Send + 'static,
+    {
+        self.read_stale_scoped_infallibly(proof_of_life, |r| r.map(f))
+    }
+
+    pub fn read_stale_scoped_infallibly<'read, F, T>(
+        &self,
+        _proof_of_life: &ProofOfLife,
+        f: F,
+    ) -> impl Future<Output = T> + 'read
+    where
+        F: FnOnce(Result<&StateOf<I>, crate::error::Disoriented>) -> T + Send + 'read,
+        T: Send + 'static,
+    {
+        self.try_read_stale_scoped_infallibly(|r| {
+            f(r.map_err(|err| match err {
+                ReadStaleError::Disoriented => crate::error::Disoriented,
+                ReadStaleError::ShutDown => {
+                    panic!("proof of life given: state keeper task panicked")
+                }
+            }))
+        })
+    }
+
+    pub fn try_read_stale_scoped<'read, F, T>(
+        &self,
+        f: F,
+    ) -> impl Future<Output = Result<T, crate::error::ReadStaleError>> + 'read
+    where
+        F: FnOnce(&StateOf<I>) -> T + Send + 'read,
+        T: Send + 'static,
+    {
+        self.try_read_stale_scoped_infallibly(|r| r.map(f))
+    }
+
+    pub fn try_read_stale_scoped_infallibly<'read, F, T>(
+        &self,
+        f: F,
+    ) -> impl Future<Output = T> + 'read
+    where
+        F: FnOnce(Result<&StateOf<I>, crate::error::ReadStaleError>) -> T + Send + 'read,
+        T: Send + 'static,
+    {
+        #[pin_project]
+        struct TakeOnDrop<T, F>(TakeOnDropInner<T>, #[pin] F);
+
+        struct TakeOnDropInner<T>(Arc<std::sync::Mutex<Option<T>>>);
+
+        impl<T, F: Future> Future for TakeOnDrop<T, F> {
+            type Output = F::Output;
+
+            fn poll(
+                self: std::pin::Pin<&mut Self>,
+                cx: &mut std::task::Context<'_>,
+            ) -> Poll<Self::Output> {
+                self.project().1.poll(cx)
+            }
+        }
+
+        impl<T> Drop for TakeOnDropInner<T> {
+            fn drop(&mut self) {
+                // If the lock was poisoned, the read was already (attempted to be) evaluated.
+                // => Nothing left to do.
+                if let Ok(mut f) = self.0.lock() {
+                    f.take();
+                }
+            }
+        }
+
+        let f: DynReadFunc<'read, I> = Box::new(|s| Box::new(f(s)) as Box<dyn Any + Send>);
+        let f = unsafe { std::mem::transmute::<DynReadFunc<'read, I>, DynReadFunc<'static, I>>(f) };
+        let f = Arc::new(std::sync::Mutex::new(Some(f)));
+
+        let req = Request::ReadStale {
+            f: ReadStaleFunc(Arc::clone(&f)),
+        };
+
+        let (s, r) = oneshot::channel();
+
+        let mut sender = self.sender.clone();
+
+        let result = async move {
+            TrySend::new(&mut sender, (req, s))
+                .await
+                .map_err(|(req, _)| Some(req))?;
+
+            match r
+                .await
+                .expect("request not handled: state keeper task panicked")
+            {
+                Response::ReadStale(r) => r.map_err(|_| None),
+                _ => unreachable!(),
+            }
+        };
+
+        TakeOnDrop(TakeOnDropInner(f), async move {
+            let t = result
+                .await
+                .map_err(|f| {
+                    let f = f.expect("this future was dropped");
+                    let f = match f {
+                        Request::ReadStale { f } => f.0,
+                        _ => unreachable!(),
+                    };
+                    let f = Arc::try_unwrap(f).ok().unwrap();
+                    let f = f.into_inner().unwrap().unwrap();
+
+                    f(Err(ReadStaleError::ShutDown))
+                })
+                .unwrap_or_else(|t| t);
+
+            *t.downcast::<T>().expect("downcast failed")
+        })
     }
 
     pub fn await_commit_of(
@@ -328,5 +511,58 @@ impl<I: Invocation> StateKeeperHandle<I> {
 
     pub fn shut_down(&self, _proof_of_life: ProofOfLife) -> impl Future<Output = ()> {
         dispatch_state_keeper_req!(self, Shutdown).map(ShutDown::rule_out)
+    }
+}
+
+struct TrySend<'a, T> {
+    sender: &'a mut mpsc::Sender<T>,
+    message: Option<T>,
+}
+
+impl<'a, T> Unpin for TrySend<'a, T> {}
+
+impl<'a, T> TrySend<'a, T> {
+    pub fn new(sender: &'a mut mpsc::Sender<T>, message: T) -> Self {
+        Self {
+            sender,
+            message: Some(message),
+        }
+    }
+
+    fn take_message(&mut self) -> T {
+        self.message
+            .take()
+            .expect("polled TrySend after completion")
+    }
+}
+
+impl<'a, T> Future for TrySend<'a, T> {
+    type Output = Result<(), T>;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Self::Output> {
+        match self.sender.poll_ready(cx) {
+            Poll::Ready(Ok(())) => {
+                let message = self.take_message();
+
+                match self.sender.try_send(message) {
+                    Ok(()) => Poll::Ready(Ok(())),
+                    Err(err) => {
+                        if err.is_disconnected() {
+                            Poll::Ready(Err(err.into_inner()))
+                        } else if err.is_full() {
+                            // we were promised a slot in the queue!
+                            unreachable!()
+                        } else {
+                            unreachable!("unexpected branch")
+                        }
+                    }
+                }
+            }
+            Poll::Ready(Err(_)) => Poll::Ready(Err(self.take_message())),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }

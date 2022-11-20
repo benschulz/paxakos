@@ -461,6 +461,30 @@ where
         self.decorated.read_stale(f)
     }
 
+    fn read_stale_infallibly<F, T>(&self, f: F) -> LocalBoxFuture<'_, T>
+    where
+        F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.decorated.read_stale_infallibly(f)
+    }
+
+    fn read_stale_scoped<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, Result<T, Disoriented>>
+    where
+        F: FnOnce(&StateOf<Self>) -> T + Send + 'read,
+        T: Send + 'static,
+    {
+        self.decorated.read_stale_scoped(f)
+    }
+
+    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, T>
+    where
+        F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'read,
+        T: Send + 'static,
+    {
+        self.decorated.read_stale_scoped_infallibly(f)
+    }
+
     fn append<A, P, R>(
         &self,
         applicable: A,

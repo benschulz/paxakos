@@ -7,7 +7,6 @@ use crate::error::CommitError;
 use crate::error::InstallSnapshotError;
 use crate::error::PollError;
 use crate::error::PrepareError;
-use crate::error::ReadStaleError;
 use crate::invocation::Invocation;
 use crate::invocation::RoundNumOf;
 use crate::RoundNum;
@@ -29,12 +28,6 @@ impl<I: Invocation> From<ShutDown> for AppendError<I> {
 impl<I: Invocation> From<ShutDown> for PollError<I> {
     fn from(_: ShutDown) -> Self {
         PollError::ShutDown
-    }
-}
-
-impl From<ShutDown> for ReadStaleError {
-    fn from(_: ShutDown) -> Self {
-        Self::ShutDown
     }
 }
 
@@ -133,3 +126,6 @@ impl<I: Invocation> From<ClusterError<RoundNumOf<I>>> for PollError<I> {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct Obsolete;
