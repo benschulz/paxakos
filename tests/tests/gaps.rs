@@ -3,6 +3,7 @@ mod calc_app;
 use std::time::Duration;
 
 use futures::stream::StreamExt;
+use futures::FutureExt;
 use paxakos::autofill;
 use paxakos::invocation::Invocation;
 use paxakos::Shell;
@@ -31,9 +32,10 @@ type CalcNode = Shell<Core<CalcInvocation, DirectCommunicator<CalcInvocation>>>;
 
 #[test]
 fn emit_gaps_event_when_it_first_appears() {
-    let (req_handler, mut node) = setup_node();
+    let (req_handler, node) = setup_node();
+    let mut node = node.into_unsend();
 
-    commit(&req_handler, 5, 1, CalcOp::Add(123f64, Uuid::new_v4()));
+    block_on_commit(&req_handler, 5, 1, CalcOp::Add(123f64, Uuid::new_v4()));
     let gaps_event = next_gaps_event(&mut node);
 
     assert_eq!(ranges_of(&gaps_event), vec![1..5]);
@@ -41,11 +43,12 @@ fn emit_gaps_event_when_it_first_appears() {
 
 #[test]
 fn shrunk_gap_maintains_age() {
-    let (req_handler, mut node) = setup_node();
+    let (req_handler, node) = setup_node();
+    let mut node = node.into_unsend();
 
-    commit(&req_handler, 5, 1, CalcOp::Add(123f64, Uuid::new_v4()));
+    block_on_commit(&req_handler, 5, 1, CalcOp::Add(123f64, Uuid::new_v4()));
     let first_event = next_gaps_event(&mut node);
-    commit(&req_handler, 3, 1, CalcOp::Add(321f64, Uuid::new_v4()));
+    block_on_commit(&req_handler, 3, 1, CalcOp::Add(321f64, Uuid::new_v4()));
     let second_event = next_gaps_event(&mut node);
 
     assert_eq!(ranges_of(&second_event), vec![1..3, 4..5]);
@@ -61,11 +64,12 @@ fn shrunk_gap_maintains_age() {
 
 #[test]
 fn later_gap_is_younger() {
-    let (req_handler, mut node) = setup_node();
+    let (req_handler, node) = setup_node();
+    let mut node = node.into_unsend();
 
-    commit(&req_handler, 2, 1, CalcOp::Add(321f64, Uuid::new_v4()));
+    block_on_commit(&req_handler, 2, 1, CalcOp::Add(321f64, Uuid::new_v4()));
     let first_event = next_gaps_event(&mut node);
-    commit(&req_handler, 4, 1, CalcOp::Add(123f64, Uuid::new_v4()));
+    block_on_commit(&req_handler, 4, 1, CalcOp::Add(123f64, Uuid::new_v4()));
     let second_event = next_gaps_event(&mut node);
 
     assert_eq!(ranges_of(&first_event), vec![1..2]);
@@ -94,24 +98,36 @@ fn auto_fill_gaps() {
     )
     .unwrap();
 
-    let target = 123f64;
+    futures::executor::block_on(node.enter_on_poll(|node| async move {
+        let target = 123f64;
 
-    // become leader
-    futures::executor::block_on(node.append(CalcOp::Mul(0.0, Uuid::new_v4()), ())).unwrap();
+        // become leader
+        let append = node.append(CalcOp::Mul(0.0, Uuid::new_v4()), ());
+        let mut events = node.events();
+        futures::future::select(
+            append,
+            async {
+                loop {
+                    events.next().await;
+                }
+            }
+            .boxed(),
+        )
+        .await;
 
-    commit(&req_handler, 5, 0, CalcOp::Add(target, Uuid::new_v4()));
+        commit(&req_handler, 5, 0, CalcOp::Add(target, Uuid::new_v4())).await;
 
-    let events = futures::stream::poll_fn(|cx| node.poll_events(cx).map(Some));
-
-    futures::executor::block_on(
-        events
+        node.events()
             .take_while(|e| {
                 futures::future::ready(
                     !matches!(e, Event::Apply { effect,.. } if effect.0 >= target),
                 )
             })
-            .for_each(|_| futures::future::ready(())),
-    );
+            .for_each(|_| futures::future::ready(()))
+            .await
+    }));
+
+    drop(node);
 }
 
 fn setup_node() -> (RequestHandler<CalcInvocation>, CalcNode) {
@@ -130,13 +146,24 @@ fn setup_node() -> (RequestHandler<CalcInvocation>, CalcNode) {
     (req_handler, node)
 }
 
-fn commit<I: Invocation>(
+fn block_on_commit<I: Invocation>(
     req_handler: &RequestHandler<I>,
     round_num: RoundNumOf<I>,
     coord_num: CoordNumOf<I>,
     log_entry: LogEntryOf<I>,
 ) {
-    let _ = futures::executor::block_on(req_handler.handle_commit(round_num, coord_num, log_entry));
+    futures::executor::block_on(commit(req_handler, round_num, coord_num, log_entry))
+}
+
+async fn commit<I: Invocation>(
+    req_handler: &RequestHandler<I>,
+    round_num: RoundNumOf<I>,
+    coord_num: CoordNumOf<I>,
+    log_entry: LogEntryOf<I>,
+) {
+    let _ = req_handler
+        .handle_commit(round_num, coord_num, log_entry)
+        .await;
 }
 
 fn next_gaps_event<N>(node: &mut N) -> EventFor<N>

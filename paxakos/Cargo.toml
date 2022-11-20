@@ -40,6 +40,7 @@ rand = { version = "0.8", optional = true }
 rand_distr = { version = "0.4", optional = true }
 serde = { version = "1", features = [ "derive", "rc" ] }
 smallvec = "1"
+snarc = "0.1"
 thiserror = "1"
 tracing = "0.1"
 wasm-bindgen-futures = { version = "0.4", optional = true }

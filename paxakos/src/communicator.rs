@@ -63,7 +63,7 @@ pub type VoteFor<C> = Vote<RoundNumOf<C>, CoordNumOf<C>, LogEntryOf<C>, AbstainO
 /// for its previous run, i.e. delayed messages sent over a connectionless
 /// protocol. Failure to shield a node from such messages may cause it to come
 /// out of passive participation mode early and lead to inconsistency.
-pub trait Communicator: Sized + 'static {
+pub trait Communicator: Send + Sized + 'static {
     /// NodeInfo
     type Node: NodeInfo;
 
@@ -79,21 +79,21 @@ pub trait Communicator: Sized + 'static {
     type Error: std::fmt::Debug + Send + Sync + 'static;
 
     /// Type of future returned from `send_prepare`.
-    type SendPrepare: Future<Output = Result<VoteFor<Self>, Self::Error>>;
+    type SendPrepare: Future<Output = Result<VoteFor<Self>, Self::Error>> + Send;
     /// Information sent along with abstentions.
     type Abstain: std::fmt::Debug + Send + Sync + 'static;
 
     /// Type of future returned from `send_proposal`.
-    type SendProposal: Future<Output = Result<AcceptanceFor<Self>, Self::Error>>;
+    type SendProposal: Future<Output = Result<AcceptanceFor<Self>, Self::Error>> + Send;
     /// Information sent along with yea votes.
     type Yea: std::fmt::Debug + Send + Sync + 'static;
     /// Information sent along with nay votes.
     type Nay: std::fmt::Debug + Send + Sync + 'static;
 
     /// Type of future returned from `send_commit`.
-    type SendCommit: Future<Output = Result<Committed, Self::Error>>;
+    type SendCommit: Future<Output = Result<Committed, Self::Error>> + Send;
     /// Type of future returned from `send_commit_by_id`.
-    type SendCommitById: Future<Output = Result<Committed, Self::Error>>;
+    type SendCommitById: Future<Output = Result<Committed, Self::Error>> + Send;
 
     /// Send a prepare message to all `receivers`.
     ///

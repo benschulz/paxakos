@@ -370,7 +370,8 @@ impl<I: Invocation> StateKeeperHandle<I> {
     pub fn cluster_for(
         &self,
         round_num: RoundNumOf<I>,
-    ) -> impl Future<Output = Result<Vec<NodeOf<I>>, ClusterError<RoundNumOf<I>>>> {
+    ) -> impl Future<Output = Result<Vec<NodeOf<I>>, ClusterError<RoundNumOf<I>>>> + Send + 'static
+    {
         dispatch_state_keeper_req!(self, Cluster, { round_num })
     }
 

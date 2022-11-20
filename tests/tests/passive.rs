@@ -43,7 +43,7 @@ fn worst_case() {
     let concurrency = 10;
     let initial_state = CalcState::new(nodes, concurrency);
     let initial_snapshot = Snapshot::<CalcState, u64, u32>::initial_with(initial_state);
-    let (req_handler, mut node) = futures::executor::block_on(
+    let (req_handler, node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_id)
             .communicating_via(
@@ -53,6 +53,7 @@ fn worst_case() {
             .spawn(),
     )
     .unwrap();
+    let mut node = node.into_unsend();
 
     let waker = futures::task::noop_waker();
     let mut cx = std::task::Context::from_waker(&waker);
@@ -88,6 +89,7 @@ fn worst_case() {
     // …when, out of nowhere…
     //
     // …n1 crahes and must be restarted from our previous snapshot.
+    drop(node);
     let (req_handler, mut node) = futures::executor::block_on(
         CalcInvocation::node_builder()
             .for_node(node_id)

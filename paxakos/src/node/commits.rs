@@ -1,10 +1,10 @@
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::future::Future;
-use std::rc::Rc;
 
 use futures::channel::oneshot;
+use futures::future::BoxFuture;
 use futures::future::FutureExt;
-use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 
@@ -14,48 +14,40 @@ use crate::error::ShutDown;
 use crate::state::OutcomeOf;
 use crate::state::State;
 
-#[derive(Clone)]
 pub struct Commits {
-    waker: std::task::Waker,
-    inner: Rc<CommitsInner>,
-}
-
-struct CommitsInner {
-    submitted: RefCell<Vec<LocalBoxFuture<'static, ()>>>,
-    active: RefCell<FuturesUnordered<LocalBoxFuture<'static, ()>>>,
+    waker: RefCell<std::task::Waker>,
+    submitted: RefCell<Vec<BoxFuture<'static, ()>>>,
+    active: RefCell<FuturesUnordered<BoxFuture<'static, ()>>>,
 }
 
 impl Commits {
     pub fn new() -> Self {
         Self {
-            waker: futures::task::noop_waker(),
-            inner: Rc::new(CommitsInner {
-                submitted: RefCell::new(Vec::new()),
-                active: RefCell::new(FuturesUnordered::new()),
-            }),
+            waker: RefCell::new(futures::task::noop_waker()),
+            submitted: RefCell::new(Vec::new()),
+            active: RefCell::new(FuturesUnordered::new()),
         }
     }
 
-    pub fn submit<F: 'static + Future<Output = ()>>(&self, commit: F) {
-        self.inner.submitted.borrow_mut().push(commit.boxed_local());
+    pub fn submit<F: 'static + Future<Output = ()> + Send>(&self, commit: F) {
+        self.submitted.borrow_mut().push(commit.boxed());
 
-        self.waker.wake_by_ref();
+        self.waker.borrow().wake_by_ref();
     }
 
-    pub fn poll_next(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<()>> {
-        if !cx.waker().will_wake(&self.waker) {
-            self.waker = cx.waker().clone();
+    pub fn poll_next(&self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<()>> {
+        if !cx.waker().borrow().will_wake(&self.waker.borrow()) {
+            *self.waker.borrow_mut() = cx.waker().clone();
         }
 
         loop {
-            self.inner
-                .active
+            self.active
                 .borrow_mut()
-                .extend(self.inner.submitted.borrow_mut().drain(..));
+                .extend(self.submitted.borrow_mut().drain(..));
 
-            let result = self.inner.active.borrow_mut().poll_next_unpin(cx);
+            let result = self.active.borrow_mut().poll_next_unpin(cx);
 
-            if self.inner.submitted.borrow().is_empty() {
+            if self.submitted.borrow().is_empty() {
                 return result;
             }
         }
@@ -67,8 +59,8 @@ impl std::fmt::Debug for Commits {
         write!(
             f,
             "Commits {{ submitted: {}, active: {} }}",
-            self.inner.submitted.borrow().len(),
-            self.inner.active.borrow().len(),
+            self.submitted.borrow().len(),
+            self.active.borrow().len(),
         )
     }
 }

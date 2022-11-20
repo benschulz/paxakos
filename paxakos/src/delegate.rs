@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::task::Poll;
 
 use futures::channel::oneshot;
+use futures::future::BoxFuture;
 use futures::future::FutureExt;
-use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::TryFutureExt;
@@ -60,7 +60,7 @@ pub trait Config {
         node: &Self::Node,
         log_entry: Arc<LogEntryOf<Self::Node>>,
         args: AppendArgs<InvocationOf<Self::Node>>,
-    ) -> LocalBoxFuture<'static, Evaluation<Self::DelegatedAppend>>;
+    ) -> BoxFuture<'static, Evaluation<Self::DelegatedAppend>>;
 }
 
 // TODO implement Try
@@ -71,7 +71,7 @@ pub enum Evaluation<D: DelegatedAppend> {
 }
 
 pub trait DelegatedAppend:
-    std::future::Future<Output = Result<(), AppendError<Self::Invocation>>>
+    std::future::Future<Output = Result<(), AppendError<Self::Invocation>>> + Send
 {
     type Invocation: Invocation;
 
@@ -88,7 +88,7 @@ pub trait Delegator {
         node_id: invocation::NodeIdOf<Self::Invocation>,
         log_entry: Arc<invocation::LogEntryOf<Self::Invocation>>,
         args: AppendArgs<Self::Invocation>,
-    ) -> LocalBoxFuture<'static, Evaluation<Self::DelegatedAppend>>;
+    ) -> BoxFuture<'static, Evaluation<Self::DelegatedAppend>>;
 }
 
 pub struct ToLeader<N, I, D> {
@@ -121,7 +121,7 @@ where
         node: &Self::Node,
         log_entry: Arc<LogEntryOf<Self::Node>>,
         args: AppendArgs<InvocationOf<Self::Node>>,
-    ) -> LocalBoxFuture<'static, Evaluation<Self::DelegatedAppend>> {
+    ) -> BoxFuture<'static, Evaluation<Self::DelegatedAppend>> {
         if args.importance == Importance::GainLeadership {
             // TODO consider round
             if let Some(delegatee) = node.strict_leadership().get(0).map(|l| l.leader) {
@@ -131,7 +131,7 @@ where
             }
         }
 
-        futures::future::ready(Evaluation::DoNotDelegate).boxed_local()
+        futures::future::ready(Evaluation::DoNotDelegate).boxed()
     }
 }
 
@@ -165,36 +165,36 @@ where
     }
 }
 
-type BoxedCommitResult<N> = Result<CommitFor<N>, Box<dyn Any>>;
+type BoxedCommitResult<N> = Result<CommitFor<N>, Box<dyn Any + Send>>;
 
 enum Append<C: Config> {
     EvaluatedDelegation {
         log_entry: Arc<LogEntryOf<C::Node>>,
         args: AppendArgs<InvocationOf<C::Node>, BoxedRetryPolicy<InvocationOf<C::Node>>>,
-        commit: LocalBoxFuture<'static, Result<CommitFor<C::Node>, ShutDown>>,
+        commit: BoxFuture<'static, Result<CommitFor<C::Node>, ShutDown>>,
         sender: oneshot::Sender<BoxedCommitResult<C::Node>>,
         result: Evaluation<C::DelegatedAppend>,
     },
     Delegated {
         log_entry: Arc<LogEntryOf<C::Node>>,
         args: AppendArgs<InvocationOf<C::Node>, BoxedRetryPolicy<InvocationOf<C::Node>>>,
-        commit: LocalBoxFuture<'static, Result<CommitFor<C::Node>, ShutDown>>,
+        commit: BoxFuture<'static, Result<CommitFor<C::Node>, ShutDown>>,
         sender: oneshot::Sender<BoxedCommitResult<C::Node>>,
         result: Result<(), AppendError<InvocationOf<C::Node>>>,
     },
     PerformedLocally {
         log_entry: Arc<LogEntryOf<C::Node>>,
         args: AppendArgs<InvocationOf<C::Node>, BoxedRetryPolicy<InvocationOf<C::Node>>>,
-        commit: LocalBoxFuture<'static, Result<CommitFor<C::Node>, ShutDown>>,
+        commit: BoxFuture<'static, Result<CommitFor<C::Node>, ShutDown>>,
         sender: oneshot::Sender<BoxedCommitResult<C::Node>>,
         result: Result<CommitFor<C::Node>, AppendError<InvocationOf<C::Node>>>,
     },
     EvaluatedRetry {
         log_entry: Arc<LogEntryOf<C::Node>>,
         args: AppendArgs<InvocationOf<C::Node>, BoxedRetryPolicy<InvocationOf<C::Node>>>,
-        commit: LocalBoxFuture<'static, Result<CommitFor<C::Node>, ShutDown>>,
+        commit: BoxFuture<'static, Result<CommitFor<C::Node>, ShutDown>>,
         sender: oneshot::Sender<BoxedCommitResult<C::Node>>,
-        result: Result<(), Box<dyn Any>>,
+        result: Result<(), Box<dyn Any + Send>>,
     },
     Completed,
 }
@@ -209,7 +209,7 @@ where
     config: C,
 
     waker: std::task::Waker,
-    appends: FuturesUnordered<LocalBoxFuture<'static, Append<C>>>,
+    appends: FuturesUnordered<BoxFuture<'static, Append<C>>>,
 
     _p: std::marker::PhantomData<I>,
 }
@@ -223,8 +223,8 @@ where
         &self,
         log_entry: Arc<LogEntryOf<N>>,
         args: AppendArgs<InvocationOf<N>, BoxedRetryPolicy<InvocationOf<N>>>,
-        commit: LocalBoxFuture<'static, Result<CommitFor<N>, ShutDown>>,
-        sender: oneshot::Sender<Result<CommitFor<N>, Box<dyn Any>>>,
+        commit: BoxFuture<'static, Result<CommitFor<N>, ShutDown>>,
+        sender: oneshot::Sender<Result<CommitFor<N>, Box<dyn Any + Send>>>,
     ) {
         let args_prime = AppendArgs {
             round: args.round.clone(),
@@ -246,7 +246,7 @@ where
                     result: evaluation.await,
                 }
             }
-            .boxed_local(),
+            .boxed(),
         );
 
         self.waker.wake_by_ref();
@@ -332,7 +332,7 @@ where
                                     result: append.await,
                                 }
                             }
-                            .boxed_local(),
+                            .boxed(),
                         );
 
                         continue;
@@ -361,7 +361,7 @@ where
                                     result: append.await,
                                 }
                             }
-                            .boxed_local(),
+                            .boxed(),
                         );
 
                         continue;
@@ -385,7 +385,7 @@ where
 
                                 Append::Completed
                             }
-                            .boxed_local(),
+                            .boxed(),
                         );
 
                         continue;
@@ -441,7 +441,7 @@ where
                         result,
                     }
                 }
-                .boxed_local(),
+                .boxed(),
             )
         }
 
@@ -459,25 +459,25 @@ where
         self.decorated.handle()
     }
 
-    fn prepare_snapshot(&self) -> LocalBoxFuture<'static, SnapshotFor<Self>> {
+    fn prepare_snapshot(&self) -> BoxFuture<'static, SnapshotFor<Self>> {
         self.decorated.prepare_snapshot()
     }
 
     fn affirm_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
-    ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
+    ) -> BoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
         self.decorated.affirm_snapshot(snapshot)
     }
 
     fn install_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
-    ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
+    ) -> BoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
         self.decorated.install_snapshot(snapshot)
     }
 
-    fn read_stale<F, T>(&self, f: F) -> LocalBoxFuture<'_, Result<T, Disoriented>>
+    fn read_stale<F, T>(&self, f: F) -> BoxFuture<'_, Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
         T: Send + 'static,
@@ -485,7 +485,7 @@ where
         self.decorated.read_stale(f)
     }
 
-    fn read_stale_infallibly<F, T>(&self, f: F) -> LocalBoxFuture<'_, T>
+    fn read_stale_infallibly<F, T>(&self, f: F) -> BoxFuture<'_, T>
     where
         F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'static,
         T: Send + 'static,
@@ -493,7 +493,7 @@ where
         self.decorated.read_stale_infallibly(f)
     }
 
-    fn read_stale_scoped<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, Result<T, Disoriented>>
+    fn read_stale_scoped<'read, F, T>(&self, f: F) -> BoxFuture<'read, Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<Self>) -> T + Send + 'read,
         T: Send + 'static,
@@ -501,7 +501,7 @@ where
         self.decorated.read_stale_scoped(f)
     }
 
-    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, T>
+    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> BoxFuture<'read, T>
     where
         F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'read,
         T: Send + 'static,
@@ -510,10 +510,10 @@ where
     }
 
     fn append<A, P, R>(
-        &self,
+        &mut self,
         applicable: A,
         args: P,
-    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
+    ) -> futures::future::BoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
@@ -522,7 +522,7 @@ where
     {
         self.append_impl(applicable, args)
             .map_err(|e| e.into())
-            .boxed_local()
+            .boxed()
     }
 
     fn shut_down(self) -> Self::Shutdown {
@@ -536,10 +536,10 @@ where
     C: Config<Node = N> + 'static,
 {
     fn append_impl<A, P, R>(
-        &self,
+        &mut self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    ) -> BoxFuture<'static, ImplAppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
@@ -568,28 +568,28 @@ where
 
             Ok(commit.projected())
         }
-        .boxed_local()
+        .boxed()
     }
 
     fn await_commit_of(
-        &self,
+        &mut self,
         log_entry_id: crate::node::LogEntryIdOf<Self>,
-    ) -> LocalBoxFuture<'static, Result<crate::node::CommitFor<Self>, crate::error::ShutDown>> {
+    ) -> BoxFuture<'static, Result<crate::node::CommitFor<Self>, crate::error::ShutDown>> {
         self.decorated.await_commit_of(log_entry_id)
     }
 
     fn eject(
-        &self,
+        &mut self,
         reason: crate::node::EjectionOf<Self>,
-    ) -> LocalBoxFuture<'static, Result<bool, crate::error::ShutDown>> {
+    ) -> BoxFuture<'static, Result<bool, crate::error::ShutDown>> {
         self.decorated.eject(reason)
     }
 
     fn poll(
-        &self,
+        &mut self,
         round_num: RoundNumOf<Self>,
         additional_nodes: Vec<crate::node::NodeOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<bool, PollError<Self::Invocation>>> {
+    ) -> BoxFuture<'static, Result<bool, PollError<Self::Invocation>>> {
         self.decorated.poll(round_num, additional_nodes)
     }
 }
@@ -597,9 +597,9 @@ where
 type BoxedRetryPolicy<I> = Box<
     dyn RetryPolicy<
         Invocation = I,
-        Error = Box<dyn Any>,
-        StaticError = Box<dyn Any>,
-        Future = LocalBoxFuture<'static, Result<(), Box<dyn Any>>>,
+        Error = Box<dyn Any + Send>,
+        StaticError = Box<dyn Any + Send>,
+        Future = BoxFuture<'static, Result<(), Box<dyn Any + Send>>>,
     >,
 >;
 
@@ -618,13 +618,13 @@ where
     R: RetryPolicy,
 {
     type Invocation = <R as RetryPolicy>::Invocation;
-    type Error = Box<dyn Any>;
-    type StaticError = Box<dyn Any>;
-    type Future = LocalBoxFuture<'static, Result<(), Self::Error>>;
+    type Error = Box<dyn Any + Send>;
+    type StaticError = Box<dyn Any + Send>;
+    type Future = BoxFuture<'static, Result<(), Self::Error>>;
 
     fn eval(&mut self, error: AppendError<Self::Invocation>) -> Self::Future {
         let f = self.delegate.eval(error);
 
-        async move { f.await.map_err(|err| Box::new(err) as Self::Error) }.boxed_local()
+        async move { f.await.map_err(|err| Box::new(err) as Self::Error) }.boxed()
     }
 }

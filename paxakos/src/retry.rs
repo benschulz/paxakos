@@ -8,22 +8,22 @@ use crate::error::ShutDownOr;
 use crate::invocation::Invocation;
 
 /// Policy that determines whether an append should be retried.
-pub trait RetryPolicy: 'static {
+pub trait RetryPolicy: 'static + Send {
     /// Parametrization of the paxakos algorithm.
     type Invocation: Invocation;
 
     /// Type of error produced by this policy.
-    type Error;
+    type Error: Send;
 
     /// Union of `Self::Error` and `ShutDown`.
     ///
     /// See [`Node::append`][crate::Node::append].
     // TODO default to ShutDownOr<Self::Error> (https://github.com/rust-lang/rust/issues/29661)
-    type StaticError;
+    type StaticError: Send;
 
     /// Type of future returned from [RetryPolicy::eval].
     // TODO this needs GATs for a lifetime parameter
-    type Future: std::future::Future<Output = Result<(), Self::Error>>;
+    type Future: std::future::Future<Output = Result<(), Self::Error>> + Send;
 
     /// Determines wheter another attempt to append should be made.
     ///
@@ -32,7 +32,7 @@ pub trait RetryPolicy: 'static {
     fn eval(&mut self, error: AppendError<Self::Invocation>) -> Self::Future;
 }
 
-impl<I: Invocation, E: 'static, F: 'static> RetryPolicy
+impl<I: Invocation, E: Send + 'static, F: Send + 'static> RetryPolicy
     for Box<
         dyn RetryPolicy<
                 Invocation = I,

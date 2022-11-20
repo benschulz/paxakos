@@ -16,8 +16,8 @@
 use std::task::Poll;
 use std::time::Duration;
 
+use futures::future::BoxFuture;
 use futures::future::FutureExt;
-use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 use num_traits::Bounded;
 use num_traits::Zero;
@@ -201,7 +201,7 @@ where
     timer: Option<(instant::Instant, futures_timer::Delay)>,
     due_time: Option<instant::Instant>,
 
-    appends: futures::stream::FuturesUnordered<LocalBoxFuture<'static, ()>>,
+    appends: futures::stream::FuturesUnordered<BoxFuture<'static, ()>>,
 
     warned_no_leadership_tracking: bool,
 
@@ -260,7 +260,7 @@ where
                 },
             )
             .map(|_| ())
-            .boxed_local();
+            .boxed();
 
         self.appends.push(append);
     }
@@ -378,25 +378,25 @@ where
         self.decorated.handle()
     }
 
-    fn prepare_snapshot(&self) -> LocalBoxFuture<'static, SnapshotFor<Self>> {
+    fn prepare_snapshot(&self) -> BoxFuture<'static, SnapshotFor<Self>> {
         self.decorated.prepare_snapshot()
     }
 
     fn affirm_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
-    ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
+    ) -> BoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
         self.decorated.affirm_snapshot(snapshot)
     }
 
     fn install_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
-    ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
+    ) -> BoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
         self.decorated.install_snapshot(snapshot)
     }
 
-    fn read_stale<F, T>(&self, f: F) -> LocalBoxFuture<'_, Result<T, Disoriented>>
+    fn read_stale<F, T>(&self, f: F) -> BoxFuture<'_, Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
         T: Send + 'static,
@@ -404,7 +404,7 @@ where
         self.decorated.read_stale(f)
     }
 
-    fn read_stale_infallibly<F, T>(&self, f: F) -> LocalBoxFuture<'_, T>
+    fn read_stale_infallibly<F, T>(&self, f: F) -> BoxFuture<'_, T>
     where
         F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'static,
         T: Send + 'static,
@@ -412,7 +412,7 @@ where
         self.decorated.read_stale_infallibly(f)
     }
 
-    fn read_stale_scoped<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, Result<T, Disoriented>>
+    fn read_stale_scoped<'read, F, T>(&self, f: F) -> BoxFuture<'read, Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<Self>) -> T + Send + 'read,
         T: Send + 'static,
@@ -420,7 +420,7 @@ where
         self.decorated.read_stale_scoped(f)
     }
 
-    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, T>
+    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> BoxFuture<'read, T>
     where
         F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'read,
         T: Send + 'static,
@@ -429,10 +429,10 @@ where
     }
 
     fn append<A, P, R>(
-        &self,
+        &mut self,
         applicable: A,
         args: P,
-    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
+    ) -> futures::future::BoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
@@ -454,7 +454,7 @@ where
 {
     type Delegate = N;
 
-    fn delegate(&self) -> &Self::Delegate {
-        &self.decorated
+    fn delegate(&mut self) -> &mut Self::Delegate {
+        &mut self.decorated
     }
 }

@@ -106,7 +106,7 @@ pub type ProjectionOf<A, S> = <A as ApplicableTo<S>>::Projection;
 ///     }
 /// }
 /// ```
-pub trait ApplicableTo<S: State> {
+pub trait ApplicableTo<S: State>: Send {
     /// Projection type, usually a zero-sized type.
     type Projection: Projection<OutcomeOf<S>>;
 

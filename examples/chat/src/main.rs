@@ -9,7 +9,6 @@ use paxakos::prototyping::PrototypingNode;
 use paxakos::prototyping::RetryIndefinitely;
 use paxakos::Invocation;
 use paxakos::LogEntry;
-use paxakos::Node;
 use paxakos::NodeHandle;
 use paxakos::NodeInfo;
 use paxakos::State;

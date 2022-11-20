@@ -2,7 +2,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 use futures::channel::mpsc;
-use futures::future::LocalBoxFuture;
+use futures::future::BoxFuture;
 use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
@@ -92,7 +92,7 @@ where
     type SendPrepare = <C as Communicator>::SendPrepare;
     type Abstain = AbstainOf<C>;
 
-    type SendProposal = LocalBoxFuture<'static, Result<AcceptanceFor<Self>, Self::Error>>;
+    type SendProposal = BoxFuture<'static, Result<AcceptanceFor<Self>, Self::Error>>;
     type Yea = YeaOf<C>;
     type Nay = NayOf<C>;
 
@@ -145,7 +145,7 @@ where
                             Acceptance::Refused(n) => Acceptance::Refused(n),
                         })
                     }
-                    .boxed_local(),
+                    .boxed(),
                 )
             })
             .collect()

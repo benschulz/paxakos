@@ -1,45 +1,33 @@
-use std::rc::Rc;
-
 use futures::channel::mpsc;
+use futures::future::BoxFuture;
 use futures::future::FutureExt;
-use futures::future::LocalBoxFuture;
 use futures::stream::StreamExt;
 use futures::TryFutureExt;
 use num_traits::One;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
-use crate::buffer::Buffer;
-use crate::communicator::AbstainOf;
 use crate::communicator::Communicator;
-use crate::communicator::CoordNumOf;
-use crate::communicator::NayOf;
 use crate::communicator::RoundNumOf;
-use crate::communicator::YeaOf;
 use crate::error::Disoriented;
 use crate::error::PollError;
 use crate::error::ShutDown;
 use crate::error::ShutDownOr;
 use crate::event::Event;
 use crate::event::ShutdownEvent;
-use crate::executor;
 use crate::invocation;
 use crate::invocation::Invocation;
-use crate::invocation::LogEntryOf;
 use crate::invocation::NodeIdOf;
 use crate::invocation::StateOf;
+use crate::node::inner::SnarcRef;
 use crate::retry::RetryPolicy;
-use crate::voting::Voter;
 use crate::Commit;
 
-use super::commits::Commits;
 use super::inner::NodeInner;
 use super::shutdown::DefaultShutdown;
 use super::state_keeper::EventStream;
 use super::state_keeper::ProofOfLife;
-use super::state_keeper::StateKeeper;
 use super::state_keeper::StateKeeperHandle;
-use super::state_keeper::StateKeeperKit;
 use super::AppendResultFor;
 use super::EventFor;
 use super::ImplAppendResultFor;
@@ -48,7 +36,6 @@ use super::NodeHandle;
 use super::NodeImpl;
 use super::NodeStatus;
 use super::Participation;
-use super::RequestHandler;
 use super::SnapshotFor;
 
 /// The core [`Node`][crate::Node] implementation.
@@ -69,10 +56,9 @@ where
         Abstain = invocation::AbstainOf<I>,
     >,
 {
-    inner: Rc<NodeInner<I, C>>,
+    inner: SnarcRef<NodeInner<I, C>>,
     state_keeper: StateKeeperHandle<I>,
     proof_of_life: ProofOfLife,
-    commits: Commits,
     events: EventStream<I>,
     status: NodeStatus,
     participation: Participation<RoundNumOf<C>>,
@@ -98,7 +84,7 @@ where
     type Shutdown = DefaultShutdown<I>;
 
     fn id(&self) -> NodeIdOf<I> {
-        self.inner.id()
+        self.inner.expect().id()
     }
 
     fn status(&self) -> NodeStatus {
@@ -114,7 +100,7 @@ where
     /// It is important to poll the node's event stream because it implicitly
     /// drives the actions that keep the node up to date.
     fn poll_events(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<EventFor<Self>> {
-        while let std::task::Poll::Ready(Some(())) = self.commits.poll_next(cx) {
+        while let std::task::Poll::Ready(Some(())) = self.inner.expect().commits.poll_next(cx) {
             // keep going
         }
 
@@ -150,32 +136,32 @@ where
         NodeHandle::new(self.handle_sender.clone(), self.state_keeper.clone())
     }
 
-    fn prepare_snapshot(&self) -> LocalBoxFuture<'static, SnapshotFor<Self>> {
+    fn prepare_snapshot(&self) -> BoxFuture<'static, SnapshotFor<Self>> {
         self.state_keeper
             .prepare_snapshot()
             .map(ShutDown::rule_out)
-            .boxed_local()
+            .boxed()
     }
 
     fn affirm_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
-    ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
-        self.state_keeper.affirm_snapshot(snapshot).boxed_local()
+    ) -> BoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>> {
+        self.state_keeper.affirm_snapshot(snapshot).boxed()
     }
 
     fn install_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
-    ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
-        self.state_keeper.install_snapshot(snapshot).boxed_local()
+    ) -> BoxFuture<'static, Result<(), crate::error::InstallSnapshotError>> {
+        self.state_keeper.install_snapshot(snapshot).boxed()
     }
 
     fn append<A, P, R>(
-        &self,
+        &mut self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
+    ) -> BoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self::Invocation>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
@@ -184,58 +170,55 @@ where
     {
         self.append_impl(applicable, args)
             .map_err(|e| e.into())
-            .boxed_local()
+            .boxed()
     }
 
-    fn read_stale<F, T>(&self, f: F) -> LocalBoxFuture<'_, Result<T, Disoriented>>
+    fn read_stale<F, T>(&self, f: F) -> BoxFuture<'_, Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<Self::Invocation>) -> T + Send + 'static,
         T: Send + 'static,
     {
-        self.state_keeper
-            .read_stale(&self.proof_of_life, f)
-            .boxed_local()
+        self.state_keeper.read_stale(&self.proof_of_life, f).boxed()
     }
 
-    fn read_stale_infallibly<F, T>(&self, f: F) -> LocalBoxFuture<'_, T>
+    fn read_stale_infallibly<F, T>(&self, f: F) -> BoxFuture<'_, T>
     where
         F: FnOnce(Option<&StateOf<Self::Invocation>>) -> T + Send + 'static,
         T: Send + 'static,
     {
         self.state_keeper
             .read_stale_infallibly(&self.proof_of_life, |r| f(r.ok()))
-            .boxed_local()
+            .boxed()
     }
 
-    fn read_stale_scoped<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, Result<T, Disoriented>>
+    fn read_stale_scoped<'read, F, T>(&self, f: F) -> BoxFuture<'read, Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<Self::Invocation>) -> T + Send + 'read,
         T: Send + 'static,
     {
         self.state_keeper
             .read_stale_scoped(&self.proof_of_life, f)
-            .boxed_local()
+            .boxed()
     }
 
-    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, T>
+    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> BoxFuture<'read, T>
     where
         F: FnOnce(Option<&StateOf<Self::Invocation>>) -> T + Send + 'read,
         T: Send + 'static,
     {
         self.state_keeper
             .read_stale_scoped_infallibly(&self.proof_of_life, |r| f(r.ok()))
-            .boxed_local()
+            .boxed()
     }
 
     fn shut_down(self) -> Self::Shutdown {
         let state_keeper = self.state_keeper;
         let proof_of_life = self.proof_of_life;
         let events = self.events;
-        let commits = self.commits;
 
-        let trigger = state_keeper.shut_down(proof_of_life).fuse().boxed_local();
+        let trigger = state_keeper.shut_down(proof_of_life).fuse().boxed();
 
-        DefaultShutdown::new(trigger, events, commits)
+        DefaultShutdown::new(trigger, events)
     }
 }
 
@@ -254,24 +237,22 @@ where
     >,
 {
     fn append_impl<A, P, R>(
-        &self,
+        &mut self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    ) -> BoxFuture<'static, ImplAppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<super::StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
         R: RetryPolicy<Invocation = Self::Invocation>,
     {
-        Rc::clone(&self.inner)
-            .append(applicable, args.into())
-            .boxed_local()
+        NodeInner::append(SnarcRef::clone(&self.inner), applicable, args.into()).boxed()
     }
 
     fn await_commit_of(
-        &self,
+        &mut self,
         log_entry_id: super::LogEntryIdOf<Self>,
-    ) -> LocalBoxFuture<'static, Result<super::CommitFor<Self>, crate::error::ShutDown>> {
+    ) -> BoxFuture<'static, Result<super::CommitFor<Self>, crate::error::ShutDown>> {
         let commit = self.state_keeper.await_commit_of(log_entry_id);
 
         async move {
@@ -283,24 +264,22 @@ where
                 Err(err) => Err(err),
             }
         }
-        .boxed_local()
+        .boxed()
     }
 
     fn eject(
-        &self,
+        &mut self,
         reason: crate::node::EjectionOf<Self>,
-    ) -> LocalBoxFuture<'static, Result<bool, crate::error::ShutDown>> {
-        self.state_keeper.eject(reason).boxed_local()
+    ) -> BoxFuture<'static, Result<bool, crate::error::ShutDown>> {
+        self.state_keeper.eject(reason).boxed()
     }
 
     fn poll(
-        &self,
+        &mut self,
         round_num: super::RoundNumOf<Self>,
         additional_nodes: Vec<super::NodeOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<bool, PollError<I>>> {
-        Rc::clone(&self.inner)
-            .poll(round_num, additional_nodes)
-            .boxed_local()
+    ) -> BoxFuture<'static, Result<bool, PollError<I>>> {
+        NodeInner::poll(SnarcRef::clone(&self.inner), round_num, additional_nodes).boxed()
     }
 }
 
@@ -318,49 +297,24 @@ where
         Abstain = invocation::AbstainOf<I>,
     >,
 {
-    pub(crate) async fn spawn<V, B, E>(
-        executor: E,
-        state_keeper_kit: StateKeeperKit<I>,
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        inner: SnarcRef<NodeInner<I, C>>,
+        state_keeper: StateKeeperHandle<I>,
+        proof_of_life: ProofOfLife,
+        events: EventStream<I>,
+        status: NodeStatus,
+        participation: Participation<RoundNumOf<C>>,
         handle_sender: mpsc::Sender<super::handle::RequestAndResponseSender<I>>,
-        id: NodeIdOf<I>,
-        communicator: C,
-        args: super::SpawnArgs<I, V, B>,
-    ) -> Result<(RequestHandler<I>, Core<I, C>), executor::ErrorOf<E, I, V, B>>
-    where
-        V: Voter<
-            State = StateOf<I>,
-            RoundNum = RoundNumOf<C>,
-            CoordNum = CoordNumOf<C>,
-            Abstain = AbstainOf<C>,
-            Yea = YeaOf<C>,
-            Nay = NayOf<C>,
-        >,
-        B: Buffer<RoundNum = RoundNumOf<C>, CoordNum = CoordNumOf<C>, Entry = LogEntryOf<I>>,
-        E: crate::executor::Executor<I, V, B>,
-    {
-        let state_keeper = state_keeper_kit.handle();
-
-        let (initial_status, initial_participation, events, proof_of_life) =
-            StateKeeper::spawn(executor, state_keeper_kit, args).await?;
-
-        let req_handler = RequestHandler::new(state_keeper.clone());
-        let commits = Commits::new();
-
-        let inner = NodeInner::new(id, communicator, state_keeper.clone(), commits.clone());
-
-        let inner = Rc::new(inner);
-
-        let node = Core {
+    ) -> Self {
+        Self {
             inner,
             state_keeper,
             proof_of_life,
-            commits,
             events,
-            status: initial_status,
-            participation: initial_participation,
+            status,
+            participation,
             handle_sender,
-        };
-
-        Ok((req_handler, node))
+        }
     }
 }

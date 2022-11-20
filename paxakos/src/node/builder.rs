@@ -2,10 +2,6 @@
 //!
 //! See [`node_builder`][crate::node_builder] or
 //! [`node::builder`][crate::node::builder].
-use futures::future::FutureExt;
-use futures::future::LocalBoxFuture;
-use futures::future::TryFutureExt;
-
 use crate::buffer::Buffer;
 use crate::buffer::InMemoryBuffer;
 use crate::communicator::Communicator;
@@ -25,15 +21,20 @@ use crate::invocation::RoundNumOf;
 use crate::invocation::SnapshotFor;
 use crate::invocation::YeaOf;
 use crate::node;
+use crate::node::inner::Snarc;
 #[cfg(feature = "tracer")]
 use crate::tracer::Tracer;
 use crate::voting::IndiscriminateVoter;
 use crate::voting::Voter;
 use crate::Node;
+use crate::RequestHandler;
 use crate::Shell;
 use crate::State;
 
+use super::commits::Commits;
+use super::inner::NodeInner;
 use super::snapshot::Snapshot;
+use super::state_keeper::StateKeeper;
 use super::Core;
 use super::IndiscriminateVoterFor;
 use super::InvocationOf;
@@ -497,19 +498,16 @@ where
     }
 
     /// Spawns the node into context `()`.
-    pub fn spawn(self) -> LocalBoxFuture<'static, SpawnResult<N, std::io::Error>>
+    pub async fn spawn(self) -> SpawnResult<N, std::io::Error>
     where
         node::StateOf<N>: State<Context = C> + Send,
         C: Send,
     {
-        self.spawn_using(executor::StdThread)
+        self.spawn_using(executor::StdThread).await
     }
 
     /// Spawns the node in the given context.
-    pub fn spawn_using<E>(
-        self,
-        executor: E,
-    ) -> LocalBoxFuture<'static, ExecutorSpawnResult<N, E, V, B>>
+    pub async fn spawn_using<E>(self, executor: E) -> ExecutorSpawnResult<N, E, V, B>
     where
         node::StateOf<N>: State<Context = C>,
         E: executor::Executor<node::InvocationOf<N>, V, B>,
@@ -518,32 +516,50 @@ where
 
         let receiver = self.kit.receiver;
 
-        Core::spawn(
-            executor,
-            self.kit.state_keeper,
-            self.kit.sender,
+        let state_keeper = self.kit.state_keeper.handle();
+
+        let args = super::SpawnArgs {
+            context: self.context,
+            node_id: self.node_id,
+            voter: self.voter,
+            snapshot: self.snapshot,
+            buffer: self.buffer,
+            #[cfg(feature = "tracer")]
+            tracer: self.tracer,
+        };
+
+        let (initial_status, initial_participation, events, proof_of_life) =
+            StateKeeper::spawn(executor, self.kit.state_keeper, args)
+                .await
+                .map_err(SpawnError::ExecutorError)?;
+
+        let req_handler = RequestHandler::new(state_keeper.clone());
+        let commits = Commits::new();
+
+        let inner = NodeInner::new(
             self.node_id,
             self.communicator,
-            super::SpawnArgs {
-                context: self.context,
-                node_id: self.node_id,
-                voter: self.voter,
-                snapshot: self.snapshot,
-                buffer: self.buffer,
-                #[cfg(feature = "tracer")]
-                tracer: self.tracer,
-            },
-        )
-        .map_err(SpawnError::ExecutorError)
-        .and_then(|(req_handler, core)| {
-            futures::future::ready(
-                finisher
-                    .finish(core)
-                    .map(|node| (req_handler, Shell::new(node, receiver)))
-                    .map_err(SpawnError::Decoration),
-            )
-        })
-        .boxed_local()
+            state_keeper.clone(),
+            commits,
+        );
+
+        let mut inner = Snarc::new(inner);
+
+        let core = Core::new(
+            inner.new_ref(),
+            state_keeper,
+            proof_of_life,
+            events,
+            initial_status,
+            initial_participation,
+            self.kit.sender,
+        );
+
+        let finished = inner.enter(|_| finisher.finish(core));
+
+        finished
+            .map(|node| (req_handler, Shell::new(node, inner.into_erased(), receiver)))
+            .map_err(SpawnError::Decoration)
     }
 }
 

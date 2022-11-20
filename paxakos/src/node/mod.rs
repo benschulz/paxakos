@@ -15,7 +15,6 @@ mod status;
 
 use futures::channel::mpsc;
 use futures::future::BoxFuture;
-use futures::future::LocalBoxFuture;
 
 use crate::append::AppendArgs;
 use crate::applicable::ApplicableTo;
@@ -38,7 +37,13 @@ pub use commits::Commit;
 pub use handle::NodeHandle;
 pub use info::NodeInfo;
 pub use req_handler::RequestHandler;
+pub use shell::EnterOnPoll;
+pub use shell::EnterOnPollOwned;
+pub use shell::EnteredShell;
+pub use shell::EnteredShellRef;
+pub use shell::Sendable;
 pub use shell::Shell;
+pub use shell::Unsendable;
 pub use shutdown::DefaultShutdown;
 pub use shutdown::Shutdown;
 pub use snapshot::Snapshot;
@@ -143,6 +148,7 @@ pub trait Node: Sized {
         NextEvent(self)
     }
 
+    /// Returns a stream that polls this node for events.
     fn events(&mut self) -> Events<'_, Self> {
         Events(self)
     }
@@ -153,7 +159,7 @@ pub trait Node: Sized {
     fn handle(&self) -> NodeHandle<Self::Invocation>;
 
     /// Requests that snapshot of the node's current state be taken.
-    fn prepare_snapshot(&self) -> LocalBoxFuture<'static, SnapshotFor<Self>>;
+    fn prepare_snapshot(&self) -> BoxFuture<'static, SnapshotFor<Self>>;
 
     /// Affirms that the given snapshot was written to persistent storage.
     ///
@@ -161,7 +167,7 @@ pub trait Node: Sized {
     fn affirm_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
-    ) -> LocalBoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>>;
+    ) -> BoxFuture<'static, Result<(), crate::error::AffirmSnapshotError>>;
 
     /// Requests that the given snapshot be installed.
     ///
@@ -170,13 +176,13 @@ pub trait Node: Sized {
     fn install_snapshot(
         &self,
         snapshot: SnapshotFor<Self>,
-    ) -> LocalBoxFuture<'static, Result<(), crate::error::InstallSnapshotError>>;
+    ) -> BoxFuture<'static, Result<(), crate::error::InstallSnapshotError>>;
 
     /// Reads the node's current state.
     ///
     /// As the name implies the state may be stale, i.e. other node's may have
     /// advanced the shared state without this node being aware.
-    fn read_stale<F, T>(&self, f: F) -> LocalBoxFuture<'_, Result<T, Disoriented>>
+    fn read_stale<F, T>(&self, f: F) -> BoxFuture<'_, Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<Self>) -> T + Send + 'static,
         T: Send + 'static;
@@ -185,7 +191,7 @@ pub trait Node: Sized {
     ///
     /// As the name implies the state may be stale, i.e. other node's may have
     /// advanced the shared state without this node being aware.
-    fn read_stale_infallibly<F, T>(&self, f: F) -> LocalBoxFuture<'_, T>
+    fn read_stale_infallibly<F, T>(&self, f: F) -> BoxFuture<'_, T>
     where
         F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'static,
         T: Send + 'static;
@@ -194,7 +200,7 @@ pub trait Node: Sized {
     ///
     /// As the name implies the state may be stale, i.e. other node's may have
     /// advanced the shared state without this node being aware.
-    fn read_stale_scoped<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, Result<T, Disoriented>>
+    fn read_stale_scoped<'read, F, T>(&self, f: F) -> BoxFuture<'read, Result<T, Disoriented>>
     where
         F: FnOnce(&StateOf<Self>) -> T + Send + 'read,
         T: Send + 'static;
@@ -203,17 +209,17 @@ pub trait Node: Sized {
     ///
     /// As the name implies the state may be stale, i.e. other node's may have
     /// advanced the shared state without this node being aware.
-    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> LocalBoxFuture<'read, T>
+    fn read_stale_scoped_infallibly<'read, F, T>(&self, f: F) -> BoxFuture<'read, T>
     where
         F: FnOnce(Option<&StateOf<Self>>) -> T + Send + 'read,
         T: Send + 'static;
 
     /// Appends `applicable` to the shared log.
     fn append<A, P, R>(
-        &self,
+        &mut self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
+    ) -> BoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
@@ -228,10 +234,10 @@ pub trait Node: Sized {
 pub trait NodeImpl: Node {
     /// Appends `applicable` to the shared log.
     fn append_impl<A, P, R>(
-        &self,
+        &mut self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    ) -> BoxFuture<'static, ImplAppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
@@ -239,24 +245,24 @@ pub trait NodeImpl: Node {
 
     /// Wait for the log entry with the given ID to be committed.
     fn await_commit_of(
-        &self,
+        &mut self,
         log_entry_id: LogEntryIdOf<Self>,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, ShutDown>>;
+    ) -> BoxFuture<'static, Result<CommitFor<Self>, ShutDown>>;
 
     /// Eject the node's state.
     ///
     /// Returns `true` if state was ejected, `false` if the node didn't have
     /// state to begin with.
-    fn eject(&self, reason: EjectionOf<Self>) -> LocalBoxFuture<'static, Result<bool, ShutDown>>;
+    fn eject(&mut self, reason: EjectionOf<Self>) -> BoxFuture<'static, Result<bool, ShutDown>>;
 
     /// Polls the given nodes for the log entry to apply to the given round.
     ///
     /// Returns whether a log entry could be polled or not.
     fn poll(
-        &self,
+        &mut self,
         round_num: RoundNumOf<Self>,
         additional_nodes: Vec<NodeOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<bool, PollError<Self::Invocation>>>;
+    ) -> BoxFuture<'static, Result<bool, PollError<Self::Invocation>>>;
 }
 
 /// Convenient way to implement `NodeImpl` by delegating all calls.
@@ -265,15 +271,15 @@ pub trait DelegatingNodeImpl: Node {
     type Delegate: NodeImpl<Invocation = Self::Invocation>;
 
     /// Returns a reference to the node that's delegated to.
-    fn delegate(&self) -> &Self::Delegate;
+    fn delegate(&mut self) -> &mut Self::Delegate;
 }
 
 impl<D: DelegatingNodeImpl> NodeImpl for D {
     fn append_impl<A, P, R>(
-        &self,
+        &mut self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, ImplAppendResultFor<Self, A, R>>
+    ) -> BoxFuture<'static, ImplAppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
@@ -283,21 +289,21 @@ impl<D: DelegatingNodeImpl> NodeImpl for D {
     }
 
     fn await_commit_of(
-        &self,
+        &mut self,
         log_entry_id: LogEntryIdOf<Self>,
-    ) -> LocalBoxFuture<'static, Result<CommitFor<Self>, ShutDown>> {
+    ) -> BoxFuture<'static, Result<CommitFor<Self>, ShutDown>> {
         self.delegate().await_commit_of(log_entry_id)
     }
 
-    fn eject(&self, reason: EjectionOf<Self>) -> LocalBoxFuture<'static, Result<bool, ShutDown>> {
+    fn eject(&mut self, reason: EjectionOf<Self>) -> BoxFuture<'static, Result<bool, ShutDown>> {
         self.delegate().eject(reason)
     }
 
     fn poll(
-        &self,
+        &mut self,
         round_num: RoundNumOf<Self>,
         additional_nodes: Vec<NodeOf<Self>>,
-    ) -> LocalBoxFuture<'static, Result<bool, PollError<Self::Invocation>>> {
+    ) -> BoxFuture<'static, Result<bool, PollError<Self::Invocation>>> {
         self.delegate().poll(round_num, additional_nodes)
     }
 }
@@ -319,6 +325,7 @@ where
     }
 }
 
+/// Stream returned by [`Node::events`].
 pub struct Events<'a, N: ?Sized>(&'a mut N);
 
 impl<'a, N> futures::stream::Stream for Events<'a, N>

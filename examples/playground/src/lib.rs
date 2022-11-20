@@ -416,7 +416,7 @@ impl Cluster {
         let (sender, mut receiver) = oneshot::channel();
 
         wasm_bindgen_futures::spawn_local(async move {
-            let (handler, mut node) = PlaygroundInvocation::node_builder()
+            let (handler, node) = PlaygroundInvocation::node_builder()
                 .for_node(node_info.id())
                 .communicating_via(communicator)
                 .with(starter)
@@ -432,6 +432,7 @@ impl Cluster {
                 .spawn_using(WasmExecutor)
                 .await
                 .unwrap();
+            let mut node = node.into_unsend();
 
             communicators.register(node.id(), handler).await;
 

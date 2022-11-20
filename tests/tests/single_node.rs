@@ -19,38 +19,39 @@ use calc_app::CalcState;
 
 #[test]
 fn single_append() {
-    let node = setup_node();
+    let mut node = setup_node();
 
-    let result = futures::executor::block_on(node.append(CalcOp::Add(42.0, Uuid::new_v4()), ()));
-    let result = result.unwrap();
-    let result = futures::executor::block_on(result).unwrap();
-    assert!((42.0 - result).abs() < f64::EPSILON);
+    futures::executor::block_on(node.enter_on_poll(|node| async move {
+        let result = node.append(CalcOp::Add(42.0, Uuid::new_v4()), ());
+        let result = result.await.unwrap().await.unwrap();
+        assert!((42.0 - result).abs() < f64::EPSILON);
 
-    let v = futures::executor::block_on(node.read_stale(|s| s.value())).unwrap();
-    assert!((42.0 - v).abs() < f64::EPSILON);
+        let v = node.read_stale(|s| s.value()).await.unwrap();
+        assert!((42.0 - v).abs() < f64::EPSILON);
+    }));
 }
 
 #[test]
 fn multiple_serial_append() {
-    let node = setup_node();
+    let mut node = setup_node();
 
-    let result = futures::executor::block_on(node.append(CalcOp::Add(42.0, Uuid::new_v4()), ()));
-    let result = result.unwrap();
-    let result = futures::executor::block_on(result).unwrap();
-    assert!((42.0 - result).abs() < f64::EPSILON);
+    futures::executor::block_on(node.enter_on_poll(|node| async move {
+        let result = node.append(CalcOp::Add(42.0, Uuid::new_v4()), ());
+        let result = result.await.unwrap().await.unwrap();
+        assert!((42.0 - result).abs() < f64::EPSILON);
 
-    let result = futures::executor::block_on(node.append(CalcOp::Mul(3.0, Uuid::new_v4()), ()));
-    let result = result.unwrap();
-    let result = futures::executor::block_on(result).unwrap();
-    assert!((126.0 - result).abs() < f64::EPSILON);
+        let result = node.append(CalcOp::Mul(3.0, Uuid::new_v4()), ());
+        let result = result.await.unwrap().await.unwrap();
+        assert!((126.0 - result).abs() < f64::EPSILON);
 
-    let v = futures::executor::block_on(node.read_stale(|s| s.value())).unwrap();
-    assert!((126.0 - v).abs() < f64::EPSILON);
+        let v = node.read_stale(|s| s.value()).await.unwrap();
+        assert!((126.0 - v).abs() < f64::EPSILON);
+    }));
 }
 
 #[test]
 fn multiple_concurrent_appends() {
-    let mut node = setup_node();
+    let mut node = setup_node().into_unsend();
 
     let mut ops: Vec<_> = (0..20)
         .map(|i| CalcOp::Add((1 << i).into(), Uuid::new_v4()))

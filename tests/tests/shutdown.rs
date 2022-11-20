@@ -1,6 +1,7 @@
 mod calc_app;
 
 use futures::stream::StreamExt;
+use futures::FutureExt;
 use paxakos::invocation::Invocation;
 use uuid::Uuid;
 
@@ -29,20 +30,33 @@ fn clean_shutdown() {
     )
     .unwrap();
 
-    futures::executor::block_on(node.append(CalcOp::Add(42.0, Uuid::new_v4()), ())).unwrap();
-
-    let mut shutdown = node.shut_down();
-
-    let mut states = futures::stream::poll_fn(|cx| shutdown.poll_shutdown(cx).map(Some))
-        .map(|e| match e {
-            ShutdownEvent::Regular(_) => futures::stream::empty().left_stream(),
-            ShutdownEvent::Final { snapshot, .. } => {
-                futures::stream::once(futures::future::ready(snapshot)).right_stream()
+    futures::executor::block_on(node.into_enter_on_poll(|mut node| async move {
+        let append = node.append(CalcOp::Add(42.0, Uuid::new_v4()), ());
+        let mut events = node.events();
+        futures::future::select(
+            append,
+            async {
+                loop {
+                    events.next().await;
+                }
             }
-        })
-        .flatten();
-    let final_snapshot = states.next();
+            .boxed(),
+        )
+        .await;
 
-    let final_snapshot = futures::executor::block_on(final_snapshot).unwrap();
-    assert_eq!(Some(42.0), final_snapshot.state().map(|s| s.value()));
+        let mut shutdown = node.shut_down();
+
+        let mut states = futures::stream::poll_fn(|cx| shutdown.poll_shutdown(cx).map(Some))
+            .map(|e| match e {
+                ShutdownEvent::Regular(_) => futures::stream::empty().left_stream(),
+                ShutdownEvent::Final { snapshot, .. } => {
+                    futures::stream::once(futures::future::ready(snapshot)).right_stream()
+                }
+            })
+            .flatten();
+        let final_snapshot = states.next();
+
+        let final_snapshot = final_snapshot.await.unwrap();
+        assert_eq!(Some(42.0), final_snapshot.state().map(|s| s.value()));
+    }));
 }

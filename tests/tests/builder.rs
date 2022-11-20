@@ -4,7 +4,6 @@ use paxakos::invocation::Invocation;
 use paxakos::node::Snapshot;
 use paxakos::prototyping::DirectCommunicators;
 use paxakos::prototyping::PrototypingNode;
-use paxakos::Node;
 use paxakos::NodeInfo;
 use paxakos::NodeStatus;
 

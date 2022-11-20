@@ -8,7 +8,6 @@ use std::sync::Arc;
 use futures::channel::mpsc;
 use futures::future::BoxFuture;
 use futures::future::FutureExt;
-use futures::future::LocalBoxFuture;
 use futures::lock::Mutex;
 use futures::sink::SinkExt;
 use futures::stream::Stream;
@@ -349,7 +348,7 @@ macro_rules! send_fn {
 
                         response
                     }
-                    .boxed_local(),
+                    .boxed(),
                 )
             })
             .collect()
@@ -370,15 +369,15 @@ impl<I: Invocation + 'static> Communicator for DirectCommunicator<I> {
 
     type Error = DirectCommunicatorError;
 
-    type SendPrepare = LocalBoxFuture<'static, Result<VoteFor<Self>, Self::Error>>;
+    type SendPrepare = BoxFuture<'static, Result<VoteFor<Self>, Self::Error>>;
     type Abstain = AbstainOf<I>;
 
-    type SendProposal = LocalBoxFuture<'static, Result<AcceptanceFor<Self>, Self::Error>>;
+    type SendProposal = BoxFuture<'static, Result<AcceptanceFor<Self>, Self::Error>>;
     type Yea = YeaOf<I>;
     type Nay = NayOf<I>;
 
-    type SendCommit = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
-    type SendCommitById = LocalBoxFuture<'static, Result<Committed, Self::Error>>;
+    type SendCommit = BoxFuture<'static, Result<Committed, Self::Error>>;
+    type SendCommitById = BoxFuture<'static, Result<Committed, Self::Error>>;
 
     fn send_prepare<'a>(
         &mut self,
