@@ -252,7 +252,6 @@ pub trait NodeImpl: Node {
     /// Polls the given nodes for the log entry to apply to the given round.
     ///
     /// Returns whether a log entry could be polled or not.
-    // TODO have a dedicated error type
     fn poll(
         &self,
         round_num: RoundNumOf<Self>,
