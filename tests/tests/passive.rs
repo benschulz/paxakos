@@ -66,12 +66,12 @@ fn worst_case() {
         futures::executor::block_on(req_handler.handle_proposal(r, 10, CalcOp::Add(0.0, entry_id)))
             .unwrap();
         while let Poll::Ready(e) = node.poll_events(&mut cx) {
-            println!("{:?}", e);
+            println!("{e:?}");
         }
 
         futures::executor::block_on(req_handler.handle_commit_by_id(r, 10, entry_id)).unwrap();
         while let Poll::Ready(e) = node.poll_events(&mut cx) {
-            println!("{:?}", e);
+            println!("{e:?}");
         }
     }
 
@@ -107,7 +107,7 @@ fn worst_case() {
         ))
         .unwrap();
         while let Poll::Ready(e) = node.poll_events(&mut cx) {
-            println!("{:?}", e);
+            println!("{e:?}");
         }
     }
 
@@ -129,7 +129,7 @@ fn worst_case() {
             ));
 
             while let Poll::Ready(e) = node.poll_events(&mut cx) {
-                println!("{:?}", e);
+                println!("{e:?}");
             }
 
             assert!(matches!(
@@ -143,7 +143,7 @@ fn worst_case() {
             ));
 
             while let Poll::Ready(e) = node.poll_events(&mut cx) {
-                println!("{:?}", e);
+                println!("{e:?}");
             }
         }
 
@@ -158,14 +158,14 @@ fn worst_case() {
             AcceptError::Passive
         ));
         while let Poll::Ready(e) = node.poll_events(&mut cx) {
-            println!("{:?}", e);
+            println!("{e:?}");
         }
 
         futures::executor::block_on(req_handler.handle_commit(r, 10, CalcOp::Add(0.0, entry_id)))
             .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
         while let Poll::Ready(e) = node.poll_events(&mut cx) {
-            println!("{:?}", e);
+            println!("{e:?}");
         }
 
         assert!(matches!(

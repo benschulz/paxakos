@@ -45,7 +45,7 @@ where
         let receivers = self.receivers;
 
         std::thread::spawn(|| {
-            let mut nodes = receivers.iter().map(|(n, _)| *n).collect::<Vec<_>>();
+            let mut nodes = receivers.keys().copied().collect::<Vec<_>>();
             nodes.sort();
 
             let mut received_events = Vec::new();
@@ -93,7 +93,7 @@ where
                                         .unwrap()
                                         .as_secs();
                                     let mut trace_file =
-                                        std::fs::File::create(format!("trace_{}.txt", timestamp))
+                                        std::fs::File::create(format!("trace_{timestamp}.txt"))
                                             .unwrap();
 
                                     tracing::error!("Node {:?} received inconsistent commit.", n);
@@ -111,14 +111,14 @@ where
                                     let round_events = received_events_indexed.get(&r).unwrap();
 
                                     for (n, es) in round_events {
-                                        writeln!(trace_file, "  Node {:?}:", n).unwrap();
+                                        writeln!(trace_file, "  Node {n:?}:").unwrap();
 
                                         for e in es {
                                             if let Event::Commit(_, i) = e {
                                                 log_entry_ids.insert(i);
                                             }
 
-                                            writeln!(trace_file, "   - {:?}:", e).unwrap();
+                                            writeln!(trace_file, "   - {e:?}:").unwrap();
                                         }
                                     }
 
@@ -128,15 +128,14 @@ where
                                     let mut coord_nums = HashSet::new();
 
                                     for n in &nodes {
-                                        writeln!(trace_file, "    Node {:?}:", n).unwrap();
+                                        writeln!(trace_file, "    Node {n:?}:").unwrap();
 
                                         for e in &round_events[n] {
                                             if let Event::Accept(_, c, i) = e {
                                                 if log_entry_ids.contains(i) {
                                                     coord_nums.insert(c);
 
-                                                    writeln!(trace_file, "      - {:?}", e)
-                                                        .unwrap();
+                                                    writeln!(trace_file, "      - {e:?}").unwrap();
                                                 }
                                             }
                                         }
@@ -146,13 +145,12 @@ where
                                     writeln!(trace_file, "  Relevant Promises:").unwrap();
 
                                     for n in &nodes {
-                                        writeln!(trace_file, "    Node {:?}:", n).unwrap();
+                                        writeln!(trace_file, "    Node {n:?}:").unwrap();
 
                                         for (n0, e) in &received_events {
                                             if let Event::Promise(_, c, _) = e {
                                                 if n0 == n && coord_nums.contains(c) {
-                                                    writeln!(trace_file, "      - {:?}", e)
-                                                        .unwrap();
+                                                    writeln!(trace_file, "      - {e:?}").unwrap();
                                                 }
                                             }
                                         }
@@ -162,11 +160,11 @@ where
                                     writeln!(trace_file).unwrap();
 
                                     for n in &nodes {
-                                        writeln!(trace_file, "Node {:?}:", n).unwrap();
+                                        writeln!(trace_file, "Node {n:?}:").unwrap();
 
                                         for (n0, e) in &received_events {
                                             if n0 == n {
-                                                writeln!(trace_file, " - {:?}:", e).unwrap();
+                                                writeln!(trace_file, " - {e:?}:").unwrap();
                                             }
                                         }
 

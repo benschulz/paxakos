@@ -671,7 +671,7 @@ where
                         match self.voter.contemplate_proposal(
                             r,
                             coord_num,
-                            &*e,
+                            &e,
                             leader.as_ref(),
                             self.state.as_ref(),
                         ) {
@@ -1221,7 +1221,7 @@ where
             match self.voter.contemplate_proposal(
                 round_num,
                 coord_num,
-                &*log_entry,
+                &log_entry,
                 leader.as_ref(),
                 self.state.as_ref(),
             ) {
@@ -1373,10 +1373,10 @@ where
             let awaiters = self.awaiters.remove(&entry.id()).unwrap_or_default();
 
             let result = if awaiters.is_empty() {
-                state.apply_unobserved(&*entry, &mut self.context)
+                state.apply_unobserved(&entry, &mut self.context)
             } else {
                 state
-                    .apply(&*entry, &mut self.context)
+                    .apply(&entry, &mut self.context)
                     .map(|(outcome, effect)| {
                         awaiters.into_iter().for_each(|a| {
                             // avoid clone if possible
@@ -1464,7 +1464,7 @@ fn into_round_num<R: RoundNum>(concurrency: std::num::NonZeroUsize) -> R {
     let num = usize::from(concurrency);
 
     R::try_from(num)
-        .unwrap_or_else(|_| panic!("Cannot convert concurrency `{}` into a round number.", num))
+        .unwrap_or_else(|_| panic!("Cannot convert concurrency `{num}` into a round number."))
 }
 
 fn overridable_lookup<R: RoundNum, C: CoordNum>(

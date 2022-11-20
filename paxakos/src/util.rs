@@ -27,7 +27,7 @@ pub fn try_usize_remainder<N: Number>(dividend: N, divisor: N) -> Option<usize> 
 }
 
 pub fn from_usize<N: Number>(n: usize, quantity: &str) -> N {
-    N::try_from(n).unwrap_or_else(|_| panic!("{} out of range", quantity))
+    N::try_from(n).unwrap_or_else(|_| panic!("{quantity} out of range"))
 }
 
 #[pin_project]

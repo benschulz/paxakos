@@ -409,8 +409,6 @@
 //! [State]: crate::state::State
 //! [State::cluster_at]: crate::state::State::cluster_at
 
-// https://github.com/rust-lang/rust/issues/44265
-#![feature(generic_associated_types)]
 // https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 // https://github.com/rust-lang/rust/issues/53667

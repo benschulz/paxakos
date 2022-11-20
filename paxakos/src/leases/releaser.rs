@@ -249,7 +249,7 @@ where
                 | crate::Event::Install {
                     state: Some(state), ..
                 } => {
-                    for lease in self.config.active_leases(&*state) {
+                    for lease in self.config.active_leases(state) {
                         Self::queue_lease_split(
                             &mut self.next_timeout_id,
                             &mut self.timeouts,

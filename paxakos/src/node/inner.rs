@@ -338,7 +338,7 @@ where
                 }
 
                 self.become_leader(
-                    &*election_token,
+                    &election_token,
                     round_num,
                     coord_num,
                     quorum_prime,

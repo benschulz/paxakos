@@ -29,7 +29,7 @@ fn clean_shutdown() {
     )
     .unwrap();
 
-    futures::executor::block_on(node.append_static(CalcOp::Add(42.0, Uuid::new_v4()), ())).unwrap();
+    futures::executor::block_on(node.append(CalcOp::Add(42.0, Uuid::new_v4()), ())).unwrap();
 
     let mut shutdown = node.shut_down();
 
