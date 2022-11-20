@@ -17,7 +17,7 @@ pub trait RetryPolicy: 'static {
 
     /// Union of `Self::Error` and `ShutDown`.
     ///
-    /// See [`Node::append_static`][crate::Node::append_static].
+    /// See [`Node::append`][crate::Node::append].
     // TODO default to ShutDownOr<Self::Error> (https://github.com/rust-lang/rust/issues/29661)
     type StaticError;
 

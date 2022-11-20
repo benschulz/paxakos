@@ -40,6 +40,7 @@ use super::state_keeper::ProofOfLife;
 use super::state_keeper::StateKeeper;
 use super::state_keeper::StateKeeperHandle;
 use super::state_keeper::StateKeeperKit;
+use super::AppendResultFor;
 use super::EventFor;
 use super::ImplAppendResultFor;
 use super::Node;
@@ -49,7 +50,6 @@ use super::NodeStatus;
 use super::Participation;
 use super::RequestHandler;
 use super::SnapshotFor;
-use super::StaticAppendResultFor;
 
 /// The core [`Node`][crate::Node] implementation.
 ///
@@ -171,11 +171,11 @@ where
         self.state_keeper.install_snapshot(snapshot).boxed_local()
     }
 
-    fn append_static<A, P, R>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    ) -> LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self::Invocation>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,

@@ -16,6 +16,7 @@ use crate::error::ShutDownOr;
 use crate::event::DirectiveKind;
 use crate::invocation;
 use crate::invocation::Invocation;
+use crate::node::AppendResultFor;
 use crate::node::CoordNumOf;
 use crate::node::Core;
 use crate::node::DelegatingNodeImpl;
@@ -31,7 +32,6 @@ use crate::node::Participation;
 use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
-use crate::node::StaticAppendResultFor;
 use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::RetryPolicy;
 use crate::RoundNum;
@@ -372,18 +372,18 @@ where
         self.decorated.read_stale_scoped_infallibly(f)
     }
 
-    fn append_static<A, P, R>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> futures::future::LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
         R: RetryPolicy<Invocation = Self::Invocation>,
         R::StaticError: From<ShutDownOr<R::Error>>,
     {
-        self.decorated.append_static(applicable, args)
+        self.decorated.append(applicable, args)
     }
 
     fn shut_down(self) -> Self::Shutdown {

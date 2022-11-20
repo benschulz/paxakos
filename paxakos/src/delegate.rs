@@ -22,6 +22,7 @@ use crate::error::ShutDown;
 use crate::error::ShutDownOr;
 use crate::invocation;
 use crate::leadership::track::LeadershipAwareNode;
+use crate::node::AppendResultFor;
 use crate::node::CommitFor;
 use crate::node::EventFor;
 use crate::node::ImplAppendResultFor;
@@ -33,7 +34,6 @@ use crate::node::Participation;
 use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
-use crate::node::StaticAppendResultFor;
 use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::DoNotRetry;
 use crate::retry::RetryPolicy;
@@ -509,11 +509,11 @@ where
         self.decorated.read_stale_scoped_infallibly(f)
     }
 
-    fn append_static<A, P, R>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> futures::future::LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,

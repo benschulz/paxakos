@@ -97,7 +97,7 @@ fn auto_fill_gaps() {
     let target = 123f64;
 
     // become leader
-    futures::executor::block_on(node.append_static(CalcOp::Mul(0.0, Uuid::new_v4()), ())).unwrap();
+    futures::executor::block_on(node.append(CalcOp::Mul(0.0, Uuid::new_v4()), ())).unwrap();
 
     commit(&req_handler, 5, 0, CalcOp::Add(target, Uuid::new_v4()));
 

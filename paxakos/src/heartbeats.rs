@@ -31,6 +31,7 @@ use crate::decoration::Decoration;
 use crate::error::Disoriented;
 use crate::error::ShutDownOr;
 use crate::leadership::track::MaybeLeadershipAwareNode;
+use crate::node::AppendResultFor;
 use crate::node::DelegatingNodeImpl;
 use crate::node::EventFor;
 use crate::node::InvocationOf;
@@ -41,7 +42,6 @@ use crate::node::Participation;
 use crate::node::RoundNumOf;
 use crate::node::SnapshotFor;
 use crate::node::StateOf;
-use crate::node::StaticAppendResultFor;
 use crate::node_builder::ExtensibleNodeBuilder;
 use crate::retry::DoNotRetry;
 use crate::retry::RetryPolicy;
@@ -251,7 +251,7 @@ where
     fn send_heartbeat(&mut self) {
         let append = self
             .decorated
-            .append_static(
+            .append(
                 self.config.new_heartbeat(),
                 AppendArgs {
                     retry_policy: self.config.retry_policy(),
@@ -428,18 +428,18 @@ where
         self.decorated.read_stale_scoped_infallibly(f)
     }
 
-    fn append_static<A, P, R>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> futures::future::LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
         R: RetryPolicy<Invocation = Self::Invocation>,
         R::StaticError: From<ShutDownOr<R::Error>>,
     {
-        self.decorated.append_static(applicable, args)
+        self.decorated.append(applicable, args)
     }
 
     fn shut_down(self) -> Self::Shutdown {

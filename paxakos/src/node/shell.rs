@@ -19,6 +19,7 @@ use crate::NodeStatus;
 use super::handle::BoxedRetryPolicy;
 use super::handle::NodeHandleRequest;
 use super::handle::NodeHandleResponse;
+use super::AppendResultFor;
 use super::ImplAppendResultFor;
 use super::InvocationOf;
 use super::LogEntryOf;
@@ -29,7 +30,6 @@ use super::RoundNumOf;
 use super::ShutdownOf;
 use super::SnapshotFor;
 use super::StateOf;
-use super::StaticAppendResultFor;
 
 /// The [`Node`][crate::Node] implementation that's returned from
 /// [`NodeBuilder`][crate::NodeBuilder]s.
@@ -167,18 +167,18 @@ where
         self.wrapped.read_stale_scoped_infallibly(f)
     }
 
-    fn append_static<A, P, R>(
+    fn append<A, P, R>(
         &self,
         applicable: A,
         args: P,
-    ) -> futures::future::LocalBoxFuture<'static, StaticAppendResultFor<Self, A, R>>
+    ) -> futures::future::LocalBoxFuture<'static, AppendResultFor<Self, A, R>>
     where
         A: ApplicableTo<StateOf<Self>> + 'static,
         P: Into<AppendArgs<Self::Invocation, R>>,
         R: RetryPolicy<Invocation = Self::Invocation>,
         R::StaticError: From<ShutDownOr<R::Error>>,
     {
-        self.wrapped.append_static(applicable, args)
+        self.wrapped.append(applicable, args)
     }
 
     fn shut_down(self) -> Self::Shutdown {
