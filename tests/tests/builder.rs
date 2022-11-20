@@ -13,7 +13,7 @@ use calc_app::CalcState;
 use crate::calc_app::CalcInvocation;
 
 #[test]
-fn node_without_state_starts_as_lost() {
+fn node_without_state_starts_as_disoriented() {
     let node_info = PrototypingNode::new();
     let communicators = DirectCommunicators::<CalcInvocation>::new();
 
