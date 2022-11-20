@@ -498,7 +498,11 @@ where
 
                 let mut ix = 0;
 
-                while let Some(next_available) = availables.iter().next() && ix < requests.len() {
+                while let Some(next_available) = availables.iter().next() {
+                    if ix >= requests.len() {
+                        break;
+                    }
+
                     let (range, _) = &requests[ix];
 
                     // Have rounds up to and including `range.end()` have already converged?

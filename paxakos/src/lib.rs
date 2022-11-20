@@ -408,10 +408,6 @@
 //! [State]: crate::state::State
 //! [State::cluster_at]: crate::state::State::cluster_at
 
-// https://github.com/rust-lang/rust/issues/53667
-#![feature(let_chains)]
-//
-
 //
 // Lint configuration
 #![warn(rust_2018_idioms)]
