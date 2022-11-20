@@ -143,6 +143,10 @@ pub trait Node: Sized {
         NextEvent(self)
     }
 
+    fn events(&mut self) -> Events<'_, Self> {
+        Events(self)
+    }
+
     /// Returns a [handle][NodeHandle] for this node.
     ///
     /// A node handle can be freely sent between threads.
@@ -313,6 +317,22 @@ where
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         self.0.poll_events(cx)
+    }
+}
+
+pub struct Events<'a, N: ?Sized>(&'a mut N);
+
+impl<'a, N> futures::stream::Stream for Events<'a, N>
+where
+    N: Node,
+{
+    type Item = EventFor<N>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_events(cx).map(Some)
     }
 }
 
