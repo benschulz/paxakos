@@ -67,7 +67,7 @@ where
     fn update(&mut self, event: &EventFor<Self::Node>) {}
 
     /// Returns the active leases for `state`.
-    fn active_leases(&self, state: &FrozenStateOf<Self::Node>) -> Self::Leases<'_>;
+    fn active_leases<'a>(&'a self, state: &'a FrozenStateOf<Self::Node>) -> Self::Leases<'a>;
 
     /// Prepares to release the lease with the given id.
     fn release(&self, lease_id: LeaseIdOf<Self::Node>) -> Self::Applicable;
