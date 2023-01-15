@@ -259,7 +259,10 @@ where
                     self.queue.push(QueuedLease {
                         lease_id,
                         state,
-                        extend: leased.timeout - args.extension_threshold,
+                        extend: leased
+                            .timeout
+                            .checked_sub(args.extension_threshold)
+                            .unwrap(),
                         args,
                     });
                     self.releases.push(
@@ -275,7 +278,10 @@ where
                     self.queue.push(QueuedLease {
                         lease_id: leased.lease_id,
                         state,
-                        extend: leased.timeout - args.extension_threshold,
+                        extend: leased
+                            .timeout
+                            .checked_sub(args.extension_threshold)
+                            .unwrap(),
                         args,
                     });
                 }

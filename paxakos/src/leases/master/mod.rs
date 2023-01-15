@@ -219,7 +219,11 @@ where
     }
 
     fn is_valid_at(&self, lease: &Lease<NodeIdOf<N>>, t: instant::Instant) -> bool {
-        lease.end - self.config.dilation_margin() > t
+        lease
+            .end
+            .checked_sub(self.config.dilation_margin())
+            .unwrap()
+            > t
     }
 }
 

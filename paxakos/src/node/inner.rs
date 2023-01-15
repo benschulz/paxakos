@@ -381,7 +381,6 @@ where
                         .send_prepare(other_nodes, round_num, coord_num)
                         .into_iter()
                         .map(|(_node, fut)| fut.map(|x| x))
-                        .into_iter()
                         .collect::<FuturesUnordered<_>>();
 
                     let mut converged = false;
@@ -916,7 +915,6 @@ where
             .send_prepare(&cluster, round_num, Zero::zero())
             .into_iter()
             .map(|(node, fut)| fut.map(move |x| (node, x)))
-            .into_iter()
             .collect::<FuturesUnordered<_>>();
 
         let mut converged = false;
